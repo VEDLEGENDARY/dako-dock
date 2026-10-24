@@ -1,0 +1,6 @@
+/build/
+/.vs/
+*.user
+/docs/reference/*.png
+/docs/reference/*.mp4
+/docs/renders/
