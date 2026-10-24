@@ -1,0 +1,34 @@
+param([switch]$Debug,[ValidateSet('Dako.exe','Dako.next.exe')][string]$OutputName='Dako.exe')
+$ErrorActionPreference = 'Stop'
+$projectRoot = Split-Path -Parent $PSScriptRoot
+$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+if (!(Test-Path -LiteralPath $vswhere)) { throw 'Visual Studio C++ Build Tools are required (vswhere.exe was not found).' }
+$vsRoot = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+if (!$vsRoot) { throw 'No installed Visual Studio x64 C++ toolchain was found.' }
+$devShell = Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1'
+& $devShell -Arch amd64 -HostArch amd64 -SkipAutomaticLocation | Out-Null
+$buildDir = Join-Path $projectRoot 'build'
+New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
+$wallpaperRoot = Join-Path $projectRoot 'assets\wallpapers'
+$wallpaperCatalog = Get-Content -LiteralPath (Join-Path $wallpaperRoot 'catalog.json') -Raw | ConvertFrom-Json
+if ($wallpaperCatalog.photos.Count -ne 18) { throw 'The curated collection must contain 18 photos.' }
+foreach ($photo in $wallpaperCatalog.photos) {
+    if ([System.IO.Path]::GetFileName($photo.file) -ne $photo.file -or !(Test-Path -LiteralPath (Join-Path $wallpaperRoot $photo.file))) { throw 'Wallpaper assets are missing. Run scripts\fetch-wallpapers.ps1 before building.' }
+}
+$optimization = if ($Debug) { '/Od' } else { '/O2' }
+$manifest = Join-Path $projectRoot 'src\app.manifest'
+Push-Location $buildDir
+try {
+    & cl.exe /nologo /std:c++20 /EHsc /W4 /WX /permissive- /utf-8 /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /DNOMINMAX $optimization /MT /Zi (Join-Path $projectRoot 'src\main.cpp') "/Fe:$OutputName" /link /SUBSYSTEM:WINDOWS /DYNAMICBASE /NXCOMPAT /MANIFEST:EMBED "/MANIFESTINPUT:$manifest" user32.lib gdi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib d2d1.lib dwrite.lib dwmapi.lib wlanapi.lib bthprops.lib psapi.lib windowsapp.lib windowscodecs.lib oleacc.lib powrprof.lib advapi32.lib iphlpapi.lib shcore.lib pdh.lib dxgi.lib
+    if ($LASTEXITCODE -ne 0) { throw "Native compilation failed: $LASTEXITCODE" }
+} finally { Pop-Location }
+$packagedWallpapers = Join-Path $buildDir 'assets\wallpapers'
+New-Item -ItemType Directory -Force -Path $packagedWallpapers | Out-Null
+# Synchronize only this app-owned asset directory, preserving unrelated build files.
+$packagedRoot = [System.IO.Path]::GetFullPath($packagedWallpapers)
+$expectedRoot = [System.IO.Path]::GetFullPath((Join-Path $projectRoot 'build\assets\wallpapers'))
+if ($packagedRoot -ne $expectedRoot) { throw 'Unexpected wallpaper output directory.' }
+$expectedFiles = @('catalog.json') + @($wallpaperCatalog.photos | ForEach-Object { $_.file })
+Get-ChildItem -LiteralPath $packagedRoot -File | Where-Object { $_.Name -notin $expectedFiles } | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
+foreach ($file in $expectedFiles) { Copy-Item -LiteralPath (Join-Path $wallpaperRoot $file) -Destination (Join-Path $packagedWallpapers $file) -Force }
+Write-Output (Join-Path $buildDir $OutputName)
