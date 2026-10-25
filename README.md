@@ -1,43 +1,62 @@
-# Dako
+# Dako 2.0
 
-A native Windows desktop shell project. The visual target is the desktop island shown in the public [Hitodama demonstrations](https://hitodama.in/#island), excluding voice/AI, branding, and the mascot.
+A native Windows dock and desktop island with an editorial design adapted from [vedp.dev](https://vedp.dev): warm paper, dark ink, orange details, serif headings, monospace labels and thin dividers. Shared navigation stays in place across all seven views; controls respond during motion. C++20, Win32, Direct2D, DirectWrite and DirectComposition; no web engine or AI integration. See the [design revamp record](docs/DESIGN_REVAMP.md).
 
-## First native milestone
+## Build and run
 
-C++20, Win32, Direct2D, DirectWrite, Core Audio, and Windows media-session APIs. No Electron, Chromium, WebView, JavaScript runtime, or background web server.
+Download the Windows x64 portable ZIP from [GitHub Releases](https://github.com/VEDLEGENDARY/dako-dock/releases/latest), extract it, and run `Dako.exe`. Keep `assets/wallpapers` beside the executable for the offline collection. The standalone EXE is also available. These builds are unsigned.
 
 ```powershell
 .\scripts\build.ps1
 .\build\Dako.exe
 ```
 
-Requires the Visual Studio C++ x64 build tools and a Windows 10/11 SDK. The build script discovers the existing installation; it does not install anything.
+Requires installed Visual Studio x64 C++ Build Tools and a Windows 10/11 SDK. Supported Windows 11 builds provide the transient backdrop; unsupported composition/material paths use the opaque native renderer. Build does not download a runtime.
 
-- Move near the flared notch at the top center and pause briefly to reveal the dock downward. Move away to dismiss it.
-- The 216 × 18 DIP notch sits directly on the screen edge. No horizontal rail or wallpaper strip is reserved above maximized apps.
-- Ordinary popups attach to the top with curved shoulders. Only an active recognized browser detaches the popup, placing it 112 DIP below the top with a click-through toolbar gap. Context is frozen during interaction; tab headers stay in place as panels resize.
-- The selected maximized browser uses the full monitor with only the notch excluded from its native window region. Its previous region is restored on app switches, manual restoration, Dako exit or crash. The cutout clips drawing; it does not rearrange browser tabs.
-- Escape returns from a wireless flyout, then dismisses the dock. Dragging windows over the edge does not trigger a reveal.
-- Ctrl+Alt+Space toggles the island.
-- Ctrl+Alt+Shift+Q exits. Right-click also offers Exit.
-- Tab/Shift+Tab changes focus, Enter/Space invokes a control, and arrow keys adjust focused volume.
-- `--expanded` starts open for development review. `--tab=stats` opens the resource view. A second launch reveals the existing instance.
-- Dako registers a Windows tray icon and stays out of Alt+Tab and the taskbar. `--inspect` now only starts the review open; it does not expose an app window.
-- Normal Maximize and Snap use the full monitor. New resizable, unowned app windows maximize once; manual restoration/resizing is then respected.
-- Right-click the notch for Show/Hide, taskbar restoration and Exit. Ctrl+Alt+Shift+T restores/suppresses the Windows taskbar. Exit also restores the prior taskbar mode and work areas.
-- The context menu offers an attached compact media player. Click its title to return to full controls.
-- Highlight colors follow the current wallpaper automatically. Set wallpaper uses a finite circular reveal from the center; reduced-motion mode applies immediately.
+Normal launch preserves Explorer, work areas, other windows' sizes, and browser regions. The top-center reveal affordance yields to recognized browser chrome. Ctrl+Alt+Space and deliberate edge proximity reveal the transient panel. Browser clearance defaults to 112 DIP and is configurable; other panels float 12 DIP below the edge. Smaller displays use compact navigation, responsive cards, scrolling content, and fixed action/status areas.
 
-The source includes in-app Wi-Fi/Bluetooth flyouts, installed-app discovery/search, five persistent tasks, a focus timer, native telemetry, an animated wallpaper carousel and folder picker, and power/session actions with confirmation for sleep/restart/shutdown. Tasks are saved to `%LOCALAPPDATA%\Dako\tasks.ini`. Wallpaper opens the curated 18-photo collection bundled beside the executable for offline use, followed by the user's current Windows wallpaper as "Your wallpaper" when available. My folder browses personal photos; Collection returns to the curated set plus the current wallpaper. The build packages `assets/wallpapers`; if restoring missing photo assets, run `scripts/fetch-wallpapers.ps1` once before building. See [wallpaper sources](docs/wallpapers/README.md).
+```powershell
+.\scripts\build.ps1 -OutputName Dako.preview.exe
+.\build\Dako.preview.exe
+```
 
-The user reauthorized testing on October 23, 2026. Native preview and validation may run. Keep shell replacement disabled during this development milestone.
+The isolated preview exposes a normal app window, stays open for review, skips the singleton, and keeps settings/tasks/star changes in memory. Power, wallpaper application, and desktop-policy changes are disabled. It still reads native device/media/catalog state. `--preview` enables this mode on the normal executable; `--inspect` starts normal Dako open without enabling desktop mode.
 
-This build suppresses Explorer's main and secondary taskbar windows while Dako runs, using show-event notifications plus a one-second fallback check. A small native recovery process waits without polling and restores the taskbar/work areas on normal exit or a Dako crash. It must start successfully before suppression is enabled. Explorer still initializes; unsupported shell replacement is not installed. Windows can briefly race suppression during shell restarts or system transitions. There is no startup installation yet, so suppression begins when Dako launches.
+To create the portable ZIP, standalone EXE and SHA-256 checksums after building:
 
-The tray icon is registered with Explorer; the native notification area is hidden along with its taskbar. Use the notch/context menu or keyboard controls while it is hidden. Wireless changes happen only through flyout actions you choose. Audio output, display and color controls still use Settings shortcuts. Notification integration remains pending.
+```powershell
+.\scripts\package.ps1 -Version 2.0.0
+```
 
-Browser cutouts use [native window regions](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowrgn), with original region data retained for recovery. Browser clearance is a conservative fixed allowance rather than measurement of every extension/custom toolbar. Intentional open panels overlay content below the toolbar. Protected, elevated or unresponsive app windows can reject changes.
+Packages are written to `dist/`. Compiler output, generated verification captures, release packages and local credentials are excluded from Git.
 
-Apps stores starred/recent groups in `%LOCALAPPDATA%\Dako\apps.ini`. Stats reads native GPU counters and process working sets only while visible; unavailable counters show a dash. The Today information card currently shows real battery/power status; weather/calendar accounts and richer media artwork remain pending. See [effects and verification](docs/DESKTOP_EFFECTS.md).
+## Use
 
-See [the design and implementation plan](docs/PROJECT.md), [reference observations](docs/reference/README.md), and [performance notes](docs/PERFORMANCE.md).
+- Controls: Wi-Fi/Bluetooth flyouts, endpoint volume, media transport, and explicitly labeled Windows Settings shortcuts.
+- Today: locale-aware clock/week, power status, focus presets, and five tasks with visible Delete. Drafts survive tab/DPI changes; failed saves retain them.
+- Stats: CPU/GPU/RAM rings, process working sets and interface transfer rates. Unavailable GPU samples show a dash.
+- Clipboard: one current-text reader with native scrolling/selection, Refresh and Clear preview. No history; text clears on panel close. The 8,192-unit cap is disclosed.
+- Apps: native discovery/search, starred apps and Dako launch recency, asynchronous icons, a bounded magnifying rail, and measured pagination. Short panels prioritize the searchable list.
+- Wallpaper: bundled offline collection, personal folders, symmetric navigation, transformed card hits, explicit Apply, distinct pending/applied identity, and reserved failure feedback. Nearby GPU thumbnails and one selected-image detail tier are bounded.
+- Power: immediate Lock; default-cancel confirmation for Sleep, Restart and Shut down. Preview actions are inert.
+
+Tab/Shift+Tab traverses controls and native fields. Enter/Space activates; focused volume uses arrows; tab arrows switch tabs; wallpaper arrows change selection. Page Up/Down or the wheel scrolls constrained content. Escape returns from a flyout, then dismisses. Ctrl+Alt+Shift+Q exits. F2 reads full details; Ctrl+Page Up/Down changes views, including from native fields. The context menu offers compact media, appearance, opaque material, reduced motion, accent, browser clearance, and restore/exit. Windows reduced motion and high contrast take precedence.
+
+Desktop integration is explicit: `--desktop-mode` enables reversible taskbar suppression after recovery is ready. The context menu or Ctrl+Alt+Shift+T restores it. New-window maximization is independently opt-in. Normal proximity never clips another application's window. Startup installation and shell replacement are not enabled.
+
+Tasks/preferences live under `%LOCALAPPDATA%\Dako`; wallpaper preservation can retain original-path metadata and a fallback image there. Credentials, clipboard text and desktop captures are excluded from diagnostic files. The 18 bundled photos ship beside the executable; see [sources](docs/wallpapers/README.md).
+
+## Verify
+
+```powershell
+.\scripts\test-motion.ps1
+.\scripts\verify.ps1
+.\scripts\test-live.ps1
+.\build\Dako.exe --runtime-check
+```
+
+Verification includes 127 fixture PNGs at five DPI tiers and four separate Windows text-size tiers, paper/dark/high-contrast variants, layout/identity/catalog assertions, expanded MSAA checks, hidden native EDIT draft/caret preservation across a synthetic DPI transaction, and task persistence/failure checks. The native lifecycle harness also exercises 28 consecutive mouse navigations without waiting for a frame, content buttons and fields during motion, contrast, and non-overlapping wallpaper cards. Fixtures do not establish live presentation quality, screen-reader usability or hardware connection success.
+
+`scripts/test-shell.ps1` deliberately exercises taskbar suppression/crash recovery in an intentional desktop validation session. `scripts/measure.ps1 -Seconds 10 -ProcessIds <id>` isolates selected processes. Optional `--diagnostics=<path>` records bounded timer/CPU paint timing, separately from presented-frame measurements.
+
+See [current verification and limitations](docs/VERIFICATION.md), the [design record](docs/DESIGN_REVAMP.md), and [wireless support](docs/NATIVE_WIRELESS.md). Physical hardware pairing/reconnection, a screen-reader journey, mixed-monitor changes and full GPU/DWM tracing remain acceptance work.
