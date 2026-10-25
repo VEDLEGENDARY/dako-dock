@@ -71,6 +71,7 @@ class Shell {
     Recovery* saved_=nullptr;HWINEVENTHOOK hook_=nullptr;HICON icon_=nullptr;
     inline static HWND callbackWindow_=nullptr;
     bool active_=false,tray_=false;
+    bool maximizeNewWindows=false;
     HWND rail_=nullptr;bool railRegistered_=false,positioning_=false;RECT railBounds_{};
     RECT clippedBounds_{};
     std::map<HWND,DWORD> seen_;
@@ -98,6 +99,8 @@ class Shell {
 public:
     UINT taskbarCreated=RegisterWindowMessageW(L"TaskbarCreated");
     bool Active()const{return active_;}
+    void SetMaximizeNew(bool value){maximizeNewWindows=value;}
+    bool MaximizeNew()const{return maximizeNewWindows;}
     ~Shell(){Stop();}
     void PositionRail(){
         if(!active_)return;bool changed=false;
@@ -181,6 +184,7 @@ public:
         if(!active_)return;
         if(event==EVENT_OBJECT_DESTROY){seen_.erase(window);return;}
         if(IsTaskbar(window)){Reconcile();return;}
+        if(!maximizeNewWindows)return;
         if(!IsWindow(window)||!IsWindowVisible(window)||GetAncestor(window,GA_ROOT)!=window||GetWindow(window,GW_OWNER))return;
         LONG_PTR style=GetWindowLongPtrW(window,GWL_STYLE);
         if((style&(WS_THICKFRAME|WS_MAXIMIZEBOX))!=(WS_THICKFRAME|WS_MAXIMIZEBOX)||(GetWindowLongPtrW(window,GWL_EXSTYLE)&(WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE)))return;

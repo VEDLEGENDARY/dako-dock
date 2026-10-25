@@ -1,4 +1,5 @@
 #pragma once
+#include "AsyncWait.h"
 #include <winioctl.h>
 #include <bthdef.h>
 #include <bthioctl.h>
@@ -57,6 +58,7 @@ class Connectivity {
         std::condition_variable wake_;
         std::deque<std::function<void()>> jobs_;
         bool stop_=false;
+        std::function<void()> failure_;
         std::thread thread_;
     public:
         Worker():thread_([this] {
@@ -65,20 +67,21 @@ class Connectivity {
                 std::function<void()> job;
                 { std::unique_lock lock(mutex_); wake_.wait(lock,[this] {return stop_||!jobs_.empty();});
                   if(stop_)break; job=std::move(jobs_.front());jobs_.pop_front(); }
-                try {job();}catch(const winrt::hresult_error&){}catch(const std::exception&){}
+                try {job();}catch(...){if(failure_)failure_();}
             }
             winrt::uninit_apartment();
         }){}
+        void OnFailure(std::function<void()> callback){failure_=std::move(callback);}
         void Stop(){{std::scoped_lock lock(mutex_);stop_=true;jobs_.clear();}wake_.notify_one();if(thread_.joinable())thread_.join();}
         ~Worker(){Stop();}
         void Post(std::function<void()> job) {{std::scoped_lock lock(mutex_);if(stop_)return;jobs_.push_back(std::move(job));}wake_.notify_one();}
     };
     HWND window_;
     std::mutex stateMutex_;
-    ConnectionState state_;
+    ConnectionState state_;bool wifiCommand_=false,bluetoothCommand_=false;
     HANDLE wlan_=nullptr;
     std::vector<GUID> adapters_;
-    std::wstring wifiTarget_;
+    std::wstring wifiTarget_;ULONGLONG wifiDeadline_=0;
     std::map<ULONGLONG,winrt::Windows::Devices::Bluetooth::BluetoothDevice> deviceLeases_;
     std::atomic<bool> shuttingDown_{false};
     std::shared_ptr<LeState> leState_=std::make_shared<LeState>();
@@ -88,7 +91,15 @@ class Connectivity {
     ULONGLONG leDeadline_=0;
     std::map<ULONGLONG,LeLease> leLeases_;
     Worker wifiWorker_,bluetoothWorker_;
+    template<class Async> auto Await(Async operation){return AwaitNative(std::move(operation),[this]{return shuttingDown_.load();});}
     void Changed(){if(!shuttingDown_)PostMessageW(window_,ConnectivityChanged,0,0);}
+    void PostCommand(bool bluetooth,std::function<void()> job){
+        {std::scoped_lock lock(stateMutex_);auto& busy=bluetooth?bluetoothCommand_:wifiCommand_;if(busy||shuttingDown_||(!bluetooth&&state_.wifiConnecting))return;busy=true;}Changed();
+        auto run=[this,bluetooth,job=std::move(job)]{
+            struct Finish{Connectivity* owner;bool bluetooth;~Finish(){{std::scoped_lock lock(owner->stateMutex_);(bluetooth?owner->bluetoothCommand_:owner->wifiCommand_)=false;}owner->Changed();}} finish{this,bluetooth};job();
+        };
+        (bluetooth?bluetoothWorker_:wifiWorker_).Post(std::move(run));
+    }
     void Message(bool bluetooth,std::wstring text) {
         {std::scoped_lock lock(stateMutex_);(bluetooth?state_.bluetoothMessage:state_.wifiMessage)=std::move(text);(bluetooth?state_.bluetoothBusy:state_.wifiBusy)=false;}
         Changed();
@@ -188,7 +199,7 @@ class Connectivity {
                 network.profile=entry.strProfileName;network.quality=entry.wlanSignalQuality;network.secure=entry.bSecurityEnabled!=FALSE;
                 network.connected=(entry.dwFlags&WLAN_AVAILABLE_NETWORK_CONNECTED)!=0;network.connectable=entry.bNetworkConnectable!=FALSE;
                 network.authentication=entry.dot11DefaultAuthAlgorithm;network.cipher=entry.dot11DefaultCipherAlgorithm;
-                auto duplicate=std::find_if(networks.begin(),networks.end(),[&](const auto& n){return n.ssid.uSSIDLength==network.ssid.uSSIDLength&&memcmp(n.ssid.ucSSID,network.ssid.ucSSID,n.ssid.uSSIDLength)==0;});
+                auto duplicate=std::find_if(networks.begin(),networks.end(),[&](const auto& n){return IsEqualGUID(n.adapter,network.adapter)&&n.authentication==network.authentication&&n.cipher==network.cipher&&n.ssid.uSSIDLength==network.ssid.uSSIDLength&&memcmp(n.ssid.ucSSID,network.ssid.ucSSID,n.ssid.uSSIDLength)==0;});
                 if(duplicate==networks.end())networks.push_back(std::move(network));else if(network.connected||(!network.profile.empty()&&duplicate->profile.empty()))*duplicate=std::move(network);
             }
             WlanFreeMemory(found);
@@ -222,7 +233,7 @@ class Connectivity {
             CloseHandle(radio);
         }
         try {
-            for(const auto& adapter:winrt::Windows::Devices::Radios::Radio::GetRadiosAsync().get())
+            for(const auto& adapter:Await(winrt::Windows::Devices::Radios::Radio::GetRadiosAsync()))
                 if(adapter.Kind()==winrt::Windows::Devices::Radios::RadioKind::Bluetooth){available=true;on=adapter.State()==winrt::Windows::Devices::Radios::RadioState::On;break;}
         }catch(const winrt::hresult_error&){}
         std::stable_sort(devices.begin(),devices.end(),[](const auto& a,const auto& b){return a.connected!=b.connected?a.connected:a.paired!=b.paired?a.paired:a.name<b.name;});
@@ -231,7 +242,7 @@ class Connectivity {
         Changed();
     }
 public:
-    explicit Connectivity(HWND window):window_(window){leState_->window=window;}
+    explicit Connectivity(HWND window):window_(window){leState_->window=window;wifiWorker_.OnFailure([this]{{std::scoped_lock lock(stateMutex_);state_.wifiConnecting=false;}Message(false,L"Wireless request failed. Try again or open More settings.");});bluetoothWorker_.OnFailure([this]{Message(true,L"Bluetooth request failed. Try again or open More settings.");});}
     ~Connectivity(){
         shuttingDown_=true;
         leState_->alive=false;
@@ -240,12 +251,12 @@ public:
         if(wlan_){WlanRegisterNotification(wlan_,WLAN_NOTIFICATION_SOURCE_NONE,TRUE,nullptr,nullptr,nullptr,nullptr);WlanCloseHandle(wlan_,nullptr);}
     }
     ConnectionState Snapshot(){
-        ConnectionState result;{std::scoped_lock lock(stateMutex_);result=state_;}
-        std::scoped_lock lock(leState_->mutex);
-        for(const auto& [identifier,device]:leState_->devices){
+        ConnectionState result;{std::scoped_lock lock(stateMutex_);if(state_.wifiConnecting&&GetTickCount64()>=wifiDeadline_){state_.wifiConnecting=false;state_.wifiMessage=L"Connection timed out. Try again or choose More settings.";}result=state_;result.wifiBusy=result.wifiBusy||wifiCommand_;result.bluetoothBusy=result.bluetoothBusy||bluetoothCommand_;}
+        std::map<std::wstring,DeviceInformation> devices;std::map<ULONGLONG,bool> connections;{std::scoped_lock lock(leState_->mutex);devices=leState_->devices;connections=leState_->connections;}
+        for(const auto& [identifier,device]:devices){
             try{if(device.Name().empty())continue;BluetoothEntry entry;entry.lowEnergy=true;entry.identifier=identifier;entry.name=device.Name();entry.paired=device.Pairing().IsPaired();entry.native.Address.ullLong=LeAddress(device);
                 auto properties=device.Properties();if(properties.HasKey(L"System.Devices.Aep.IsConnected"))entry.connected=winrt::unbox_value_or<bool>(properties.Lookup(L"System.Devices.Aep.IsConnected"),false);
-                auto own=leState_->connections.find(entry.native.Address.ullLong);if(own!=leState_->connections.end())entry.connected=own->second;
+                auto own=connections.find(entry.native.Address.ullLong);if(own!=connections.end())entry.connected=own->second;
                 if(std::none_of(result.devices.begin(),result.devices.end(),[&](const auto& classic){return entry.native.Address.ullLong&&classic.native.Address.ullLong==entry.native.Address.ullLong;}))result.devices.push_back(std::move(entry));
             }catch(const winrt::hresult_error&){}
         }
@@ -253,14 +264,14 @@ public:
     }
     void CancelDiscovery(){bluetoothWorker_.Post([this]{if(leDiscovering_)StartLeWatcher(false);});}
     void RefreshWifi(bool scan=false){
-        {std::scoped_lock lock(stateMutex_);if(state_.wifiBusy)return;state_.wifiBusy=true;if(!state_.wifiConnecting)state_.wifiMessage.clear();}Changed();
+        {std::scoped_lock lock(stateMutex_);if(state_.wifiBusy)return;state_.wifiBusy=true;if(scan&&!state_.wifiConnecting)state_.wifiMessage.clear();}Changed();
         wifiWorker_.Post([this,scan]{ReadWifi();if(scan&&wlan_){for(const auto& adapter:adapters_)WlanScan(wlan_,&adapter,nullptr,nullptr,nullptr);}});
     }
     void RefreshBluetooth(bool discover=false){
-        {std::scoped_lock lock(stateMutex_);if(state_.bluetoothBusy)return;state_.bluetoothBusy=true;state_.bluetoothMessage.clear();}Changed();
+        {std::scoped_lock lock(stateMutex_);if(state_.bluetoothBusy)return;state_.bluetoothBusy=true;if(discover)state_.bluetoothMessage.clear();}Changed();
         bluetoothWorker_.Post([this,discover]{ReadBluetooth(discover);});
     }
-    void SetWifi(bool enabled){wifiWorker_.Post([this,enabled]{
+    void SetWifi(bool enabled){PostCommand(false,[this,enabled]{
         OpenWifi();if(!wlan_)return;if(adapters_.empty())ReadWifi();
         DWORD lastResult=ERROR_SUCCESS;
         for(const auto& adapter:adapters_){DWORD size=0;WLAN_OPCODE_VALUE_TYPE opcode{};PWLAN_RADIO_STATE state=nullptr;
@@ -270,22 +281,24 @@ public:
             WlanFreeMemory(state);
         }ReadWifi();if(lastResult!=ERROR_SUCCESS)Message(false,Error(lastResult));
     });}
-    void ConnectWifi(WifiNetwork network,std::wstring password={}){wifiWorker_.Post([this,network=std::move(network),password=std::move(password)]()mutable{
-        OpenWifi();if(!wlan_)return;
+    void ConnectWifi(WifiNetwork network,std::wstring password={}){auto secret=std::make_shared<NativeSecret>(std::move(password));{std::scoped_lock lock(stateMutex_);if(state_.wifiConnecting||state_.wifiBusy||wifiCommand_)return;state_.wifiConnecting=true;wifiDeadline_=GetTickCount64()+20000;}Changed();wifiWorker_.Post([this,network=std::move(network),secret]()mutable{
+        auto& password=secret->value;NativeSecret profileSecret(L"");auto& profile=profileSecret.value;
+        OpenWifi();if(!wlan_){std::scoped_lock lock(stateMutex_);state_.wifiConnecting=false;return;}
         WLAN_CONNECTION_PARAMETERS parameters{};parameters.dot11BssType=dot11_BSS_type_infrastructure;
-        std::wstring profile;
         if(!network.profile.empty()){parameters.wlanConnectionMode=wlan_connection_mode_profile;parameters.strProfile=network.profile.c_str();}
         else if(!network.secure){parameters.wlanConnectionMode=wlan_connection_mode_discovery_unsecure;parameters.pDot11Ssid=&network.ssid;}
         else{
+            if(!ValidNetworkKey(password)){{std::scoped_lock lock(stateMutex_);state_.wifiConnecting=false;}Message(false,L"Use 8 to 63 characters, or a 64-digit hexadecimal key.");return;}
+            NativeSecret escaped(Xml(password));
             std::wstring auth=network.authentication==DOT11_AUTH_ALGO_WPA3_SAE?L"WPA3SAE":network.authentication==DOT11_AUTH_ALGO_RSNA_PSK?L"WPA2PSK":network.authentication==DOT11_AUTH_ALGO_WPA_PSK?L"WPAPSK":L"";
-            if(auth.empty()){Message(false,L"This managed network requires Windows. Choose More settings.");if(!password.empty())SecureZeroMemory(password.data(),password.size()*sizeof(wchar_t));return;}
+            if(auth.empty()){{std::scoped_lock lock(stateMutex_);state_.wifiConnecting=false;}Message(false,L"This managed network requires Windows. Choose More settings.");if(!password.empty())SecureZeroMemory(password.data(),password.size()*sizeof(wchar_t));return;}
             std::wstring hex;const wchar_t* digits=L"0123456789ABCDEF";
             for(ULONG i=0;i<network.ssid.uSSIDLength;++i){hex+=digits[network.ssid.ucSSID[i]>>4];hex+=digits[network.ssid.ucSSID[i]&15];}
-            profile=L"<?xml version=\"1.0\"?><WLANProfile xmlns=\"http://www.microsoft.com/networking/WLAN/profile/v1\"><name>"+Xml(network.name)+
+            profile.reserve(4096);profile.append(L"<?xml version=\"1.0\"?><WLANProfile xmlns=\"http://www.microsoft.com/networking/WLAN/profile/v1\"><name>"+Xml(network.name)+
                 L"</name><SSIDConfig><SSID><hex>"+hex+L"</hex></SSID></SSIDConfig><connectionType>ESS</connectionType><connectionMode>manual</connectionMode><MSM><security><authEncryption><authentication>"+auth+
                 L"</authentication><encryption>"+(network.cipher==DOT11_CIPHER_ALGO_TKIP?L"TKIP":L"AES")+
-                L"</encryption><useOneX>false</useOneX></authEncryption><sharedKey><keyType>passPhrase</keyType><protected>false</protected><keyMaterial>"+Xml(password)+
-                L"</keyMaterial></sharedKey></security></MSM></WLANProfile>";
+                L"</encryption><useOneX>false</useOneX></authEncryption><sharedKey><keyType>"+(IsHexNetworkKey(password)?L"networkKey":L"passPhrase")+L"</keyType><protected>false</protected><keyMaterial>");
+            profile.append(escaped.value);profile.append(L"</keyMaterial></sharedKey></security></MSM></WLANProfile>");
             parameters.wlanConnectionMode=wlan_connection_mode_temporary_profile;parameters.strProfile=profile.c_str();
         }
         wifiTarget_=network.name;{std::scoped_lock lock(stateMutex_);state_.wifiConnecting=true;}
@@ -294,27 +307,27 @@ public:
         if(result!=ERROR_SUCCESS){{std::scoped_lock lock(stateMutex_);state_.wifiConnecting=false;}Message(false,Error(result));}
         else{bool pending=false;{std::scoped_lock lock(stateMutex_);pending=state_.wifiConnecting;}if(pending)Message(false,L"Connecting…");}
     });}
-    void DisconnectWifi(WifiNetwork network){wifiWorker_.Post([this,network]{OpenWifi();if(!wlan_)return;DWORD result=WlanDisconnect(wlan_,&network.adapter,nullptr);Message(false,result==ERROR_SUCCESS?L"Disconnecting…":Error(result));});}
-    void SetBluetooth(bool enabled){bluetoothWorker_.Post([this,enabled]{
-        try{bool found=false;for(const auto& radio:winrt::Windows::Devices::Radios::Radio::GetRadiosAsync().get())if(radio.Kind()==winrt::Windows::Devices::Radios::RadioKind::Bluetooth){
-            found=true;auto result=radio.SetStateAsync(enabled?winrt::Windows::Devices::Radios::RadioState::On:winrt::Windows::Devices::Radios::RadioState::Off).get();
+    void DisconnectWifi(WifiNetwork network){PostCommand(false,[this,network]{OpenWifi();if(!wlan_)return;DWORD result=WlanDisconnect(wlan_,&network.adapter,nullptr);Message(false,result==ERROR_SUCCESS?L"Disconnecting…":Error(result));});}
+    void SetBluetooth(bool enabled){PostCommand(true,[this,enabled]{
+        try{bool found=false;for(const auto& radio:Await(winrt::Windows::Devices::Radios::Radio::GetRadiosAsync()))if(radio.Kind()==winrt::Windows::Devices::Radios::RadioKind::Bluetooth){
+            found=true;auto result=Await(radio.SetStateAsync(enabled?winrt::Windows::Devices::Radios::RadioState::On:winrt::Windows::Devices::Radios::RadioState::Off));
             if(result!=winrt::Windows::Devices::Radios::RadioAccessStatus::Allowed)Message(true,L"Windows did not allow this radio change.");}
             if(!found)Message(true,L"No Bluetooth radio is available.");
         }catch(const winrt::hresult_error&){Message(true,L"Windows could not change Bluetooth. Choose More settings.");}ReadBluetooth(false);
     });}
-    void BluetoothAction(BluetoothEntry device,int action){bluetoothWorker_.Post([this,device=std::move(device),action]()mutable{
+    void BluetoothAction(BluetoothEntry device,int action){PostCommand(true,[this,device=std::move(device),action]()mutable{
         if(device.lowEnergy){
             using namespace winrt::Windows::Devices::Bluetooth;using namespace winrt::Windows::Devices::Bluetooth::GenericAttributeProfile;
             try{
-                if(action==2||action==3){auto info=DeviceInformation::CreateFromIdAsync(device.identifier,{},winrt::Windows::Devices::Enumeration::DeviceInformationKind::AssociationEndpoint).get();
+                if(action==2||action==3){auto info=Await(DeviceInformation::CreateFromIdAsync(device.identifier,{},winrt::Windows::Devices::Enumeration::DeviceInformationKind::AssociationEndpoint));
                     bool success=false;
-                    if(action==2){auto status=info.Pairing().PairAsync().get().Status();success=status==winrt::Windows::Devices::Enumeration::DevicePairingResultStatus::Paired||status==winrt::Windows::Devices::Enumeration::DevicePairingResultStatus::AlreadyPaired;}
-                    else{auto status=info.Pairing().UnpairAsync().get().Status();success=status==winrt::Windows::Devices::Enumeration::DeviceUnpairingResultStatus::Unpaired||status==winrt::Windows::Devices::Enumeration::DeviceUnpairingResultStatus::AlreadyUnpaired;}
+                    if(action==2){auto status=Await(info.Pairing().PairAsync()).Status();success=status==winrt::Windows::Devices::Enumeration::DevicePairingResultStatus::Paired||status==winrt::Windows::Devices::Enumeration::DevicePairingResultStatus::AlreadyPaired;}
+                    else{auto status=Await(info.Pairing().UnpairAsync()).Status();success=status==winrt::Windows::Devices::Enumeration::DeviceUnpairingResultStatus::Unpaired||status==winrt::Windows::Devices::Enumeration::DeviceUnpairingResultStatus::AlreadyUnpaired;}
                     Message(true,success?L"":L"Windows could not complete pairing. Choose More settings.");
                 }else if(action==0){
-                    Message(true,L"Requesting connection…");auto remote=BluetoothLEDevice::FromBluetoothAddressAsync(device.native.Address.ullLong).get();
+                    Message(true,L"Requesting connection…");auto remote=Await(BluetoothLEDevice::FromBluetoothAddressAsync(device.native.Address.ullLong));
                     if(!remote){Message(true,L"Wake the device and try again.");return;}
-                    auto session=GattSession::FromDeviceIdAsync(remote.BluetoothDeviceId()).get();
+                    auto session=Await(GattSession::FromDeviceIdAsync(remote.BluetoothDeviceId()));
                     if(!session||!session.CanMaintainConnection()){Message(true,L"This device's connection is managed by Windows. Choose More settings.");return;}
                     auto existing=leLeases_.find(device.native.Address.ullLong);if(existing!=leLeases_.end())existing->second.Close();
                     LeLease lease;lease.device=remote;lease.session=session;auto shared=leState_;auto address=device.native.Address.ullLong;
@@ -337,14 +350,14 @@ public:
         try{
             if(action==0){
                 Message(true,L"Requesting connection…");
-                auto remote=winrt::Windows::Devices::Bluetooth::BluetoothDevice::FromBluetoothAddressAsync(device.native.Address.ullLong).get();
-                if(remote){auto services=remote.GetRfcommServicesAsync(winrt::Windows::Devices::Bluetooth::BluetoothCacheMode::Uncached).get();(void)services;deviceLeases_.insert_or_assign(device.native.Address.ullLong,std::move(remote));}
+                auto remote=Await(winrt::Windows::Devices::Bluetooth::BluetoothDevice::FromBluetoothAddressAsync(device.native.Address.ullLong));
+                if(remote){auto services=Await(remote.GetRfcommServicesAsync(winrt::Windows::Devices::Bluetooth::BluetoothCacheMode::Uncached));(void)services;deviceLeases_.insert_or_assign(device.native.Address.ullLong,std::move(remote));}
                 else result=ERROR_DEVICE_NOT_CONNECTED;
             }else if(action==1){
                 DWORD returned=0;BTH_ADDR address=device.native.Address.ullLong;
                 if(!DeviceIoControl(radio,IOCTL_BTH_DISCONNECT_DEVICE,&address,sizeof(address),nullptr,0,&returned,nullptr))result=GetLastError();
                 deviceLeases_.erase(device.native.Address.ullLong);
-            }else if(action==2){result=BluetoothAuthenticateDeviceEx(window_,radio,&device.native,nullptr,MITMProtectionRequiredGeneralBonding);}
+            }else if(action==2){auto remote=Await(winrt::Windows::Devices::Bluetooth::BluetoothDevice::FromBluetoothAddressAsync(device.native.Address.ullLong));if(!remote)result=ERROR_DEVICE_NOT_CONNECTED;else{auto pairing=Await(remote.DeviceInformation().Pairing().PairAsync());using Status=winrt::Windows::Devices::Enumeration::DevicePairingResultStatus;if(pairing.Status()!=Status::Paired&&pairing.Status()!=Status::AlreadyPaired)result=ERROR_NOT_SUPPORTED;}}
             else if(action==3){result=BluetoothRemoveDevice(&device.native.Address);}
         }catch(const winrt::hresult_error&){result=ERROR_DEVICE_NOT_CONNECTED;}
         CloseHandle(radio);ReadBluetooth(false);

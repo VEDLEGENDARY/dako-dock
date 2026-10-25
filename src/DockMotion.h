@@ -62,9 +62,12 @@ inline unsigned Mix(unsigned from,unsigned to,float amount){
 }
 
 namespace theme {
-constexpr unsigned Surface=0x0D0D0F,Card=0x1B1B1E,CardHover=0x27272B,Inset=0x141416;
-constexpr unsigned Text=0xF2F0EB,Muted=0x96949E;
-inline unsigned Gold=0xCBB06B,GoldHover=0xD8BE7D,GoldInk=0x201C17,AccentSoft=0x2B261B,Secondary=0xBC93D8,Tertiary=0xA6CA7D;
-constexpr float Radius=16,SmallRadius=10,InsetSize=18,Gap=10;
+// Portfolio reference: src/app/globals.css (paper, ink, signal, line, chip).
+constexpr unsigned Paper=0xEEEBE3,Ink=0x0F0F0E,Signal=0xFF4A1C;
+inline unsigned Surface=Paper,Card=0xF7F5EF,CardHover=0xDEDBD4,Inset=0xE6E3DB,Border=0xCFCCC5;
+inline unsigned Text=Ink,Muted=0x65635E;
+inline unsigned Focus=0xC03610,SelectedText=Ink;
+inline unsigned Accent=Signal,AccentHover=0xFF633B,AccentInk=Ink,AccentSoft=0xF3DCD1,Secondary=0x687F76,Tertiary=0x677A8A;
+constexpr float Radius=18,SmallRadius=8,InsetSize=20,Gap=12;
 constexpr float DockWidth=216,DockHeight=18,TopRail=0,EnvelopeWidth=900,EnvelopeHeight=760;
 }

@@ -12,12 +12,17 @@ constexpr UINT WallpaperApplied=WM_APP+25,ThemeChanged=WM_APP+26;
 struct AppEntry {
     std::wstring name;
     std::wstring parsingName;
+    std::shared_ptr<std::vector<BYTE>> iconPixels;
+    UINT iconWidth=0,iconHeight=0;bool iconAttempted=false;
+    AppEntry(std::wstring label={},std::wstring identity={}):name(std::move(label)),parsingName(std::move(identity)){}
+
 };
 struct WallpaperEntry {
     std::wstring path;
     std::wstring title;
     UINT width = 0, height = 0;
     std::shared_ptr<std::vector<BYTE>> pixels;
+    UINT detailWidth=0,detailHeight=0;std::shared_ptr<std::vector<BYTE>> detailPixels;
 };
 
 // Lazy discovery and bounded thumbnail decoding keep file IO and shell COM off the UI thread.
@@ -25,11 +30,15 @@ class DesktopCatalog {
     HWND window_;
     std::mutex mutex_, resultMutex_;
     std::condition_variable ready_;
-    std::deque<std::function<void()>> jobs_;
+    struct Job {std::function<void()> run;unsigned kind,generation;};
+    std::deque<Job> jobs_;
+    std::atomic<unsigned> wallpaperGeneration_{0};
+    bool iconsPending_=false;
+    std::wstring detailPath_;std::atomic<unsigned> detailGeneration_{0};
     bool stopping_ = false;
     std::vector<AppEntry> apps_;
     std::vector<WallpaperEntry> wallpapers_;
-    std::wstring error_;
+    std::wstring appError_,wallpaperError_;
     std::wstring personalWallpaperPath_;
     bool personalWallpaperCaptured_ = false;
     std::wstring themePath_;
@@ -41,8 +50,8 @@ class DesktopCatalog {
         if (FAILED(item->GetDisplayName(kind,&text))) return {};
         std::wstring value(text); CoTaskMemFree(text); return value;
     }
-    void Queue(std::function<void()> job) {
-        { std::scoped_lock lock(mutex_); if (stopping_) return; jobs_.push_back(std::move(job)); }
+    void Queue(std::function<void()> job,unsigned kind=1,unsigned generation=0) {
+        { std::scoped_lock lock(mutex_); if (stopping_) return; jobs_.push_back({std::move(job),kind,generation}); }
         ready_.notify_one();
     }
     bool Stopping() { std::scoped_lock lock(mutex_); return stopping_; }
@@ -57,7 +66,7 @@ class DesktopCatalog {
         if (FAILED(initialized)) return;
         PollTheme();
         for (;;) {
-            std::function<void()> job;
+            Job job;
             {
                 std::unique_lock lock(mutex_);
                 ready_.wait_for(lock,std::chrono::seconds(5),[this] { return stopping_ || !jobs_.empty(); });
@@ -65,19 +74,19 @@ class DesktopCatalog {
                 if(jobs_.empty()){lock.unlock();PollTheme();continue;}
                 job=std::move(jobs_.front()); jobs_.pop_front();
             }
-            try { job(); }
+            try { job.run(); }
             catch (const std::exception&) {
-                std::scoped_lock lock(resultMutex_); error_=L"This folder could not be read.";
+                std::scoped_lock lock(resultMutex_); (job.kind==1?appError_:wallpaperError_)=job.kind==1?L"Installed apps could not be read. Reopen Apps to retry.":L"This folder could not be read. Choose another folder.";
             }
             catch (const winrt::hresult_error&) {
-                std::scoped_lock lock(resultMutex_); error_=L"Windows could not load this collection.";
+                std::scoped_lock lock(resultMutex_); (job.kind==1?appError_:wallpaperError_)=L"Windows could not load this collection. Try again.";
             }
-            PostMessageW(window_,CatalogChanged,0,0);
+            if(job.kind&&!(job.kind==2&&job.generation&&job.generation!=wallpaperGeneration_)&&!(job.kind==3&&job.generation&&job.generation!=detailGeneration_))PostMessageW(window_,CatalogChanged,job.kind,0);
             PollTheme();
         }
         CoUninitialize();
     }
-    static WallpaperEntry Decode(IWICImagingFactory* images,const std::wstring& path) {
+    static WallpaperEntry Decode(IWICImagingFactory* images,const std::wstring& path,double maxWidth=320,double maxHeight=200) {
         WallpaperEntry result; result.path=path;result.title=std::filesystem::path(path).stem().wstring();
         ComPtr<IWICBitmapDecoder> decoder; ComPtr<IWICBitmapFrameDecode> frame;
         ComPtr<IWICBitmapScaler> scaler; ComPtr<IWICFormatConverter> converter;
@@ -85,7 +94,7 @@ class DesktopCatalog {
             FAILED(decoder->GetFrame(0,&frame))) return result;
         UINT width=0,height=0; if (FAILED(frame->GetSize(&width,&height)) || !width || !height) return result;
         // Cap decoded surfaces at 320x200. Never retain a full-resolution wallpaper bitmap.
-        double ratio=std::min(320.0/width,200.0/height);
+        double ratio=std::min({1.0,maxWidth/width,maxHeight/height});
         result.width=std::max(1U,static_cast<UINT>(width*ratio));
         result.height=std::max(1U,static_cast<UINT>(height*ratio));
         if (FAILED(images->CreateBitmapScaler(&scaler)) ||
@@ -244,24 +253,56 @@ public:
             std::sort(entries.begin(),entries.end(),[](const auto& a,const auto& b) {
                 return CompareStringOrdinal(a.name.c_str(),-1,b.name.c_str(),-1,TRUE)==CSTR_LESS_THAN;
             });
-            std::scoped_lock lock(resultMutex_); apps_=std::move(entries); error_.clear();
+            std::scoped_lock lock(resultMutex_); apps_=std::move(entries); appError_.clear();
         });
     }
-    void ApplyWallpaperAsync(std::wstring path){Queue([this,path=std::move(path)]{HRESULT result=ApplyWallpaper(path);{std::scoped_lock lock(resultMutex_);error_=FAILED(result)?L"This wallpaper could not be applied.":L"";}PostMessageW(window_,WallpaperApplied,SUCCEEDED(result),0);});}
+    void ApplyWallpaperAsync(std::wstring path){Queue([this,path=std::move(path)]{
+        HRESULT result=E_FAIL;try{result=ApplyWallpaper(path);}catch(...){result=E_FAIL;}
+        PostMessageW(window_,WallpaperApplied,SUCCEEDED(result),0);
+    },0);}
     void DiscoverWallpapers(std::wstring folder={}) {
-        Queue([this,folder=std::move(folder)] {
-            auto cancelled=[this]{return Stopping();};
+        unsigned generation=++wallpaperGeneration_;
+        Queue([this,generation,folder=std::move(folder)] {
+            auto cancelled=[this,generation]{return Stopping()||wallpaperGeneration_!=generation;};
+            if(cancelled())return;
             if(folder.empty() && !personalWallpaperCaptured_) {
                 personalWallpaperPath_=PreservePersonalWallpaper();personalWallpaperCaptured_=true;
             }
             auto entries=folder.empty()?LoadDefaultWallpapers(cancelled,personalWallpaperPath_):LoadWallpapers(folder,cancelled);
+            if(cancelled())return;
             std::scoped_lock lock(resultMutex_);
             wallpapers_=std::move(entries);
-            error_=wallpapers_.empty()?L"No wallpapers found. Choose another folder.":L"";
-        });
+            wallpaperError_=wallpapers_.empty()?L"No wallpapers found. Choose another folder.":L"";
+        },2,generation);
     }
-    void Snapshot(std::vector<AppEntry>& apps,std::vector<WallpaperEntry>& wallpapers,std::wstring& error) {
-        std::scoped_lock lock(resultMutex_); apps=apps_; wallpapers=wallpapers_; error=error_;
+    void RequestWallpaperDetail(std::wstring path){
+        {std::scoped_lock lock(resultMutex_);if(path==detailPath_)return;detailPath_=path;}
+        unsigned generation=++detailGeneration_;
+        Queue([this,generation,path=std::move(path)]{
+            if(detailGeneration_!=generation||Stopping())return;
+            ComPtr<IWICImagingFactory> images;Check(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&images)));auto image=Decode(images.Get(),path,640,400);
+            if(detailGeneration_!=generation||Stopping())return;
+            std::scoped_lock lock(resultMutex_);for(auto& entry:wallpapers_){entry.detailPixels.reset();if(entry.path==path){entry.detailPixels=image.pixels;entry.detailWidth=image.width;entry.detailHeight=image.height;}}
+        },3,generation);
+    }
+    void RequestIcons(std::vector<std::wstring> keys){
+        {std::scoped_lock lock(resultMutex_);if(iconsPending_)return;bool needed=false;for(const auto& key:keys)for(const auto& app:apps_)if(app.parsingName==key&&!app.iconAttempted)needed=true;if(!needed)return;iconsPending_=true;}
+        Queue([this,keys=std::move(keys)]{
+            try{
+                ComPtr<IWICImagingFactory> images;Check(CoCreateInstance(CLSID_WICImagingFactory,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&images)));
+                for(const auto& key:keys){if(Stopping())break;{std::scoped_lock lock(resultMutex_);for(auto& app:apps_)if(app.parsingName==key)app.iconAttempted=true;}ComPtr<IShellItemImageFactory> item;if(FAILED(SHCreateItemFromParsingName(key.c_str(),nullptr,IID_PPV_ARGS(&item))))continue;
+                    HBITMAP bitmap=nullptr;if(FAILED(item->GetImage({128,128},SIIGBF_ICONONLY,&bitmap)))continue;
+                    ComPtr<IWICBitmap> source;HRESULT result=images->CreateBitmapFromHBITMAP(bitmap,nullptr,WICBitmapUseAlpha,&source);DeleteObject(bitmap);if(FAILED(result))continue;
+                    ComPtr<IWICFormatConverter> converter;Check(images->CreateFormatConverter(&converter));Check(converter->Initialize(source.Get(),GUID_WICPixelFormat32bppPBGRA,WICBitmapDitherTypeNone,nullptr,0,WICBitmapPaletteTypeCustom));
+                    UINT w=0,h=0;converter->GetSize(&w,&h);if(w>128||h>128)continue;auto pixels=std::make_shared<std::vector<BYTE>>(static_cast<size_t>(w)*h*4);if(FAILED(converter->CopyPixels(nullptr,w*4,static_cast<UINT>(pixels->size()),pixels->data())))continue;
+                    std::scoped_lock lock(resultMutex_);for(auto& app:apps_)if(app.parsingName==key){app.iconPixels=pixels;app.iconWidth=w;app.iconHeight=h;}
+                }
+                std::scoped_lock lock(resultMutex_);size_t retained=0;for(auto& app:apps_)if(app.iconPixels){bool visible=std::find(keys.begin(),keys.end(),app.parsingName)!=keys.end();if(!visible&&++retained>32){app.iconPixels.reset();app.iconAttempted=false;}}iconsPending_=false;
+            }catch(...){std::scoped_lock lock(resultMutex_);iconsPending_=false;}
+        },1);
+    }
+    void Snapshot(std::vector<AppEntry>& apps,std::vector<WallpaperEntry>& wallpapers,std::wstring& error,unsigned kind=0) {
+        std::scoped_lock lock(resultMutex_); apps=apps_; wallpapers=wallpapers_; error=kind==1?appError_:wallpaperError_;
     }
 };
 
@@ -271,16 +312,17 @@ public:
     std::vector<std::wstring> favorites,recent;
     AppPreferences(){PWSTR local=nullptr;if(SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData,0,nullptr,&local))){path_=std::wstring(local)+L"\\Dako\\apps.ini";CoTaskMemFree(local);}}
     void Load(){for(auto section:{L"Favorites",L"Recent"}){auto& list=section==std::wstring_view(L"Favorites")?favorites:recent;list.clear();for(int i=0;i<64;++i){wchar_t value[4096]{};auto key=std::to_wstring(i);GetPrivateProfileStringW(section,key.c_str(),L"",value,4096,path_.c_str());if(value[0])list.emplace_back(value);}}}
-    void Save(){if(path_.empty())return;std::error_code error;std::filesystem::create_directories(std::filesystem::path(path_).parent_path(),error);if(error)return;
+    bool Save(){if(path_.empty())return false;std::error_code error;std::filesystem::create_directories(std::filesystem::path(path_).parent_path(),error);if(error)return false;
         std::wstring data;for(auto section:{L"Favorites",L"Recent"}){data+=L"["+std::wstring(section)+L"]\r\n";const auto& list=section==std::wstring_view(L"Favorites")?favorites:recent;for(size_t i=0;i<list.size()&&i<64;++i){std::wstring value=list[i];value.erase(std::remove(value.begin(),value.end(),L'\n'),value.end());value.erase(std::remove(value.begin(),value.end(),L'\r'),value.end());data+=std::to_wstring(i)+L"="+value+L"\r\n";}}
-        std::wstring temporary=path_+L".tmp";std::ofstream file(temporary,std::ios::binary|std::ios::trunc);const WORD bom=0xFEFF;file.write(reinterpret_cast<const char*>(&bom),sizeof(bom));file.write(reinterpret_cast<const char*>(data.data()),static_cast<std::streamsize>(data.size()*sizeof(wchar_t)));file.close();if(file)MoveFileExW(temporary.c_str(),path_.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH);
+        std::wstring temporary=path_+L".tmp";std::ofstream file(temporary,std::ios::binary|std::ios::trunc);const WORD bom=0xFEFF;file.write(reinterpret_cast<const char*>(&bom),sizeof(bom));file.write(reinterpret_cast<const char*>(data.data()),static_cast<std::streamsize>(data.size()*sizeof(wchar_t)));file.close();return file&&MoveFileExW(temporary.c_str(),path_.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH);
     }
 };
 
 class TaskStore {
     std::wstring path_;
 public:
-    TaskStore() {
+    explicit TaskStore(std::wstring path={}) {
+        if(!path.empty()){path_=std::move(path);return;}
         PWSTR local=nullptr;
         if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData,0,nullptr,&local))) {
             path_=std::wstring(local)+L"\\Dako\\tasks.ini"; CoTaskMemFree(local);
