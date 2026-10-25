@@ -1,13 +1,14 @@
-param([ValidateRange(2,60)][int]$Seconds = 10)
+param([ValidateRange(2,60)][int]$Seconds = 10,[int[]]$ProcessIds)
 $ErrorActionPreference = 'Stop'
-$nativeProcesses = @(Get-Process -Name Dako -ErrorAction Stop)
+$explicitProcessSelection = $PSBoundParameters.ContainsKey('ProcessIds')
+$nativeProcesses = if ($ProcessIds) { @(Get-Process -Id $ProcessIds -ErrorAction Stop) } else { @(Get-Process -Name Dako -ErrorAction Stop) }
 if ($nativeProcesses.Count -lt 1) { throw 'Start Dako before measuring.' }
 $processIds = @($nativeProcesses.Id)
 $cpuStart = ($nativeProcesses | ForEach-Object { $_.TotalProcessorTime.TotalMilliseconds } | Measure-Object -Sum).Sum
 $timer = [System.Diagnostics.Stopwatch]::StartNew()
 Start-Sleep -Seconds $Seconds
 $nativeProcesses = @(Get-Process -Id $processIds -ErrorAction Stop)
-if (@(Compare-Object $processIds @((Get-Process -Name Dako -ErrorAction Stop).Id)).Count -ne 0) { throw 'Dako process membership changed during sampling. Wait for startup/recovery to settle and rerun.' }
+if (!$explicitProcessSelection -and @(Compare-Object $processIds @((Get-Process -Name Dako -ErrorAction Stop).Id)).Count -ne 0) { throw 'Dako process membership changed during sampling. Wait for startup/recovery to settle and rerun.' }
 $cpuEnd = ($nativeProcesses | ForEach-Object { $_.TotalProcessorTime.TotalMilliseconds } | Measure-Object -Sum).Sum
 $timer.Stop()
 [pscustomobject]@{

@@ -8,3 +8,15 @@ $testOutput = Join-Path $projectRoot 'build\DockMotionTests.exe'
 if ($LASTEXITCODE -ne 0) { throw 'Dock motion test compilation failed.' }
 & $testOutput
 if ($LASTEXITCODE -ne 0) { throw 'Dock motion tests failed.' }
+
+$frameOutput = Join-Path $projectRoot 'build\FrameClockTests.exe'
+& cl.exe /nologo /std:c++20 /EHsc /W4 /WX /O2 /MT (Join-Path $projectRoot 'tests\FrameClockTests.cpp') "/Fe:$frameOutput" "/Fo:$(Join-Path $projectRoot 'build\FrameClockTests.obj')" /link user32.lib
+if ($LASTEXITCODE -ne 0) { throw 'Frame readiness test compilation failed.' }
+& $frameOutput
+if ($LASTEXITCODE -ne 0) { throw 'Frame readiness tests failed.' }
+
+$asyncOutput = Join-Path $projectRoot 'build\NativeAsyncTests.exe'
+& cl.exe /nologo /std:c++20 /EHsc /W4 /WX /O2 /MT (Join-Path $projectRoot 'tests\NativeAsyncTests.cpp') "/Fe:$asyncOutput" "/Fo:$(Join-Path $projectRoot 'build\NativeAsyncTests.obj')" /link windowsapp.lib ole32.lib
+if ($LASTEXITCODE -ne 0) { throw 'Native async test compilation failed.' }
+& $asyncOutput
+if ($LASTEXITCODE -ne 0) { throw 'Native async tests failed.' }

@@ -1,5 +1,7 @@
 #include "../src/DockMotion.h"
 #include "../src/ThemePalette.h"
+#include "../src/LayoutEngine.h"
+#include "../src/MotionController.h"
 #include <cstdio>
 #include <cstdlib>
 
@@ -30,5 +32,33 @@ int main(){
     int action=0;for(int i=0;i<6;++i)action=input.Step(0.1f,true,false,false,false);
     Require(action==-1,"pointer departure dismisses after the grace period");
     input.Dismiss();for(int i=0;i<7;++i)Require(input.Step(0.1f,false,true,false,false)==0,"Escape cooldown prevents immediate reopening");
-    std::puts("PASS: spring settling/reversal, hover intent, travel corridor, modal protection, dismissal and Escape cooldown.");
+    dock::Scheduler scheduler;int starts=0;for(int i=0;i<1000;++i)if(scheduler.Start())++starts;
+    Require(starts==1&&scheduler.active,"retargeting owns one timer and never rearms it");Require(scheduler.Stop()&&!scheduler.Stop(),"scheduler stops exactly once");
+    dock::Feedback pulse;pulse.value=1;float minimum=1;for(int i=0;i<180;++i){pulse.Step(i%2?0.012f:0.021f);minimum=std::min(minimum,pulse.value);}
+    Require(pulse.value==0&&!pulse.Moving()&&minimum<0&&minimum>-0.2f,"feedback has bounded overshoot and finite termination");
+    pulse.value=1;pulse.Step(2);Require(pulse.value==0&&!pulse.Moving(),"resume settles feedback instead of replaying a stall");
+    for(float dpi:{96.0f,120.0f,144.0f,168.0f,192.0f})for(auto physical:std::array<dock::Point,4>{{{1920,1080},{1366,768},{1080,1920},{2560,1440}}})for(int v=0;v<8;++v){
+        float aw=std::min(900.0f,physical.x*96/dpi)-40,ah=std::min(760.0f,physical.y*96/dpi)-124;
+        auto l=layout::Solve({aw,ah,static_cast<layout::View>(v),100});
+        Require(l.panel.Width()<=aw&&l.panel.Height()<=ah,"panel is bounded at all supported DPI/monitor cases");
+        Require(l.body.Height()>0&&l.body.top>=l.header.bottom&&l.body.bottom<l.status.top,"header, content and status have separate usable geometry");
+        if(l.footer.Height()>0)Require(l.body.bottom<l.footer.top&&l.footer.bottom<l.status.top,"footer and status never overlap content");
+        if(v==5){float left=l.stage.CenterX()-l.previous.CenterX(),right=l.next.CenterX()-l.stage.CenterX();Require(std::abs(std::lround(left*dpi/96)-std::lround(right*dpi/96))<=1,"wallpaper arrows mirror within one physical pixel");}
+    }
+    for(float text:{1.0f,1.25f,1.5f,2.0f,2.25f})for(float dpi:{96.0f,144.0f,192.0f})for(int v=0;v<9;++v){
+        float availableWidth=(std::min(900.0f,1366*96/dpi)-40)/text,availableHeight=(std::min(760.0f,768*96/dpi)-124)/text;
+        auto l=layout::Solve({availableWidth,availableHeight,static_cast<layout::View>(v),100});
+        Require(l.panel.Width()<=availableWidth+0.01f&&l.panel.Height()<=availableHeight+0.01f,"large text reflows within physical monitor bounds");
+        Require(l.body.Height()>0&&l.body.Width()>0,"large text retains a positive scroll viewport");
+        if(l.emergency&&v!=8)Require(l.headerHeight==32&&l.footer.Height()==0,"short large-text layouts retain compact navigation and menu actions");
+        if(v==8)Require(l.panel.Height()>=80,"compact transport has space for metadata and controls");
+    }
+    auto pages=layout::Paginate({0,0,1,1,2,2,2,2},180);size_t entries=0;
+    for(auto page:pages){float h=0;int group=-1;for(size_t i=page.begin;i<page.end;++i){int g=i<2?0:i<4?1:2;h+=44+(g==group?0:24);group=g;}Require(h<=180,"app page capacity includes every group heading");entries+=page.end-page.begin;}
+    Require(entries==8,"pagination loses and duplicates no apps");
+    auto rail=layout::Rail({20,20,620,100},7,300,1);for(size_t i=1;i<rail.size();++i)Require(rail[i-1].presented.right<rail[i].presented.left,"magnified neighbors never collide");
+    Require(rail.front().presented.left>=20&&rail.back().presented.right<=620,"rail reserves peak magnification clearance");
+    Require(layout::SkewContains({0,0,100,100},-0.2f,10,50,50),"inverse transform accepts the visible card center");
+    Require(!layout::SkewContains({0,0,100,100},-0.2f,10,100,99),"inverse transform rejects empty skew corners");
+    std::puts("PASS: spring/reversal, finite feedback, scheduler ownership, proximity, 295 monitor/DPI/text layout cases, pagination, rail bounds and transformed hits.");
 }

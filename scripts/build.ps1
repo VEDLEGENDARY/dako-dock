@@ -1,4 +1,4 @@
-param([switch]$Debug,[ValidateSet('Dako.exe','Dako.next.exe')][string]$OutputName='Dako.exe')
+param([switch]$Debug,[ValidateSet('Dako.exe','Dako.next.exe','Dako.preview.exe')][string]$OutputName='Dako.exe')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -19,7 +19,9 @@ $optimization = if ($Debug) { '/Od' } else { '/O2' }
 $manifest = Join-Path $projectRoot 'src\app.manifest'
 Push-Location $buildDir
 try {
-    & cl.exe /nologo /std:c++20 /EHsc /W4 /WX /permissive- /utf-8 /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /DNOMINMAX $optimization /MT /Zi (Join-Path $projectRoot 'src\main.cpp') "/Fe:$OutputName" /link /SUBSYSTEM:WINDOWS /DYNAMICBASE /NXCOMPAT /MANIFEST:EMBED "/MANIFESTINPUT:$manifest" user32.lib gdi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib d2d1.lib dwrite.lib dwmapi.lib wlanapi.lib bthprops.lib psapi.lib windowsapp.lib windowscodecs.lib oleacc.lib powrprof.lib advapi32.lib iphlpapi.lib shcore.lib pdh.lib dxgi.lib
+    & rc.exe /nologo /fo Dako.version.res (Join-Path $projectRoot 'src\version.rc')
+    if ($LASTEXITCODE -ne 0) { throw 'Version resource compilation failed.' }
+    & cl.exe /nologo /std:c++20 /EHsc /W4 /WX /permissive- /utf-8 /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /DNOMINMAX $optimization /MT /Zi (Join-Path $projectRoot 'src\main.cpp') (Join-Path $projectRoot 'src\AccessibilityGuids.cpp') Dako.version.res "/Fe:$OutputName" /link /SUBSYSTEM:WINDOWS /DYNAMICBASE /NXCOMPAT /MANIFEST:EMBED "/MANIFESTINPUT:$manifest" d3d11.lib dcomp.lib user32.lib gdi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib d2d1.lib dwrite.lib dwmapi.lib wlanapi.lib bthprops.lib psapi.lib windowsapp.lib windowscodecs.lib oleacc.lib powrprof.lib advapi32.lib iphlpapi.lib shcore.lib pdh.lib dxgi.lib
     if ($LASTEXITCODE -ne 0) { throw "Native compilation failed: $LASTEXITCODE" }
 } finally { Pop-Location }
 $packagedWallpapers = Join-Path $buildDir 'assets\wallpapers'

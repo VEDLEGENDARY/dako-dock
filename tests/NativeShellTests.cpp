@@ -25,7 +25,7 @@ int wmain(int argc,wchar_t** argv){
     HWND owner=CreateWindowExW(WS_EX_TOOLWINDOW,type.lpszClassName,L"Dako hidden test",WS_OVERLAPPEDWINDOW,100,100,320,240,nullptr,nullptr,type.hInstance,nullptr);
     Require(owner!=nullptr,"hidden test window created");
     ShowWindow(owner,SW_MAXIMIZE);Settle(100);
-    desktop::Shell shell;activeShell=&shell;shell.Initialize(owner);Require(shell.Start(),"recovery process ready before suppression");Settle(400);shell.Reconcile();Settle(200);
+    desktop::Shell shell;activeShell=&shell;shell.Initialize(owner);Require(!shell.MaximizeNew(),"window management is opt-in");shell.SetMaximizeNew(true);Require(shell.Start(),"recovery process ready before suppression");Settle(400);shell.Reconcile();Settle(200);
     bool visible=false;EnumWindows([](HWND window,LPARAM context)->BOOL{if(desktop::IsTaskbar(window)&&IsWindowVisible(window))*reinterpret_cast<bool*>(context)=true;return TRUE;},reinterpret_cast<LPARAM>(&visible));
     Require(!visible,"taskbar windows hidden");for(const auto& area:Areas()){RECT bounds=area.monitor;HMONITOR monitor=MonitorFromRect(&bounds,MONITOR_DEFAULTTONULL);RECT expected=desktop::WorkArea(monitor,MonitorFromWindow(owner,MONITOR_DEFAULTTONEAREST));if(!EqualRect(&expected,&area.work))std::fprintf(stderr,"Work area actual: %ld,%ld,%ld,%ld; expected: %ld,%ld,%ld,%ld\n",area.work.left,area.work.top,area.work.right,area.work.bottom,expected.left,expected.top,expected.right,expected.bottom);Require(EqualRect(&expected,&area.work),"fixed rail reserved; remaining taskbar space reclaimed");}
     RECT visibleBounds{};MONITORINFO currentMonitor{sizeof(currentMonitor)};GetMonitorInfoW(MonitorFromWindow(owner,MONITOR_DEFAULTTONEAREST),&currentMonitor);
