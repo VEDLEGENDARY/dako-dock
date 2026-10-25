@@ -1,6 +1,18 @@
 /build/
 /.vs/
 *.user
-/docs/reference/*.png
-/docs/reference/*.mp4
 /docs/renders/
+/dist/
+
+# Local settings, credentials, and compiler/debugger output
+.env
+.env.*
+!.env.example
+*.obj
+*.res
+*.pdb
+*.ilk
+*.exe
+*.dmp
+__pycache__/
+*.py[cod]
