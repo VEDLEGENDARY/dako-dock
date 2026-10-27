@@ -22,7 +22,7 @@ public:
     bool Freeze(bool reducedMotion,bool desktopOnly=true){
         Cancel();if(reducedMotion)return false;
         bounds_={GetSystemMetrics(SM_XVIRTUALSCREEN),GetSystemMetrics(SM_YVIRTUALSCREEN),0,0};int width=GetSystemMetrics(SM_CXVIRTUALSCREEN),height=GetSystemMetrics(SM_CYVIRTUALSCREEN);bounds_.right=bounds_.left+width;bounds_.bottom=bounds_.top+height;
-        if(width<=0||height<=0||static_cast<unsigned long long>(width)*height>32000000)return false;
+        if(width<=0||height<=0||static_cast<unsigned long long>(width)*height>2073600)return false;
         foreground_=GetForegroundWindow();
         if(desktopOnly){desktopMask_=CreateRectRgn(0,0,width,height);EnumWindows([](HWND window,LPARAM context)->BOOL{
             auto* self=reinterpret_cast<WallpaperReveal*>(context);if(!IsWindowVisible(window)||IsIconic(window))return TRUE;DWORD cloaked=0;if(SUCCEEDED(DwmGetWindowAttribute(window,DWMWA_CLOAKED,&cloaked,sizeof(cloaked)))&&cloaked)return TRUE;wchar_t name[80]{};GetClassNameW(window,name,80);
