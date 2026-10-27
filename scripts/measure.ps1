@@ -1,5 +1,16 @@
-param([ValidateRange(2,60)][int]$Seconds = 10,[int[]]$ProcessIds)
+param([ValidateRange(2,60)][int]$Seconds = 10,[int[]]$ProcessIds,[switch]$ModuleBudgets)
 $ErrorActionPreference = 'Stop'
+if ($ModuleBudgets) {
+    $projectRoot = Split-Path -Parent $PSScriptRoot
+    $executable = Join-Path $projectRoot 'build\Dako.exe'
+    $probe = Start-Process -FilePath $executable -ArgumentList "--module-measure=$Seconds" -WindowStyle Hidden -Wait -PassThru
+    $report = Join-Path $projectRoot 'build\module-budgets.csv'
+    if ($probe.ExitCode -ne 0) { throw "Module performance budget failed. See $report" }
+    $rows = @(Import-Csv -LiteralPath $report)
+    if (!$rows.Count -or @($rows | Where-Object { $_.pass -ne '1' }).Count) { throw 'Invalid module budget report.' }
+    $rows | Format-Table
+    return
+}
 $explicitProcessSelection = $PSBoundParameters.ContainsKey('ProcessIds')
 $nativeProcesses = if ($ProcessIds) { @(Get-Process -Id $ProcessIds -ErrorAction Stop) } else { @(Get-Process -Name Dako -ErrorAction Stop) }
 if ($nativeProcesses.Count -lt 1) { throw 'Start Dako before measuring.' }
