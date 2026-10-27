@@ -18,18 +18,20 @@ enum class View { Controls,Today,Stats,Clipboard,Apps,Wallpaper,Power,Wireless,M
 struct Input {float availableWidth=900,availableHeight=748;View view=View::Controls;size_t items=0;};
 struct Result {
     Rect panel,header,body,status,footer,stage,previous,next;
-    float padding=Padding,contentHeight=0,headerHeight=48;
+    float padding=Padding,contentHeight=0,headerHeight=64;
     bool narrow=false,emergency=false,editorial=false;
 };
 inline Result Solve(Input in){
     // Main views share a width so navigation never slides away from the pointer.
     Result r;float preferred=in.view==View::Wireless?460.0f:in.view==View::Media?344.0f:800.0f;
     float w=std::min(preferred,std::max(100.0f,in.availableWidth));r.narrow=w<640;r.emergency=in.availableHeight<240||w<240;bool compact=in.availableHeight<360;r.padding=compact?12.0f:Padding;float gap=compact?4.0f:Section,status=compact?32.0f:28.0f;
-    r.headerHeight=r.narrow&&in.view!=View::Wireless&&in.view!=View::Media?(compact?72.0f:88.0f):48.0f;
-    r.editorial=in.availableHeight>=520&&w>=320&&in.view!=View::Wireless&&in.view!=View::Media;
-    if(r.editorial)r.headerHeight=r.narrow?184.0f:144.0f;
-    float body=in.view==View::Today?(w>=720?350.0f:760.0f):in.view==View::Stats?(w>=720?270.0f:580.0f):in.view==View::Controls?(!r.narrow?348.0f:476.0f):in.view==View::Apps?std::clamp(188.0f+static_cast<float>(in.items)*44,320.0f,480.0f):in.view==View::Wallpaper?256.0f:in.view==View::Clipboard?270.0f:in.view==View::Power?(!r.narrow?88.0f:188.0f):in.view==View::Wireless?372.0f:116.0f;
-    float foot=in.view==View::Apps||in.view==View::Wallpaper||in.view==View::Clipboard||in.view==View::Wireless?(compact?32.0f:44.0f):0.0f;
+    r.headerHeight=64;
+    r.editorial=false;
+    float content=in.view==View::Today?(w>=720?360.0f:1104.0f):
+        in.view==View::Stats?(w>=720?360.0f:580.0f):
+        in.view==View::Controls?(r.narrow?476.0f:360.0f):360.0f;
+    float body=in.view==View::Wireless?372.0f:in.view==View::Media?116.0f:360.0f;
+    float foot=compact?32.0f:44.0f;
     float h=std::min(r.headerHeight+gap+body+gap+foot+(foot?gap:0.0f)+status+r.padding,std::max(80.0f,in.availableHeight));
     if(in.view==View::Media)h=std::min(164.0f,in.availableHeight);
     if(r.emergency&&in.view!=View::Media){
@@ -40,7 +42,7 @@ inline Result Solve(Input in){
     r.footer={r.padding,r.status.top-gap-foot,w-r.padding,r.status.top-gap};
     r.body={r.padding,r.headerHeight+gap,w-r.padding,(foot?r.footer.top:r.status.top)-gap};
     if(in.view==View::Media)r.body={Padding,12,w-Padding,h-Padding};
-    r.contentHeight=in.view==View::Apps?(r.emergency?100.0f:r.body.Height()):in.view==View::Clipboard?r.body.Height():r.emergency&&in.view==View::Wallpaper?110.0f:body;
+    r.contentHeight=in.view==View::Apps?(r.emergency?100.0f:r.body.Height()):in.view==View::Clipboard?r.body.Height():r.emergency&&in.view==View::Wallpaper?110.0f:std::max(content,body);
     r.stage={r.body.left+56,r.body.top+42,r.body.right-56,r.emergency?std::max(r.body.bottom,r.body.top+110):r.body.bottom};
     float cy=(r.stage.top+r.stage.bottom)/2;
     r.previous={r.body.left,cy-20,r.body.left+40,cy+20};r.next={r.body.right-40,cy-20,r.body.right,cy+20};
