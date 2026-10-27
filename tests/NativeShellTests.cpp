@@ -1,7 +1,7 @@
 #include "../src/DesktopShell.h"
 #include <cstdio>
 desktop::Shell* activeShell=nullptr;
-LRESULT CALLBACK TestProcedure(HWND window,UINT message,WPARAM wparam,LPARAM lparam){if(message==desktop::ShellChanged&&activeShell){activeShell->WindowEvent(static_cast<DWORD>(wparam),reinterpret_cast<HWND>(lparam));return 0;}if(message==desktop::RailChanged&&activeShell){activeShell->PositionRail();return 0;}return DefWindowProcW(window,message,wparam,lparam);}
+LRESULT CALLBACK TestProcedure(HWND window,UINT message,WPARAM wparam,LPARAM lparam){if(message==desktop::ShellChanged&&activeShell){activeShell->WindowEvent(static_cast<DWORD>(wparam),reinterpret_cast<HWND>(lparam));return 0;}return DefWindowProcW(window,message,wparam,lparam);}
 
 void Require(bool condition,const char* message){if(!condition){std::fprintf(stderr,"FAIL: %s\n",message);ExitProcess(1);}}
 void Settle(DWORD milliseconds){ULONGLONG until=GetTickCount64()+milliseconds;do{MSG message{};while(PeekMessageW(&message,nullptr,0,0,PM_REMOVE)){TranslateMessage(&message);DispatchMessageW(&message);}Sleep(20);}while(GetTickCount64()<until);}
