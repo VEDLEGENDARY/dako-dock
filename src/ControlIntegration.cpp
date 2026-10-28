@@ -68,9 +68,12 @@ void Island::ControlAction(int id) {
     }
 }
 D2D1_RECT_F Island::BrightnessRect() const {
-    auto b = Body();
-    float y = b.top + (Layout().narrow ? 364.0f : 300.0f);
-    return {b.left, y, b.right, y + 36};
+    auto l = Layout();
+    auto grid = layout::ControlsColumns(l)[0];
+    grid.bottom -= 84;
+    auto rows = l.narrow ? layout::Rows(grid, {1, 1, 1}) : layout::Rows(grid, {1, 1});
+    return R(l.narrow ? layout::Columns(rows.back(), {1, 1})[1]
+                      : layout::Columns(rows.back(), {1, 1, 1})[2]);
 }
 void Island::OutputDevices() {
     auto b = Body();

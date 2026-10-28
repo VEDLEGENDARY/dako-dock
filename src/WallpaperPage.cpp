@@ -154,16 +154,20 @@ void Island::WallpaperAction(int id) {
 }
 void Island::Wallpaper() {
     auto b = Body();
-    TextButton(WallpaperCollection, {b.left, b.top, b.left + 88, b.top + 28}, L"Recent", wallpaperSource == 0);
-    TextButton(WallpaperFolder, {b.left + 96, b.top, b.left + 204, b.top + 28}, L"My folder", wallpaperSource == 1);
-    Text(std::to_wstring(wallpapers.size()) + L" pictures", {b.left + 216, b.top, b.right - 80, b.top + 28},
-         type::Caption, theme::Muted);
-    TextButton(WallpaperCurrent, {b.right - 72, b.top, b.right, b.top + 28}, L"Current");
+    float segment = std::min(104.0f, (b.right - b.left - 12) / 2);
+    TextButton(WallpaperCollection, {b.left, b.top, b.left + segment, b.top + 32}, L"Recent", wallpaperSource == 0);
+    TextButton(WallpaperFolder, {b.left + segment + 4, b.top, b.left + segment * 2 + 4, b.top + 32},
+               L"My folder", wallpaperSource == 1);
+    if (b.right - b.left >= 400) {
+        Text(std::to_wstring(wallpapers.size()) + L" pictures", {b.left + 228, b.top, b.right - 88, b.top + 32},
+             type::Caption, theme::Muted);
+        TextButton(WallpaperCurrent, {b.right - 80, b.top, b.right, b.top + 32}, L"Current");
+    }
     if (thumbnails.size() != wallpapers.size())
         thumbnails.resize(wallpapers.size());
-    float available = b.right - b.left, center = (b.left + b.right) / 2, top = b.top + 48;
-    float mainWidth = std::min(300.0f, available * .46f),
-          pictureHeight = std::min(188.0f, std::max(48.0f, b.bottom - top - 18));
+    auto stage = Layout().stage;
+    float center = stage.CenterX(), top = stage.top;
+    float mainWidth = stage.Width(), pictureHeight = stage.Height();
     for (int distance = 2; distance >= 0; --distance)
         for (int side = -1; side <= 1; side += 2) {
             if (!distance && side == 1)
@@ -177,7 +181,7 @@ void Island::Wallpaper() {
                              top + pictureHeight - (distance ? 8 : 0)};
             AddHit(500 + index, rect, wallpapers[index].title);
             hits.back().skew = -0.15838444f;
-            Fill(rect, theme::CardHover, layout::ControlRadius);
+            Card(rect, 2);
             if (!layoutOnly && wallpapers[index].pixels && !wallpapers[index].pixels->empty()) {
                 auto &entry = wallpapers[index];
                 if (!thumbnails[index])
@@ -195,9 +199,30 @@ void Island::Wallpaper() {
                     target->SetTransform(transform);
                 }
             }
-            FocusRing(500 + index, rect, layout::ControlRadius);
+            if (!layoutOnly && distance == 0) {
+                brush->SetColor(Color(theme::Accent));
+                D2D1_RECT_F ring{rect.left + 3, rect.top + 3, rect.right - 3, rect.bottom - 3};
+                target->DrawRoundedRectangle(D2D1::RoundedRect(ring, layout::CardRadius - 3,
+                                                               layout::CardRadius - 3), brush.Get(), 2);
+            }
+            FocusRing(500 + index, rect, layout::CardRadius);
         }
-    if (wallpapers.empty())
-        Paragraph(wallpaperLoading ? L"Loading pictures…" : L"Choose a folder to add pictures.",
-                  {b.left + 16, top, b.right - 16, top + 80});
+    if (wallpapers.empty()) {
+        Card(R(stage));
+        float y = top + pictureHeight / 2;
+        Line(center - 24, y + 8, center - 8, y - 12, theme::Muted, 1.5f);
+        Line(center - 8, y - 12, center + 12, y + 8, theme::Muted, 1.5f);
+        Line(center + 12, y + 8, center + 24, y - 4, theme::Muted, 1.5f);
+        Text(wallpaperLoading ? L"Loading pictures…" : L"Choose a folder to add pictures.",
+             {b.left + 12, y + 20, b.right - 12, y + 52}, type::Body, theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
+    } else if (!layoutOnly) {
+        size_t count = std::min(size_t{9}, wallpapers.size());
+        size_t first = selectedWallpaper > count / 2 ? selectedWallpaper - count / 2 : 0;
+        first = std::min(first, wallpapers.size() - count);
+        for (size_t i = 0; i < count; ++i) {
+            brush->SetColor(Color(first + i == selectedWallpaper ? theme::Text : theme::Muted));
+            float x = center + (static_cast<float>(i) - static_cast<float>(count - 1) / 2) * 12;
+            target->FillEllipse(D2D1::Ellipse({x, b.bottom - 6}, 3, 3), brush.Get());
+        }
+    }
 }

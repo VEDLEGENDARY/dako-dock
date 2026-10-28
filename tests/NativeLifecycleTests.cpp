@@ -215,7 +215,7 @@ int wmain(int argc, wchar_t **argv) {
         app.FilterApps(false);
         for (Tab primary : PrimaryTabs) {
             app.SetTab(primary);
-            RequireLive(app.SurfaceHeight() == 390, "all seven tabs share the V4 fixed surface height");
+            RequireLive(app.SurfaceHeight() == 400, "all seven tabs share the polished fixed surface height");
         }
         app.SetTab(Tab::Today);
         report << "twenty_task_keyboard_scroll_delete=PASS\nfixed_seven_tab_height=PASS\n";

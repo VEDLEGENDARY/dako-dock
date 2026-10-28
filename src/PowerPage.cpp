@@ -3,20 +3,22 @@
 void Island::Power() {
     const int actions[]{Lock, SleepNow, RestartNow, ShutdownNow};
     const wchar_t *labels[]{L"Lock", L"Sleep", L"Restart", L"Shut down"};
+    const wchar_t *hints[]{L"Lock this PC", L"Resume where you left off", L"Restart Windows", L"Turn off this PC"};
     const wchar_t *icons[]{L"\xE72E", L"\xE708", L"\xE777", L"\xE7E8"};
-    auto b = Layout().body;
-    int cols = Layout().narrow ? 2 : 4;
+    auto rows = layout::Rows(layout::Canvas(Layout()), {1, 1});
     for (int i = 0; i < 4; ++i) {
-        auto r = layout::Column(b, i % cols, cols);
-        r.top = b.top + (i / cols) * 100.0f;
-        r.bottom = r.top + 88;
-        auto rect = R(r);
-        AddHit(actions[i], rect, labels[i]);
-        Fill(Tactile(actions[i], rect), dock::Mix(theme::Card, theme::CardHover, HoverAmount(actions[i])), 14);
-        Text(icons[i], {r.left, r.top + 8, r.right, r.top + 44}, type::Icon, theme::Text, DWRITE_TEXT_ALIGNMENT_CENTER);
-        Text(labels[i], {r.left, r.top + 48, r.right, r.bottom - 8}, type::Control, theme::Text,
+        auto r = layout::Columns(rows[i / 2], {1, 1})[i % 2];
+        auto rect = Tactile(actions[i], R(r));
+        AddHit(actions[i], R(r), std::wstring(labels[i]) + L". " + hints[i]);
+        Card(rect, HoverAmount(actions[i]) > .1f ? 2 : 1);
+        unsigned color = i >= 2 ? dock::Mix(theme::Text, theme::Danger, HoverAmount(actions[i])) : theme::Text;
+        Text(icons[i], {rect.left, rect.top + 16, rect.right, rect.top + 56}, type::LargeIcon, color,
              DWRITE_TEXT_ALIGNMENT_CENTER);
-        FocusRing(actions[i], rect);
+        Text(labels[i], {rect.left + 12, rect.top + 64, rect.right - 12, rect.top + 88}, type::Title, color,
+             DWRITE_TEXT_ALIGNMENT_CENTER);
+        Text(hints[i], {rect.left + 12, rect.top + 92, rect.right - 12, rect.bottom - 12}, type::Caption,
+             theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
+        FocusRing(actions[i], R(r), layout::CardRadius);
     }
 }
 

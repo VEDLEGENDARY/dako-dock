@@ -69,7 +69,7 @@ constexpr UINT AudioDeviceChanged = WM_APP + 5;
 constexpr UINT RevealDock = WM_APP + 7;
 constexpr UINT MotionFrame = WM_APP + 31;
 constexpr UINT_PTR TransitionTimer = 1, StatsTimer = 2, MediaTimer = 3, InteractionTimer = 4, FocusTimer = 5,
-                   ConnectivityTimer = 6;
+                   ConnectivityTimer = 6, ToastTimer = 7;
 constexpr wchar_t WindowClass[] = L"Dako.Native.Island";
 
 inline void Check(HRESULT result) {
@@ -560,6 +560,9 @@ class Island {
     void Tabs();
     const std::vector<Tab> &EnabledTabs();
     D2D1_RECT_F VolumeRect() const;
+    D2D1_RECT_F VolumeTrack() const;
+    ComPtr<ID2D1Bitmap> mediaBitmap;
+    std::shared_ptr<std::vector<BYTE>> mediaPixels;
     bool HasAudio() const;
     void Controls();
     D2D1_RECT_F TaskCard() const;
@@ -601,6 +604,10 @@ class Island {
 
     void RefreshConnectionsView();
     void PanelContent(bool header = true);
+    void PageContent(bool header);
+    dock::Spring toastBlend{0};
+    bool toastVisible = false;
+    void DrawToast();
     void Draw();
 
     bool PresentedContains(float x, float y) const;

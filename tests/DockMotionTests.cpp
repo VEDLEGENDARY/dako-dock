@@ -102,11 +102,11 @@ int main() {
                 auto l = layout::Solve({aw, ah, static_cast<layout::View>(v), 100});
                 Require(l.panel.Width() <= aw && l.panel.Height() <= ah,
                         "panel is bounded at all supported DPI/monitor cases");
-                Require(l.body.Height() > 0 && l.body.top >= l.header.bottom && l.body.bottom < l.status.top,
-                        "header, content and status have separate usable geometry");
+                Require(l.body.Height() > 0 && l.body.top >= l.header.bottom && l.status.Height() > 0,
+                        "header and content remain separate, and the toast has usable geometry");
                 if (l.footer.Height() > 0)
-                    Require(l.body.bottom < l.footer.top && l.footer.bottom < l.status.top,
-                            "footer and status never overlap content");
+                    Require(l.body.bottom < l.footer.top && l.footer.bottom <= l.panel.bottom,
+                            "footer never overlaps content or leaves the panel");
                 if (v == 5) {
                     float left = l.stage.CenterX() - l.previous.CenterX(), right = l.next.CenterX() - l.stage.CenterX();
                     Require(std::abs(std::lround(left * dpi / 96) - std::lround(right * dpi / 96)) <= 1,

@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <vector>
+#include <initializer_list>
 #include "LayoutMetrics.h"
 
 namespace layout {
@@ -21,81 +22,210 @@ inline Rect Intersection(Rect a, Rect b) {
 constexpr float Padding = Metrics::Padding, Gap = Metrics::Gap, Section = Metrics::Section;
 constexpr float PanelRadius = Metrics::PanelRadius, CardRadius = Metrics::CardRadius;
 constexpr float ControlRadius = Metrics::ControlRadius;
-enum class View { Controls, Today, Stats, Clipboard, Apps, Wallpaper, Power, Wireless, Media };
+enum class View { Controls, Today, Stats, Clipboard, Apps, Wallpaper, Power, Wireless, Media,
+                  Features, Palette, Status, Module };
 struct Input {
     float availableWidth = 900, availableHeight = 748;
     View view = View::Controls;
     size_t items = 0;
+    size_t active = 0, events = 0;
+    int page = 0;
+    bool offlineIntro = false, image = false, bottom = true;
 };
 struct Result {
     Rect panel, header, body, status, footer, stage, previous, next;
     float padding = Padding, contentHeight = 0, headerHeight = Metrics::HeaderHeight;
     bool narrow = false, emergency = false, editorial = false;
 };
+inline float FocusHeight(float width) {
+    int columns = std::max(1, static_cast<int>((width - 24) / Metrics::MinHit));
+    float start = width < 104 ? 124.0f : 88.0f;
+    return std::max(136.0f, start + static_cast<float>((7 + columns - 1) / columns) * 36);
+}
+inline float StatsLeftHeight(float width) { return width < 240 ? 840.0f : Metrics::BodyHeight; }
 inline Result Solve(Input in) {
     Result r;
-    float preferred = in.view == View::Wireless ? Metrics::WirelessWidth
-                      : in.view == View::Media  ? Metrics::MediaWidth
-                                                : Metrics::MainWidth;
+    bool flyout = in.view == View::Wireless || in.view >= View::Features;
+    float preferred = in.view == View::Media ? Metrics::MediaWidth
+                      : flyout ? Metrics::WirelessWidth : Metrics::MainWidth;
     float w = std::min(preferred, std::max(Metrics::MinWidth, in.availableWidth));
+    float h = std::min(400.0f, std::max(Metrics::MinHeight, in.availableHeight));
     r.narrow = w < Metrics::NarrowWidth;
-    r.emergency = in.availableHeight < Metrics::EmergencyExtent || w < Metrics::EmergencyExtent;
-    bool compact = in.availableHeight < Metrics::CompactHeight;
-    r.padding = compact ? Metrics::Space12 : Padding;
-    float gap = compact ? Metrics::Space4 : Section;
-    float status = compact ? Metrics::CompactStatusHeight : Metrics::StatusHeight;
-    r.headerHeight = Metrics::HeaderHeight;
-    r.editorial = false;
-    float content =
-        in.view == View::Today      ? (w >= Metrics::ColumnsWidth ? Metrics::BodyHeight : Metrics::TodayStackHeight)
-        : in.view == View::Stats    ? (w >= Metrics::ColumnsWidth ? Metrics::BodyHeight : Metrics::StatsStackHeight)
-        : in.view == View::Controls ? (r.narrow ? Metrics::ControlsStackHeight : Metrics::BodyHeight)
-                                    : Metrics::BodyHeight;
-    float body = in.view == View::Wireless ? Metrics::WirelessBodyHeight
-                 : in.view == View::Media  ? Metrics::MediaBodyHeight
-                                           : Metrics::BodyHeight;
-    float foot = compact ? Metrics::CompactFooterHeight : Metrics::FooterHeight;
-    float h = std::min(r.headerHeight + gap + body + gap + foot + (foot ? gap : 0.0f) + status + r.padding,
-                       std::max(Metrics::MinHeight, in.availableHeight));
+    r.emergency = h < Metrics::EmergencyExtent || w < Metrics::EmergencyExtent;
+    r.padding = r.emergency ? Metrics::Space12 : Metrics::PanelInset;
+    float leadingInset = r.emergency ? Metrics::Space4 : in.bottom ? Metrics::FreeInset : Metrics::AttachedInset;
+    float trailingInset = r.emergency ? Metrics::Space8 : in.bottom ? Metrics::AttachedInset : Metrics::FreeInset;
+    r.headerHeight = r.emergency ? Metrics::CompactHeaderHeight : Metrics::HeaderHeight;
+    float gap = r.emergency ? Metrics::Space4 : Metrics::Gutter;
+    float footer = r.emergency ? 0 : Metrics::FooterHeight;
     if (in.view == View::Media)
         h = std::min(Metrics::MediaPanelHeight, in.availableHeight);
-    if (r.emergency && in.view != View::Media) {
-        r.headerHeight = Metrics::CompactHeaderHeight;
-        r.padding = Metrics::Space12;
-        gap = Metrics::Space4;
-        status = foot = 0;
-        h = std::min(h, std::max(Metrics::MinHeight, in.availableHeight));
-    }
     r.panel = {0, 0, w, h};
-    r.header = {r.padding, Metrics::Space8, w - r.padding, r.headerHeight};
-    r.status = {r.padding, h - r.padding - status, w - r.padding, h - r.padding};
-    r.footer = {r.padding, r.status.top - gap - foot, w - r.padding, r.status.top - gap};
-    r.body = {r.padding, r.headerHeight + gap, w - r.padding, (foot ? r.footer.top : r.status.top) - gap};
+    r.header = {r.padding, leadingInset, w - r.padding, leadingInset + r.headerHeight};
+    r.footer = {r.padding, h - trailingInset - footer, w - r.padding, h - trailingInset};
+    r.body = {r.padding, r.header.bottom + gap, w - r.padding,
+              std::max(r.header.bottom + gap + 4, r.footer.top - (footer ? gap : 0))};
     if (in.view == View::Media)
-        r.body = {Padding, Metrics::Space12, w - Padding, h - Padding};
-    r.contentHeight = in.view == View::Apps        ? (r.emergency ? Metrics::EmergencyAppsHeight : r.body.Height())
-                      : in.view == View::Clipboard ? r.body.Height()
-                      : r.emergency && in.view == View::Wallpaper ? Metrics::EmergencyWallpaperHeight
-                                                                  : std::max(content, body);
-    r.stage = {r.body.left + Metrics::StageInsetX, r.body.top + Metrics::StageInsetY,
-               r.body.right - Metrics::StageInsetX,
-               r.emergency ? std::max(r.body.bottom, r.body.top + Metrics::EmergencyWallpaperHeight) : r.body.bottom};
-    float cy = (r.stage.top + r.stage.bottom) / 2;
-    float half = Metrics::NavigationSize / 2;
+        r.body = {r.padding, Metrics::Space8, w - r.padding, h - Metrics::Space8};
+    float content = Metrics::BodyHeight;
+    switch (in.view) {
+    case View::Controls:
+        content = r.narrow ? Metrics::ControlsStackHeight : Metrics::BodyHeight;
+        break;
+    case View::Today:
+        content = w < Metrics::ColumnsWidth ? 704 + FocusHeight(r.body.Width()) : Metrics::BodyHeight;
+        break;
+    case View::Stats:
+        content = r.narrow ? StatsLeftHeight(r.body.Width()) + 284 : Metrics::BodyHeight;
+        break;
+    case View::Wireless:
+        content = Metrics::WirelessBodyHeight;
+        break;
+    case View::Features:
+        content = in.page == 3 ? 512 + static_cast<float>(in.items) * 256
+                              : 520 + static_cast<float>(in.items) * 160;
+        if (in.page == 2)
+            content += 520 + static_cast<float>(in.active) * 88 + static_cast<float>(in.events) * 122;
+        if (in.offlineIntro)
+            content += 136;
+        break;
+    case View::Status:
+        content = 304;
+        break;
+    case View::Apps:
+    case View::Clipboard:
+    case View::Palette:
+        content = r.body.Height();
+        break;
+    case View::Module:
+        content = in.image ? std::max(r.body.Height(), std::max(24.0f,
+                              std::min(96.0f, r.body.Height() - 56)) + 56) : r.body.Height();
+        break;
+    case View::Media:
+        content = Metrics::MediaBodyHeight;
+        break;
+    default:
+        break;
+    }
+    r.contentHeight = std::max(content, r.body.Height());
+    // A transient status overlays the viewport; it never consumes the footer or changes the layout.
+    float toast = std::min(32.0f, r.body.Height());
+    r.status = {r.body.left, r.body.bottom - toast, r.body.right, r.body.bottom};
+    float stageWidth = std::min(340.0f, r.body.Width() * .56f);
+    float stageHeight = std::min(212.0f, stageWidth / 1.6f);
+    r.stage = {r.body.CenterX() - stageWidth / 2, r.body.top + 36,
+               r.body.CenterX() + stageWidth / 2, r.body.top + 36 + stageHeight};
+    float cy = (r.stage.top + r.stage.bottom) / 2, half = Metrics::NavigationSize / 2;
     r.previous = {r.body.left, cy - half, r.body.left + Metrics::NavigationSize, cy + half};
     r.next = {r.body.right - Metrics::NavigationSize, cy - half, r.body.right, cy + half};
-    if (!r.emergency && in.view != View::Wireless && in.view != View::Media) {
-        h = std::min(390.0f, in.availableHeight);
-        r.panel.bottom = h;
-        r.headerHeight = 48;
-        r.header = {r.padding, 4, w - r.padding, 48};
-        r.body = {r.padding, 56, w - r.padding, std::max(64.0f, h - 44)};
-        r.footer = {r.padding, h - 32, w - r.padding, h - 8};
-        r.status = {r.padding, h, w - r.padding, h};
-        if (in.view == View::Apps || in.view == View::Clipboard)
-            r.contentHeight = r.body.Height();
-    }
     return r;
+}
+
+inline std::vector<Rect> Split(Rect area, std::initializer_list<float> weights, float gap, bool vertical) {
+    std::vector<Rect> out;
+    float total = 0;
+    for (float weight : weights)
+        total += weight;
+    if (weights.size() == 0 || total <= 0)
+        return out;
+    float extent = (vertical ? area.Height() : area.Width()) - gap * static_cast<float>(weights.size() - 1);
+    float cursor = vertical ? area.top : area.left;
+    for (float weight : weights) {
+        float next = cursor + std::max(0.0f, extent) * weight / total;
+        bool last = out.size() + 1 == weights.size();
+        if (vertical)
+            out.push_back({area.left, cursor, area.right, last ? area.bottom : next});
+        else
+            out.push_back({cursor, area.top, last ? area.right : next, area.bottom});
+        cursor = next + gap;
+    }
+    return out;
+}
+inline std::vector<Rect> Columns(Rect area, std::initializer_list<float> weights, float gutter = Metrics::Gutter) {
+    return Split(area, weights, gutter, false);
+}
+inline std::vector<Rect> Rows(Rect area, std::initializer_list<float> weights, float gutter = Metrics::Gutter) {
+    return Split(area, weights, gutter, true);
+}
+inline Rect Canvas(const Result &layout, float height = Metrics::BodyHeight) {
+    return {layout.body.left, layout.body.top, layout.body.right, layout.body.top + height};
+}
+inline std::vector<Rect> ControlsColumns(const Result &layout) {
+    if (!layout.narrow)
+        return Columns(Canvas(layout), {2, 1});
+    auto area = Canvas(layout, Metrics::ControlsStackHeight);
+    return {{area.left, area.top, area.right, area.top + 372},
+            {area.left, area.top + 384, area.right, area.bottom}};
+}
+inline std::vector<Rect> TodayColumns(const Result &layout) {
+    if (layout.panel.Width() >= Metrics::ColumnsWidth)
+        return Columns(Canvas(layout), {1.1f, 1.2f, 1});
+    auto area = Canvas(layout, layout.contentHeight);
+    float centerHeight = 136 + FocusHeight(area.Width());
+    return {{area.left, area.top, area.right, area.top + 272},
+            {area.left, area.top + 284, area.right, area.top + 284 + centerHeight},
+            {area.left, area.top + 296 + centerHeight, area.right, area.top + 568 + centerHeight}};
+}
+inline std::vector<Rect> StatsColumns(const Result &layout) {
+    if (!layout.narrow)
+        return Columns(Canvas(layout), {2, 1});
+    auto area = Canvas(layout, layout.contentHeight);
+    float leftHeight = StatsLeftHeight(area.Width());
+    return {{area.left, area.top, area.right, area.top + leftHeight},
+            {area.left, area.top + leftHeight + 12, area.right, area.top + leftHeight + 284}};
+}
+inline std::vector<Rect> StatsRingRects(const Result &layout) {
+    auto left = StatsColumns(layout)[0];
+    auto rows = Rows(left, left.Width() < 240 ? std::initializer_list<float>{552, 276}
+                                             : std::initializer_list<float>{176, 84});
+    return left.Width() < 240 ? Rows(rows[0], {1, 1, 1}) : Columns(rows[0], {1, 1, 1});
+}
+inline std::vector<Rect> StatsMiniRects(const Result &layout) {
+    auto left = StatsColumns(layout)[0];
+    auto rows = Rows(left, left.Width() < 240 ? std::initializer_list<float>{552, 276}
+                                             : std::initializer_list<float>{176, 84});
+    return left.Width() < 240 ? Rows(rows[1], {1, 1, 1}) : Columns(rows[1], {1, 1, 1});
+}
+inline std::vector<Rect> Cards(const Result &layout, View view) {
+    std::vector<Rect> cards;
+    auto append = [&](const std::vector<Rect> &next) { cards.insert(cards.end(), next.begin(), next.end()); };
+    if (view == View::Controls) {
+        auto columns = ControlsColumns(layout);
+        auto grid = columns[0];
+        grid.bottom -= 84;
+        auto rows = layout.narrow ? Rows(grid, {1, 1, 1}) : Rows(grid, {1, 1});
+        for (auto row : rows)
+            append(layout.narrow ? Columns(row, {1, 1}) : Columns(row, {1, 1, 1}));
+        cards.push_back({columns[0].left, columns[0].bottom - 72, columns[0].right, columns[0].bottom});
+        cards.push_back(columns[1]);
+    } else if (view == View::Today) {
+        auto columns = TodayColumns(layout);
+        append(Rows(columns[0], {140, 120}));
+        append(Rows(columns[1], {124, columns[1].Height() - 136}));
+        cards.push_back(columns[2]);
+    } else if (view == View::Stats) {
+        append(StatsRingRects(layout));
+        append(StatsMiniRects(layout));
+        append(Rows(StatsColumns(layout)[1], {160, 100}));
+    } else if (view == View::Power) {
+        for (auto row : Rows(Canvas(layout), {1, 1}))
+            append(Columns(row, {1, 1}));
+    }
+    return cards;
+}
+inline bool ValidCards(const Result &layout, View view) {
+    auto cards = Cards(layout, view);
+    for (size_t i = 0; i < cards.size(); ++i) {
+        auto r = cards[i];
+        if (r.Width() <= 0 || r.Height() <= 0 || r.left < layout.body.left - .01f ||
+            r.right > layout.body.right + .01f || r.top < layout.body.top - .01f ||
+            r.bottom > layout.body.top + layout.contentHeight + .01f)
+            return false;
+        for (size_t j = i + 1; j < cards.size(); ++j)
+            if (Intersects(r, cards[j]))
+                return false;
+    }
+    return true;
 }
 inline Rect Column(Rect area, int index, int count, float gap = Gap) {
     float w = (area.Width() - gap * (count - 1)) / count;

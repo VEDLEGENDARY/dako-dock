@@ -290,6 +290,8 @@ void Island::ReleaseGraphics() {
     appIcons.clear();
     thumbnails.clear();
     imageBrushes.clear();
+    mediaBitmap.Reset();
+    mediaPixels.reset();
     brush.Reset();
     target.Reset();
     hostTarget.Reset();

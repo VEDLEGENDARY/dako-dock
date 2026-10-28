@@ -4,7 +4,7 @@
 void Island::SnapMotion() {
     for (auto *v : {&dockReveal, &dockWidth, &dockHeight, &paneBlend, &wallpaperFocus, &tabLeft, &tabRight,
                     &railPointer, &railStrength, &paletteBlend, &contentBlend, &togglePosition, &wallpaperParallax,
-                    &volumeMotion, &composerFocus})
+                    &volumeMotion, &composerFocus, &toastBlend})
         v->Snap(v->goal);
     for (auto &v : rings)
         v.Snap(v.goal);
@@ -225,7 +225,7 @@ void Island::Transition() {
     for (auto *v : {&dockReveal, &dockWidth, &dockHeight})
         advance(*v, 23 * options.Int(L"Animation") / 100.0f);
     for (auto *v : {&paneBlend, &wallpaperFocus, &tabLeft, &tabRight, &railPointer, &railStrength, &paletteBlend,
-                    &contentBlend, &togglePosition, &wallpaperParallax, &volumeMotion, &composerFocus})
+                    &contentBlend, &togglePosition, &wallpaperParallax, &volumeMotion, &composerFocus, &toastBlend})
         advance(*v, 34);
     for (auto &v : rings)
         advance(v, 20);

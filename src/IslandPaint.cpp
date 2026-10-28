@@ -373,14 +373,37 @@ void Island::Button(int id, D2D1_RECT_F rect, const std::wstring &title, const s
     else if (!layoutOnly && state->second.Moving())
         ArmMotion();
     Fill(visual,
-         dock::Mix(dock::Mix(theme::Card, theme::Accent, state->second.value), theme::CardHover, HoverAmount(id)),
-         layout::CardRadius);
-    Text(icon, {rect.left + 12, rect.top + 12, rect.left + 40, rect.bottom - 12}, type::Icon,
-         active ? theme::AccentInk : theme::Text, DWRITE_TEXT_ALIGNMENT_CENTER);
-    TwoLine({rect.left + 50, rect.top, rect.right - 26, rect.bottom}, title, subtitle,
-            active ? theme::AccentInk : enabled ? theme::Text : theme::Muted);
-    Text(L"\xE76C", {rect.right - 24, rect.top + 15, rect.right - 8, rect.bottom - 15}, type::Icon,
-         active ? theme::AccentInk : theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
+         dock::Mix(dock::Mix(theme::Card, theme::AccentSoft, state->second.value), theme::CardHover, HoverAmount(id)),
+         layout::ControlRadius);
+    if (visual.right - visual.left < 128) {
+        Text(icon, {visual.left, visual.top + 8, visual.right, visual.top + 40}, type::TileIcon,
+             active ? theme::Accent : theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
+        Text(title, {visual.left + 4, visual.top + 44, visual.right - 4, visual.top + 64}, type::Label,
+             enabled ? theme::Text : theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
+        Text(subtitle, {visual.left + 4, visual.top + 64, visual.right - 4, visual.bottom - 4},
+             type::Caption, theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
+        FocusRing(id, rect);
+        return;
+    }
+    D2D1_RECT_F circle{visual.left + 12, visual.top + 12, visual.left + 52, visual.top + 52};
+    Fill(circle, dock::Mix(theme::CardHover, theme::Accent, state->second.value), 20);
+    Text(icon, circle, type::TileIcon,
+         active ? theme::AccentInk : dock::Mix(theme::Muted, theme::Text, HoverAmount(id)),
+         DWRITE_TEXT_ALIGNMENT_CENTER);
+    TwoLine({visual.left + 64, visual.top + 8, visual.right - 12, visual.top + 56}, title, subtitle,
+            enabled ? theme::Text : theme::Muted);
+    if (id == Wifi || id == Bluetooth || id == Audio)
+        Text(L"\xE76C", {visual.right - 28, visual.bottom - 28, visual.right - 12, visual.bottom - 12},
+             type::InlineIcon, theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
+    if (id == Dark) {
+        D2D1_RECT_F toggle{visual.left + 16, visual.bottom - 28, visual.left + 44, visual.bottom - 12};
+        Fill(toggle, dock::Mix(theme::Inset, theme::Accent, state->second.value), 8);
+        if (!layoutOnly) {
+            brush->SetColor(Color(active ? theme::AccentInk : theme::Muted));
+            target->FillEllipse(D2D1::Ellipse({toggle.left + 8 + 12 * state->second.value,
+                                               (toggle.top + toggle.bottom) / 2}, 6, 6), brush.Get());
+        }
+    }
     FocusRing(id, rect);
 }
 
@@ -497,7 +520,7 @@ void Island::SmallButton(int id, D2D1_RECT_F rect, const wchar_t *icon, const st
     FocusRing(id, rect, 10);
 }
 
-void Island::PanelContent(bool header) {
+void Island::PageContent(bool header) {
     hits.clear();
     buildingBody = false;
     if (!expanded) {
@@ -603,6 +626,13 @@ void Island::PanelContent(bool header) {
             SmallButton(WallpaperNext, {f.left + 144, f.top, f.left + 180, f.bottom}, L"\xE76C", L"Next wallpaper page",
                         (selectedWallpaper / slots + 1) * slots < wallpapers.size());
         }
+        if (f.right - f.left >= 560) {
+            constexpr const wchar_t *fits[]{L"Center", L"Tile", L"Stretch", L"Fit", L"Fill", L"Span"};
+            TextButton(WallpaperFit, {f.left + 192, f.top, f.left + 272, f.bottom},
+                       fits[static_cast<int>(wallpaperFit)]);
+            TextButton(WallpaperTarget, {f.left + 284, f.top, f.left + 396, f.bottom},
+                       wallpaperTarget.empty() ? L"All displays" : L"Display");
+        }
         float applyWidth = std::min(128.0f, f.right - f.left - 98);
         TextButton(WallpaperApply, {f.right - applyWidth, f.top, f.right, f.bottom},
                    wallpaperApplying ? L"Changing…" : L"Apply", true, !wallpapers.empty() && !wallpaperApplying);
@@ -614,25 +644,41 @@ void Island::PanelContent(bool header) {
         TextButton(ClipboardRefresh, {f.left + 100, f.top, mid, f.bottom}, L"Refresh");
         TextButton(ClipboardClear, {mid + 12, f.top, f.right, f.bottom}, L"Clear preview");
     }
-    auto status = R(Layout().status);
-    if (!Layout().emergency && !note.empty()) {
-        AddHit(1800, status, note, false);
-        Fill(status, theme::AccentSoft, 8);
-        Paragraph(note, {status.left + 8, status.top + 2, status.right - 8, status.bottom - 2},
-                  highContrast ? theme::SelectedText : theme::Text, type::Caption);
-    } else if (tab == Tab::Clipboard)
-        Text(L"Read in memory · no history · cleared when closed", status, type::Secondary, theme::Muted);
-    if (!Layout().emergency && note.empty()) {
-        Line(status.left, status.top - 4, status.right, status.top - 4, theme::Border);
-        if (tab != Tab::Clipboard)
-            Text(L"DAKO / " + TabTitle(), status, type::Mono, theme::Muted);
-        if (tab != Tab::Clipboard)
-            Text(Layout().contentHeight > Layout().body.Height() ? L"SCROLL FOR MORE"
-                 : previewMode                                   ? L"ISOLATED PREVIEW"
-                                                                 : L"CTRL + ALT + SPACE",
-                 {status.left + 160, status.top, status.right, status.bottom}, type::Mono, theme::Muted,
-                 DWRITE_TEXT_ALIGNMENT_TRAILING);
-    }
+}
+
+void Island::DrawToast() {
+    if (note.empty() || (!renderMode && !toastVisible && toastBlend.value <= 0))
+        return;
+    auto body = Body(), rect = R(Layout().status);
+    rect.right = std::min(rect.right, rect.left + 520);
+    for (const auto &hit : hits)
+        if (hit.input && layout::Intersects({rect.left, rect.top, rect.right, rect.bottom},
+                                           {hit.rect.left, hit.rect.top, hit.rect.right, hit.rect.bottom})) {
+            rect.top = body.top;
+            rect.bottom = rect.top + std::min(32.0f, body.bottom - body.top);
+            break;
+        }
+    AddHit(1800, rect, note, false);
+    if (layoutOnly)
+        return;
+    auto layer = D2D1::LayerParameters();
+    layer.opacity = renderMode || highContrast || reducedMotion ? 1 : std::clamp(toastBlend.value, 0.0f, 1.0f);
+    target->PushLayer(layer, nullptr);
+    D2D1::Matrix3x2F saved;
+    target->GetTransform(&saved);
+    float offset = renderMode || highContrast || reducedMotion ? 0 :
+                   -anchor::Grow(edge) * 8 * (1 - std::clamp(toastBlend.value, 0.0f, 1.0f));
+    target->SetTransform(D2D1::Matrix3x2F::Translation(0, offset) * saved);
+    Card(rect, 2);
+    Text(note, {rect.left + 12, rect.top, rect.right - 12, rect.bottom}, type::Label, theme::Text);
+    target->SetTransform(saved);
+    target->PopLayer();
+}
+
+void Island::PanelContent(bool header) {
+    PageContent(header);
+    if (expanded && !miniMode)
+        DrawToast();
 }
 
 void Island::Draw() {

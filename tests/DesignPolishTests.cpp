@@ -2,6 +2,7 @@
 #include <d2d1.h>
 #include "../src/GeometryCache.h"
 #include "../src/AmbientShadow.h"
+#include "../src/LayoutEngine.h"
 #include <cstdio>
 #include <cstdlib>
 
@@ -36,5 +37,15 @@ int main() {
         cache.Surface(factory.Get(), false, 0, 0, 200.0f + i, 200, 24, anchor::Edge::Top);
     RequireDesign(cache.Size() == 8, "geometry LRU is bounded to eight resources");
     RequireDesign(dock::Attached<24>(0, 0, 800, 400).size() == 101, "high DPI region samples 24 segments per curve");
+    for (float width : {100.0f, 180.0f, 240.0f, 400.0f, 640.0f, 760.0f, 800.0f})
+        for (float height : {80.0f, 160.0f, 240.0f, 400.0f})
+            for (auto view : {layout::View::Controls, layout::View::Today, layout::View::Stats, layout::View::Power}) {
+                auto layout = layout::Solve({width, height, view});
+                RequireDesign(layout::ValidCards(layout, view), "sibling cards are disjoint within the scroll canvas");
+                RequireDesign(layout.status.Height() > 0, "status toast has positive height at every viewport");
+            }
+    auto layout = layout::Solve({800, 760, layout::View::Controls});
+    RequireDesign(layout.panel.Height() == 400 && layout.body.Height() == 272 && layout.footer.Height() == 36,
+                  "standard layout uses the shared 400/272/36 geometry");
     std::puts("PASS: Bezier bounds, half-DIP reuse, bounded geometry LRU, continuous ring arcs and DPI sampling.");
 }

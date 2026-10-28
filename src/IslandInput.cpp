@@ -123,8 +123,8 @@ int Island::HitAt(float x, float y, bool accessibleHit) {
 }
 
 void Island::SetVolumeAt(int x) {
-    auto rect = VolumeRect();
-    SetSystemVolume(((x * 96.0f / dpi - PanelX()) / textScale - rect.left - 12) / (rect.right - rect.left - 24));
+    auto rect = VolumeTrack();
+    SetSystemVolume(((x * 96.0f / dpi - PanelX()) / textScale - rect.left) / (rect.right - rect.left));
     volumeMotion.goal = system.volume;
     ArmMotion();
     InvalidateRect(window, nullptr, FALSE);
@@ -1366,7 +1366,13 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
         case WM_TIMER:
             if (wparam == desktop::ShellTimer)
                 app->shell.Reconcile();
-            else if (wparam == TransitionTimer)
+            else if (wparam == ToastTimer) {
+                KillTimer(window, ToastTimer);
+                app->toastVisible = false;
+                app->toastBlend.goal = 0;
+                app->ArmMotion();
+                InvalidateRect(window, nullptr, FALSE);
+            } else if (wparam == TransitionTimer)
                 app->Transition();
             else if (wparam == StatsTimer) {
                 app->SampleStats();

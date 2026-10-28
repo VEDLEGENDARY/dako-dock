@@ -1,42 +1,38 @@
 #include "Island.h"
 
 layout::Result Island::Layout() const {
-    layout::View v = miniMode                 ? layout::View::Media
-                     : flyout != Flyout::None ? layout::View::Wireless
-                                              : static_cast<layout::View>(tab);
-    auto result = layout::Solve({std::max(100.0f, (envelopeWidth - 40) / textScale), (envelopeHeight - 24) / textScale,
-                                 v, filteredApps.size()});
-    if (v == layout::View::Controls)
-        result.contentHeight = result.narrow ? 540.0f : 300.0f;
-    if (flyout == Flyout::DockStatus)
-        result.contentHeight = 304;
-    if (flyout == Flyout::Features)
-        result.contentHeight = 520 + static_cast<float>(moduleRegistry.Descriptors().size()) * 160;
-    if (flyout == Flyout::Features && featuresPage == 2) {
-        result.contentHeight += 520 + static_cast<float>(privacySnapshot.active.size()) * 88 +
-                                static_cast<float>(std::min(size_t{8}, privacySnapshot.events.size())) * 122;
-    }
-    if (flyout == Flyout::Features && featuresPage == 3)
-        result.contentHeight = 512 + static_cast<float>(moduleRegistry.Descriptors().size()) * 256;
-    if (flyout == Flyout::Features && moduleRegistry.FirstRun() && privacy::Policy().Offline())
-        result.contentHeight += 136;
-    if (flyout == Flyout::Palette || flyout == Flyout::Recent || flyout == Flyout::Module)
-        result.contentHeight = result.body.Height();
-    if (flyout == Flyout::Module && modulePanel.image)
-        result.contentHeight =
-            std::max(result.body.Height(), std::max(24.0f, std::min(96.0f, result.body.Height() - 56)) + 56);
-    if (v == layout::View::Wallpaper)
-        result.contentHeight = std::max(layout::Metrics::BodyHeight, result.body.Height());
-    if (v == layout::View::Stats)
-        result.contentHeight = result.narrow ? 620.0f : 300.0f;
-    return result;
+    layout::Input input;
+    input.availableWidth = std::max(100.0f, (envelopeWidth - 40) / textScale);
+    input.availableHeight = (envelopeHeight - 24) / textScale;
+    input.view = miniMode ? layout::View::Media : static_cast<layout::View>(tab);
+    if (flyout != Flyout::None)
+        input.view = flyout == Flyout::Features ? layout::View::Features
+                     : flyout == Flyout::DockStatus ? layout::View::Status
+                     : flyout == Flyout::Module ? layout::View::Module
+                     : flyout == Flyout::Palette || flyout == Flyout::Recent ? layout::View::Palette
+                                                                            : layout::View::Wireless;
+    input.items = moduleRegistry.Descriptors().size();
+    input.active = privacySnapshot.active.size();
+    input.events = std::min(size_t{8}, privacySnapshot.events.size());
+    input.page = featuresPage;
+    input.offlineIntro = moduleRegistry.FirstRun() && privacy::Policy().Offline();
+    input.image = modulePanel.image != nullptr;
+    input.bottom = edge == anchor::Edge::Bottom;
+    return layout::Solve(input);
 }
 
 D2D1_RECT_F Island::R(layout::Rect r) { return {r.left, r.top, r.right, r.bottom}; }
 
 D2D1_RECT_F Island::Body() const { return R(Layout().body); }
 
-D2D1_RECT_F Island::Footer() const { return R(Layout().footer); }
+D2D1_RECT_F Island::Footer() const {
+    auto footer = R(Layout().footer);
+    if (footer.bottom - footer.top >= 4) {
+        footer.top += 2;
+        footer.bottom -= 2;
+    }
+    return footer;
+}
 
 void Island::RebuildLayout() {
     moduleRegistry.Visible(expanded && flyout == Flyout::Module ? moduleView : L"");
@@ -46,6 +42,11 @@ void Island::RebuildLayout() {
     layoutOnly = true;
     PanelContent();
     layoutOnly = saved;
+#ifndef NDEBUG
+    if (!miniMode && flyout == Flyout::None && expanded &&
+        !layout::ValidCards(Layout(), static_cast<layout::View>(tab)))
+        Check(E_UNEXPECTED);
+#endif
     focused = IndexForKey(focusedKey);
     hovered = IndexForKey(hoveredKey);
     if (focused < 0 && hadFocus && !hits.empty()) {
@@ -84,6 +85,15 @@ void Island::RebuildLayout() {
         status += flyout == Flyout::Wifi ? connections.wifiMessage : connections.bluetoothMessage;
     if (status != lastStatus) {
         lastStatus = status;
+        KillTimer(window, ToastTimer);
+        toastVisible = !note.empty();
+        toastBlend.goal = toastVisible ? 1.0f : 0.0f;
+        if (renderMode || reducedMotion || highContrast)
+            toastBlend.Snap(toastBlend.goal);
+        else
+            ArmMotion();
+        if (toastVisible && !renderMode && expanded)
+            SetTimer(window, ToastTimer, 3800, nullptr);
         LONG child = CHILDID_SELF;
         for (const auto &hit : hits)
             if (hit.id == 1800 || hit.id == 2040)
@@ -271,7 +281,7 @@ D2D1_RECT_F Island::TabRect(int index) const {
     const auto &tabs = visibleTabs.empty() ? std::vector<Tab>(PrimaryTabs.begin(), PrimaryTabs.end()) : visibleTabs;
     auto found = std::find(tabs.begin(), tabs.end(), static_cast<Tab>(index));
     size_t slot = found == tabs.end() ? 0 : static_cast<size_t>(found - tabs.begin());
-    float slotWidth = l.header.Width() / static_cast<float>(tabs.size());
-    float left = l.header.left + slotWidth * static_cast<float>(slot);
-    return {left, 12, left + slotWidth - 4, 40};
+    float slotWidth = (l.header.Width() - 4) / static_cast<float>(tabs.size());
+    float left = l.header.left + 2 + slotWidth * static_cast<float>(slot);
+    return {left, l.header.top + 4, left + slotWidth, l.header.bottom - 4};
 }
