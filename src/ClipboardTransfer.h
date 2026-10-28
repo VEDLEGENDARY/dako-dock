@@ -7,9 +7,19 @@
 #include <mutex>
 
 namespace clipboard {
-enum class TransferOp : uint32_t { Read = 1, Write = 2, SearchFiles = 3, ReadDrop = 4, QueryRecycleBin = 5,
-                                 QueryDrives = 6, EjectDrive = 7, FixtureEcho = 100, FixtureHang = 101,
-                                 FixtureFiles = 102, FixtureDrop = 103 };
+enum class TransferOp : uint32_t {
+    Read = 1,
+    Write = 2,
+    SearchFiles = 3,
+    ReadDrop = 4,
+    QueryRecycleBin = 5,
+    QueryDrives = 6,
+    EjectDrive = 7,
+    FixtureEcho = 100,
+    FixtureHang = 101,
+    FixtureFiles = 102,
+    FixtureDrop = 103
+};
 enum class TransferStatus : uint32_t { Pending, Ok, Excluded, Unsupported, Changed, Failed, Cancelled, TimedOut };
 struct Payload {
     UINT format = CF_UNICODETEXT;
@@ -32,7 +42,8 @@ class TransferActivity {
     mutable std::mutex mutex_;
     HANDLE process_ = nullptr;
     uint64_t completedCpu_ = 0;
-public:
+
+  public:
     TransferActivity() = default;
     TransferActivity(const TransferActivity &) = delete;
     ~TransferActivity();
@@ -43,10 +54,11 @@ public:
 };
 // Run on a module worker. A private inherited mapping is the only payload transport.
 Reply Transfer(TransferOp operation, const Payload &input, HANDLE cancel, DWORD timeout = 1000,
-               const std::wstring &owner = L"clipboard", TransferActivity *activity = nullptr);
+               const std::wstring &owner = L"clipboard", TransferActivity *activity = nullptr,
+               HWND pasteTarget = nullptr);
 int TransferHelper(const wchar_t *handleText);
 bool SessionUnlocked();
 Payload TextPayload(const std::wstring &text);
 std::wstring PayloadText(const Payload &payload);
 bool CheckTransfer(const std::wstring &reportPath);
-}
+} // namespace clipboard

@@ -95,7 +95,7 @@ BEGIN
  IDS_UTILITIES_HINT "Try 2*(3+4), 5 km in mi, or a URL containing utm_source in the command palette."
  IDS_PERMISSION_CLIPBOARD_WRITE "Replace clipboard contents only after an explicit copy action. Copies are excluded from Dako history and Windows clipboard history and sync."
  IDS_CLIPBOARD_HISTORY "Clipboard history"
- IDS_CLIPBOARD_SUMMARY "Keep up to 25 recent copies in memory by default; encrypted storage is optional. Unpinned items expire after ten minutes. All items clear on lock, sleep or feature removal."
+ IDS_CLIPBOARD_SUMMARY "Keep up to 25 recent copies in memory by default; encrypted storage is optional. Unpinned items expire after the configured retention (default ten minutes). Explicit Paste supports standard Windows edit fields; other apps use Copy. All items clear on lock, sleep or feature removal."
  IDS_CLIP_TEXT "Text"
  IDS_CLIP_IMAGE "Image preview"
  IDS_CLIP_FILES "Files"
