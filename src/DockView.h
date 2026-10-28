@@ -8,9 +8,7 @@
 
 namespace dockview {
 using Microsoft::WRL::ComPtr;
-inline D2D1_RECT_F Rect(layout::Rect rect) {
-    return {rect.left, rect.top, rect.right, rect.bottom};
-}
+inline D2D1_RECT_F Rect(layout::Rect rect) { return {rect.left, rect.top, rect.right, rect.bottom}; }
 struct Resources {
     ComPtr<IDWriteTextFormat> text, icon;
     ComPtr<IWICImagingFactory> images;
@@ -83,17 +81,42 @@ inline HRESULT Paint(ID2D1RenderTarget *target, IDWriteFactory *writer, Resource
         target->FillRoundedRectangle(D2D1::RoundedRect(Rect(r), radius, radius), brush.Get());
     };
     target->Clear(D2D1::ColorF(0, 0.0f));
+    bool translucent = options.island && !contrast && options.opacity < .999f;
+    if (translucent) {
+        auto layer = D2D1::LayerParameters();
+        layer.opacity = options.opacity;
+        target->PushLayer(layer, nullptr);
+    }
     auto pill = geometry.pill;
-    if (!contrast) {
-        // The soft lower rim stays inside the native capsule input region.
-        fill(pill, theme::Ink, 28, .12f);
-        fill({pill.left + .8f, pill.top + .8f, pill.right - .8f, pill.bottom - 2}, theme::Surface, 27);
-    } else
-        fill(pill, theme::Surface, 28);
-    brush->SetColor(D2D1::ColorF(contrast ? theme::Text : theme::Ink, contrast ? 1.0f : .25f));
-    target->DrawRoundedRectangle(
-        D2D1::RoundedRect({pill.left + .6f, pill.top + .6f, pill.right - .6f, pill.bottom - .6f}, 28, 28), brush.Get(),
-        contrast ? 2.0f : 1.0f);
+    if (options.island) {
+        float y = options.edge == anchor::Edge::Bottom ? pill.top : 0;
+        auto polygon = anchor::ForEdge(
+            options.edge, dock::Attached(pill.left, y, pill.Width(), 72 - pill.top, options.radius), y, 72 - pill.top);
+        ComPtr<ID2D1Factory> factory;
+        target->GetFactory(&factory);
+        ComPtr<ID2D1PathGeometry> path;
+        ComPtr<ID2D1GeometrySink> sink;
+        if (SUCCEEDED(factory->CreatePathGeometry(&path)) && SUCCEEDED(path->Open(&sink))) {
+            sink->BeginFigure({polygon[0].x, polygon[0].y}, D2D1_FIGURE_BEGIN_FILLED);
+            for (size_t i = 1; i < polygon.size(); ++i)
+                sink->AddLine({polygon[i].x, polygon[i].y});
+            sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+            sink->Close();
+            brush->SetColor(D2D1::ColorF(theme::Surface));
+            target->FillGeometry(path.Get(), brush.Get());
+        }
+    } else {
+        if (!contrast) {
+            // The soft lower rim stays inside the native capsule input region.
+            fill(pill, theme::Ink, 28, .12f);
+            fill({pill.left + .8f, pill.top + .8f, pill.right - .8f, pill.bottom - 2}, theme::Surface, 27);
+        } else
+            fill(pill, theme::Surface, 28);
+        brush->SetColor(D2D1::ColorF(contrast ? theme::Text : theme::Ink, contrast ? 1.0f : .25f));
+        target->DrawRoundedRectangle(
+            D2D1::RoundedRect({pill.left + .6f, pill.top + .6f, pill.right - .6f, pill.bottom - .6f}, 28, 28),
+            brush.Get(), contrast ? 2.0f : 1.0f);
+    }
     brush->SetColor(D2D1::ColorF(theme::Border));
     for (float divider : geometry.dividers)
         target->DrawLine({divider, 24}, {divider, 48}, brush.Get(), 1);
@@ -109,7 +132,9 @@ inline HRESULT Paint(ID2D1RenderTarget *target, IDWriteFactory *writer, Resource
         auto icon = app ? resources.Icon(target, *app) : nullptr;
         if (icon) {
             auto r = hit.rect;
-            target->DrawBitmap(icon, {r.left + 2, r.top + 2, r.right - 2, r.bottom - 2});
+            float size = std::min(options.iconSize, r.Height() - 4);
+            float cx = r.CenterX(), cy = (r.top + r.bottom) / 2;
+            target->DrawBitmap(icon, {cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2});
         } else if (hit.action == desktop::DockApps) {
             float x = hit.rect.CenterX(), y = (hit.rect.top + hit.rect.bottom) / 2;
             brush->SetColor(D2D1::ColorF(theme::Accent));
@@ -130,7 +155,7 @@ inline HRESULT Paint(ID2D1RenderTarget *target, IDWriteFactory *writer, Resource
                               hit.action == desktop::DockClock ? resources.text.Get() : resources.icon.Get(),
                               Rect(hit.rect), brush.Get());
         }
-        if (app && !app->windows.empty()) {
+        if (app && options.runningDots && !app->windows.empty()) {
             brush->SetColor(D2D1::ColorF(app->active ? theme::Focus : theme::Muted));
             target->FillEllipse(D2D1::Ellipse({hit.rect.CenterX(), 60}, app->active ? 2.3f : 1.7f, 1.7f), brush.Get());
         }
@@ -139,6 +164,8 @@ inline HRESULT Paint(ID2D1RenderTarget *target, IDWriteFactory *writer, Resource
             target->DrawRoundedRectangle(D2D1::RoundedRect(Rect(hit.rect), 12, 12), brush.Get(), 2);
         }
     }
+    if (translucent)
+        target->PopLayer();
     return S_OK;
 }
 inline std::vector<desktop::DockHit> PreviewHits(float width, float height) {
@@ -177,4 +204,4 @@ inline HRESULT PaintPreview(ID2D1RenderTarget *target, IDWriteFactory *writer, R
     }
     return S_OK;
 }
-}
+} // namespace dockview

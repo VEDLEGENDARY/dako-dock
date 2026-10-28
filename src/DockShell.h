@@ -10,6 +10,7 @@
 #include "WindowList.h"
 #include "LayoutEngine.h"
 #include "DockMotion.h"
+#include "Anchor.h"
 
 namespace desktop {
 class Shell;
@@ -29,15 +30,16 @@ enum DockAction {
     DockRecent,
     DockGroupFirst = 100
 };
-inline LONG DipPixels(float dip, UINT dpi) {
-    return static_cast<LONG>(std::lround(dip * dpi / 96.0f));
-}
+inline LONG DipPixels(float dip, UINT dpi) { return static_cast<LONG>(std::lround(dip * dpi / 96.0f)); }
 inline RECT BottomDockRect(RECT monitor, UINT dpi, float dip = 72) {
     LONG height = std::clamp(DipPixels(dip, dpi), 0L, std::max(0L, monitor.bottom - monitor.top));
     return {monitor.left, monitor.bottom - height, monitor.right, monitor.bottom};
 }
-inline bool HideForNotificationState(QUERY_USER_NOTIFICATION_STATE state) {
-    return state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN || state == QUNS_PRESENTATION_MODE;
+inline bool HideForNotificationState(QUERY_USER_NOTIFICATION_STATE state, int policy = 2) {
+    return policy == 0 ? false
+           : policy == 1
+               ? state == QUNS_RUNNING_D3D_FULL_SCREEN
+               : state == QUNS_BUSY || state == QUNS_RUNNING_D3D_FULL_SCREEN || state == QUNS_PRESENTATION_MODE;
 }
 struct PinEntry {
     std::wstring key, name, appId, executable;
@@ -125,12 +127,16 @@ inline std::vector<DockGroup> BuildDockGroups(const std::vector<PinEntry> &pins,
     return groups;
 }
 struct DockOptions {
+    bool reversedScroll = false, autoHide = false, island = false, magnify = true, labels = true, runningDots = true;
+    anchor::Edge edge = anchor::Edge::Bottom;
+    int fullscreenPolicy = 0;
+    float radius = 20, iconSize = 36, opacity = 1;
+    std::vector<std::wstring> hideApps;
+    std::wstring monitorMode = L"Each";
     unsigned statusMask = 31;
     bool showDesktop = false, showTaskView = false;
 };
-inline std::wstring NormalizeLayout(std::wstring value) {
-    return value == L"notch" ? L"notch" : L"dock";
-}
+inline std::wstring NormalizeLayout(std::wstring value) { return value == L"notch" ? L"notch" : L"dock"; }
 inline bool CapsuleContains(layout::Rect pill, float x, float y) {
     return pill.Width() > 0 && layout::RoundedContains(pill, pill.Height() / 2, x, y);
 }
@@ -264,6 +270,8 @@ class DockShell {
   public:
     struct Callbacks {
         std::function<void(int, HMONITOR)> open;
+        std::function<void(bool, HMONITOR)> pointer;
+        std::function<void(HMONITOR)> expand;
         std::function<void(const std::wstring &)> launch;
         std::function<void(size_t, size_t)> reorder;
         std::function<void(const std::wstring &, bool)> pin;
@@ -273,12 +281,13 @@ class DockShell {
     };
     DockShell();
     ~DockShell();
-    bool Start(HWND owner, Shell *recovery, bool preview, float textScale, Callbacks callbacks);
+    bool Start(HWND owner, Shell *recovery, bool preview, float textScale, Callbacks callbacks, bool reserve = true);
     void Stop();
     void RefreshMonitors();
     void ExplorerRestarted();
     void SetData(std::vector<PinEntry> pins, std::vector<WindowEntry> windows, DockStatus status);
     void Options(DockOptions options);
+    void PanelVisible(bool visible);
     RECT PillBounds(HMONITOR monitor) const;
     POINT Anchor(HMONITOR monitor, int action) const;
     bool CompositionAvailable() const;
@@ -294,4 +303,4 @@ class DockShell {
     bool PreviewAvailable() const;
     static bool RenderFixture(const std::wstring &path, UINT dpi, float textScale, int variant = 0);
 };
-}
+} // namespace desktop

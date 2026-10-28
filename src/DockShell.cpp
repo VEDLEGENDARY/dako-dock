@@ -13,7 +13,7 @@
 namespace desktop {
 using Microsoft::WRL::ComPtr;
 namespace {
-constexpr UINT_PTR ClockTimer = 1, FlashTimer = 2, PreviewTimer = 3, MotionTimer = 4;
+constexpr UINT_PTR ClockTimer = 1, FlashTimer = 2, PreviewTimer = 3, MotionTimer = 4, AutoHideTimer = 5;
 constexpr wchar_t DockClass[] = L"Dako.Native.Dock", PreviewClass[] = L"Dako.Native.WindowPreview";
 DockStatus ReadClock(DockStatus status) {
     SYSTEMTIME now{};
@@ -30,7 +30,7 @@ DockStatus ReadClock(DockStatus status) {
                                                            : L"?";
     return status;
 }
-}
+} // namespace
 struct DockShell::Impl {
     struct DockSurface {
         Impl *shell = nullptr;
@@ -52,6 +52,7 @@ struct DockShell::Impl {
         ComPtr<ID2D1RenderTarget> target;
         dock::Spring magnify{0}, pointer{-1000};
         ULONGLONG motionTime = 0;
+        int hideOffset = 0;
         size_t first = 0;
         DockLayout geometry;
         dockview::Resources resources;
@@ -62,8 +63,9 @@ struct DockShell::Impl {
     };
     HWND owner = nullptr, previewWindow = nullptr;
     Shell *recovery = nullptr;
-    bool preview = false, reduced = false, contrast = false, stopping = false, updating = false;
+    bool reserve = false, preview = false, reduced = false, contrast = false, stopping = false, updating = false;
     float textScale = 1;
+    bool panelOpen = false;
     DockOptions options;
     Callbacks callbacks;
     std::vector<std::unique_ptr<DockSurface>> surfaces;
@@ -150,6 +152,20 @@ struct DockShell::Impl {
                                          static_cast<int>(std::lround(pill.top * pixels)),
                                          static_cast<int>(std::lround(pill.right * pixels)),
                                          static_cast<int>(std::lround(pill.bottom * pixels)), radius, radius);
+        if (options.island) {
+            DeleteObject(region);
+            float y = options.edge == anchor::Edge::Bottom ? pill.top : 0;
+            auto polygon =
+                anchor::ForEdge(options.edge, dock::Attached(pill.left, y, pill.Width(), 72 - pill.top, options.radius),
+                                y, 72 - pill.top);
+            std::array<POINT, 69> points{};
+            for (size_t i = 0; i < points.size(); ++i)
+                points[i] = {static_cast<LONG>(std::lround(polygon[i].x * pixels)),
+                             static_cast<LONG>(std::lround(polygon[i].y * pixels))};
+            region = CreatePolygonRgn(points.data(), static_cast<int>(points.size()), WINDING);
+        }
+        if (bar.hideOffset)
+            OffsetRgn(region, 0, static_cast<int>(std::lround(bar.hideOffset * bar.Scale())));
         if (!SetWindowRgn(bar.window, region, TRUE))
             DeleteObject(region);
         for (auto &hit : bar.hits)
@@ -173,6 +189,8 @@ struct DockShell::Impl {
             }
         }
         for (auto &hit : bar.hits) {
+            if (!options.labels)
+                continue;
             if (hit.action >= DockGroupFirst && !bar.groups[hit.action - DockGroupFirst].windows.empty())
                 continue;
             TOOLINFOW info{sizeof(info)};
@@ -203,18 +221,29 @@ struct DockShell::Impl {
         bar.dpi = x;
         LONG height = DipPixels(72 * textScale, x);
         RECT rect = BottomDockRect(info.rcMonitor, x, 72 * textScale);
-        if (preview) {
+        if (options.edge == anchor::Edge::Top) {
+            rect.top = info.rcMonitor.top;
+            rect.bottom = rect.top + height;
+        }
+        if (!bar.registered) {
             rect.bottom = info.rcWork.bottom;
             rect.top = rect.bottom - height;
         } else {
             APPBARDATA data{sizeof(data)};
             data.hWnd = bar.window;
-            data.uEdge = ABE_BOTTOM;
+            data.uEdge = options.edge == anchor::Edge::Top ? ABE_TOP : ABE_BOTTOM;
             data.rc = rect;
             SHAppBarMessage(ABM_QUERYPOS, &data);
-            data.rc.top = data.rc.bottom - height;
+            if (options.edge == anchor::Edge::Top)
+                data.rc.bottom = data.rc.top + height;
+            else
+                data.rc.top = data.rc.bottom - height;
             SHAppBarMessage(ABM_SETPOS, &data);
             rect = data.rc;
+        }
+        if (options.edge == anchor::Edge::Top && !bar.registered) {
+            rect.top = info.rcWork.top;
+            rect.bottom = rect.top + height;
         }
         bool changed = !EqualRect(&rect, &bar.bounds);
         bar.bounds = rect;
@@ -253,13 +282,31 @@ struct DockShell::Impl {
             return;
         QUERY_USER_NOTIFICATION_STATE notification = QUNS_ACCEPTS_NOTIFICATIONS;
         bool busy = !preview && SUCCEEDED(SHQueryUserNotificationState(&notification)) &&
-                    HideForNotificationState(notification);
+                    HideForNotificationState(notification, options.fullscreenPolicy);
         HWND foregroundWindow = GetForegroundWindow();
         HMONITOR foreground = MonitorFromWindow(foregroundWindow, MONITOR_DEFAULTTONULL);
+        bool excluded = false;
+        DWORD pid = 0;
+        GetWindowThreadProcessId(foregroundWindow, &pid);
+        HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+        if (process) {
+            wchar_t path[32768]{};
+            DWORD length = 32768;
+            if (QueryFullProcessImageNameW(process, 0, path, &length)) {
+                std::wstring name = std::filesystem::path(path).filename().wstring();
+                for (const auto &item : options.hideApps)
+                    excluded |= _wcsicmp(item.c_str(), name.c_str()) == 0;
+            }
+            CloseHandle(process);
+        }
         for (auto &bar : surfaces) {
             if (bar->fullscreen && bar->fullscreenOwner != foregroundWindow && !busy)
                 bar->fullscreen = false;
-            bool hide = !preview && (bar->fullscreen || (busy && bar->monitor == foreground));
+            bool hide = !preview && (excluded || (options.fullscreenPolicy == 2 && bar->fullscreen) ||
+                                     (busy && bar->monitor == foreground));
+            if (!hide && options.fullscreenPolicy == 0 && foregroundWindow != owner &&
+                (GetWindowLongPtrW(foregroundWindow, GWL_EXSTYLE) & WS_EX_TOPMOST))
+                SetWindowPos(bar->window, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             if (hide == bar->hidden)
                 continue;
             bar->hidden = hide;
@@ -298,6 +345,8 @@ struct DockShell::Impl {
             float pulse = 1;
             if (!reduced && bar.pulseEnd > GetTickCount64())
                 pulse = .5f + .5f * std::cos((bar.pulseEnd - GetTickCount64()) / 1800.0f * 18.8495559f);
+            bar.target->SetTransform(D2D1::Matrix3x2F::Scale(textScale, textScale) *
+                                     D2D1::Matrix3x2F::Translation(0, bar.hideOffset * textScale));
             dockview::Paint(bar.target.Get(), writer.Get(), bar.resources, bar.Width(), bar.groups, status, bar.hover,
                             GetFocus() == bar.window ? bar.focus : -1, pulse, options, bar.first, bar.pointer.value,
                             reduced ? 0 : bar.magnify.value, contrast);
@@ -660,8 +709,15 @@ struct DockShell::Impl {
         case WM_NCHITTEST: {
             POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
             ScreenToClient(bar.window, &point);
-            return CapsuleContains(bar.geometry.pill, point.x / bar.Scale(), point.y / bar.Scale()) ? HTCLIENT
-                                                                                                    : HTTRANSPARENT;
+            auto pill = bar.geometry.pill;
+            float top = options.edge == anchor::Edge::Bottom ? pill.top : 0;
+            auto polygon = anchor::ForEdge(options.edge,
+                                           dock::Attached(pill.left, top, pill.Width(), 72 - pill.top, options.radius),
+                                           top, 72 - pill.top);
+            bool inside = options.island
+                              ? anchor::Contains(polygon, point.x / bar.Scale(), point.y / bar.Scale() - bar.hideOffset)
+                              : CapsuleContains(pill, point.x / bar.Scale(), point.y / bar.Scale());
+            return inside ? HTCLIENT : HTTRANSPARENT;
         }
         case WM_PAINT:
             Paint(bar);
@@ -711,6 +767,14 @@ struct DockShell::Impl {
             Fullscreen();
             return 0;
         case WM_TIMER:
+            if (wparam == AutoHideTimer) {
+                KillTimer(bar.window, AutoHideTimer);
+                if (panelOpen)
+                    return 0;
+                bar.hideOffset = options.edge == anchor::Edge::Bottom ? 62 : -62;
+                Rebuild(bar);
+                return 0;
+            }
             if (wparam == MotionTimer) {
                 auto now = GetTickCount64();
                 float dt = std::min(.05f, (now - bar.motionTime) / 1000.0f);
@@ -737,11 +801,19 @@ struct DockShell::Impl {
             }
             return 0;
         case WM_MOUSEMOVE: {
+            KillTimer(bar.window, AutoHideTimer);
+            if (bar.hideOffset) {
+                bar.hideOffset = 0;
+                Rebuild(bar);
+            }
+            if (callbacks.pointer)
+                callbacks.pointer(true, bar.monitor);
             TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE | TME_HOVER, bar.window, 250};
             TrackMouseEvent(&track);
             float mouse = GET_X_LPARAM(lparam) / bar.Scale();
             bar.pointer.goal = mouse;
-            bar.magnify.goal = bar.geometry.apps.Contains(mouse, GET_Y_LPARAM(lparam) / bar.Scale()) ? 1.0f : 0.0f;
+            bar.magnify.goal =
+                options.magnify && bar.geometry.apps.Contains(mouse, GET_Y_LPARAM(lparam) / bar.Scale()) ? 1.0f : 0.0f;
             if (!reduced && (bar.magnify.Moving() || bar.pointer.Moving()))
                 ArmMotion(bar);
             int hit = Hit(bar, mouse, GET_Y_LPARAM(lparam) / bar.Scale());
@@ -759,10 +831,15 @@ struct DockShell::Impl {
             return 0;
         }
         case WM_MOUSEHOVER:
-            if (bar.hover >= DockGroupFirst)
+            if (!options.island && bar.hover >= DockGroupFirst)
                 ShowPreview(bar, bar.hover - DockGroupFirst);
             return 0;
         case WM_MOUSEWHEEL:
+            if (callbacks.expand &&
+                (anchor::WheelExpands(options.edge, GET_WHEEL_DELTA_WPARAM(wparam)) != options.reversedScroll)) {
+                callbacks.expand(bar.monitor);
+                return 0;
+            }
             if (GET_WHEEL_DELTA_WPARAM(wparam) > 0)
                 bar.first = bar.first ? bar.first - 1 : 0;
             else if (bar.first + bar.geometry.visibleGroups < bar.groups.size())
@@ -772,6 +849,10 @@ struct DockShell::Impl {
             Rebuild(bar);
             return 0;
         case WM_MOUSELEAVE:
+            if (options.autoHide)
+                SetTimer(bar.window, AutoHideTimer, 550, nullptr);
+            if (callbacks.pointer)
+                callbacks.pointer(false, bar.monitor);
             bar.magnify.goal = 0;
             if (bar.magnify.Moving())
                 ArmMotion(bar);
@@ -907,6 +988,13 @@ struct DockShell::Impl {
             },
             reinterpret_cast<LPARAM>(&monitors));
         bool success = !monitors.empty() && monitors.size() <= 16;
+        if (options.monitorMode != L"Each" && !monitors.empty()) {
+            POINT point{};
+            GetCursorPos(&point);
+            HMONITOR selected = options.monitorMode == L"Cursor" ? MonitorFromPoint(point, MONITOR_DEFAULTTOPRIMARY)
+                                                                 : MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY);
+            monitors = {selected};
+        }
         for (auto monitor : monitors) {
             if (!success)
                 break;
@@ -923,7 +1011,7 @@ struct DockShell::Impl {
                 success = false;
                 break;
             }
-            if (!preview) {
+            if (reserve && !options.autoHide) {
                 if (!recovery || !recovery->TrackBar(window)) {
                     DestroyWindow(window);
                     success = false;
@@ -950,6 +1038,8 @@ struct DockShell::Impl {
                 break;
             }
             ShowWindow(window, SW_SHOWNOACTIVATE);
+            if (options.autoHide)
+                SetTimer(window, AutoHideTimer, 550, nullptr);
         }
         if (!success)
             StopDocks();
@@ -958,14 +1048,12 @@ struct DockShell::Impl {
         return success;
     }
 };
-DockShell::DockShell() : impl_(std::make_unique<Impl>()) {
-}
-DockShell::~DockShell() {
-    Stop();
-}
-bool DockShell::Start(HWND owner, Shell *recovery, bool preview, float textScale, Callbacks callbacks) {
+DockShell::DockShell() : impl_(std::make_unique<Impl>()) {}
+DockShell::~DockShell() { Stop(); }
+bool DockShell::Start(HWND owner, Shell *recovery, bool preview, float textScale, Callbacks callbacks, bool reserve) {
     Stop();
     auto &self = *impl_;
+    self.reserve = reserve && !preview;
     self.owner = owner;
     self.recovery = recovery;
     self.preview = preview;
@@ -1017,9 +1105,7 @@ void DockShell::RefreshMonitors() {
     if (!impl_->Monitors())
         impl_->Error(L"Dako could not reserve a bar on every monitor.");
 }
-void DockShell::ExplorerRestarted() {
-    RefreshMonitors();
-}
+void DockShell::ExplorerRestarted() { RefreshMonitors(); }
 void DockShell::SetData(std::vector<PinEntry> pins, std::vector<WindowEntry> windows, DockStatus status) {
     auto &self = *impl_;
     self.pins = std::move(pins);
@@ -1051,7 +1137,23 @@ void DockShell::SetData(std::vector<PinEntry> pins, std::vector<WindowEntry> win
 void DockShell::Options(DockOptions options) {
     impl_->options = options;
     for (auto &dock : impl_->surfaces)
-        impl_->Rebuild(*dock);
+        impl_->Position(*dock);
+}
+void DockShell::PanelVisible(bool visible) {
+    auto &self = *impl_;
+    if (self.panelOpen == visible)
+        return;
+    self.panelOpen = visible;
+    for (auto &bar : self.surfaces) {
+        if (visible) {
+            KillTimer(bar->window, AutoHideTimer);
+            if (bar->hideOffset) {
+                bar->hideOffset = 0;
+                self.Rebuild(*bar);
+            }
+        } else if (self.options.autoHide)
+            SetTimer(bar->window, AutoHideTimer, 550, nullptr);
+    }
 }
 RECT DockShell::PillBounds(HMONITOR monitor) const {
     auto *dock = impl_->Find(monitor);
@@ -1102,9 +1204,7 @@ void DockShell::Appearance(bool reduced, bool highContrast, float textScale) {
         InvalidateRect(bar->window, nullptr, FALSE);
     }
 }
-void DockShell::RefreshFullscreen() {
-    impl_->Fullscreen();
-}
+void DockShell::RefreshFullscreen() { impl_->Fullscreen(); }
 void DockShell::Flash(HWND window) {
     auto &self = *impl_;
     self.flashing.insert(window);
@@ -1134,15 +1234,9 @@ RECT DockShell::Bounds(HMONITOR monitor) const {
         return bar->bounds;
     return {};
 }
-HMONITOR DockShell::ActiveMonitor() const {
-    return impl_->activeMonitor;
-}
-size_t DockShell::Count() const {
-    return impl_->surfaces.size();
-}
-bool DockShell::PreviewAvailable() const {
-    return impl_->thumbnail && SUCCEEDED(impl_->previewResult);
-}
+HMONITOR DockShell::ActiveMonitor() const { return impl_->activeMonitor; }
+size_t DockShell::Count() const { return impl_->surfaces.size(); }
+bool DockShell::PreviewAvailable() const { return impl_->thumbnail && SUCCEEDED(impl_->previewResult); }
 
 bool DockShell::Contains(HWND window) const {
     if (window == impl_->previewWindow)
@@ -1208,14 +1302,19 @@ bool DockShell::RenderFixture(const std::wstring &path, UINT dpi, float textScal
             if (layout::Intersects(a.rect, geometry.hits[j].rect))
                 return false;
     }
+    DockOptions fixtureOptions;
+    if (variant >= 20) {
+        fixtureOptions.island = true;
+        fixtureOptions.edge = variant == 20 ? anchor::Edge::Top : anchor::Edge::Bottom;
+    }
     dockview::Resources resources;
     target->BeginDraw();
     target->SetTransform(D2D1::Matrix3x2F::Scale(textScale, textScale));
     HRESULT painted = previewFixture
                           ? dockview::PaintPreview(target.Get(), writer.Get(), resources, width, height / scale,
                                                    L"Fixture document · window preview", variant == 4, 2, true)
-                          : dockview::Paint(target.Get(), writer.Get(), resources, width, groups, status, -1, -1, 1, {},
-                                            0, width / 2, variant == 5 ? 1.0f : 0.0f, variant == 7);
+                          : dockview::Paint(target.Get(), writer.Get(), resources, width, groups, status, -1, -1, 1,
+                                            fixtureOptions, 0, width / 2, variant == 5 ? 1.0f : 0.0f, variant == 7);
     if (FAILED(painted) || FAILED(target->EndDraw()))
         return false;
     ComPtr<IWICStream> stream;
@@ -1231,4 +1330,4 @@ bool DockShell::RenderFixture(const std::wstring &path, UINT dpi, float textScal
         return false;
     return true;
 }
-}
+} // namespace desktop

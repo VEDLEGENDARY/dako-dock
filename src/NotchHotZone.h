@@ -1,6 +1,7 @@
 #pragma once
 #include <windows.h>
 #include "PrivacyRuntime.h"
+#include "Anchor.h"
 
 class NotchHotZone {
     HWND window_ = nullptr;
@@ -20,6 +21,7 @@ class NotchHotZone {
             if (owner_) PostMessageW(owner_, PointerNear, 0, 0);
             return 0;
         }
+        if (message == WM_MOUSELEAVE) { if (owner_) PostMessageW(owner_, PointerNear, 2, 0); return 0; }
         if (message == WM_LBUTTONUP) { if (owner_) PostMessageW(owner_, PointerNear, 1, 0); return 0; }
         if (message == WM_MOUSEACTIVATE) return MA_NOACTIVATE;
         return DefWindowProcW(window, message, wparam, lparam);
@@ -54,12 +56,12 @@ public:
         privacy::Policy().Watch(L"window-event-hook", reinterpret_cast<uintptr_t>(location_), L"notch",
                                 L"foreground-location");
     }
-    void Place(HWND owner, bool visible, UINT dpi) {
+    void Place(HWND owner, bool visible, UINT dpi, anchor::Edge edge = anchor::Edge::Bottom) {
         if (!window_) return;
         RECT bounds{}; GetWindowRect(owner, &bounds);
         int width = MulDiv(252, static_cast<int>(dpi), 96), height = MulDiv(2, static_cast<int>(dpi), 96);
         int center = (bounds.left + bounds.right) / 2;
-        SetWindowPos(window_, HWND_TOPMOST, center - width / 2, bounds.top, width, height,
+        SetWindowPos(window_, HWND_TOPMOST, center - width / 2, edge == anchor::Edge::Bottom ? bounds.bottom - height : bounds.top, width, height,
             SWP_NOACTIVATE | (visible ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
     }
 };
