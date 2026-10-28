@@ -204,6 +204,7 @@ void Island::Place() {
     }
     hotZone.Place(window, !expanded && !fullscreenContext, static_cast<UINT>(dpi), edge);
     PositionBackdrop();
+    PositionShadow();
     PositionInputs();
 }
 

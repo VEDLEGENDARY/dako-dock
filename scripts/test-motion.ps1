@@ -9,6 +9,11 @@ if ($env:VSCMD_ARG_TGT_ARCH -notin @('x64','amd64')) {
     & (Join-Path $vsRoot 'Common7\Tools\Launch-VsDevShell.ps1') -Arch amd64 -HostArch amd64 -SkipAutomaticLocation | Out-Null
 }
 $testOutput = Join-Path $projectRoot 'build\tests\motion\DockMotionTests.exe'
+$designOutput = Join-Path $projectRoot 'build\tests\motion\DesignPolishTests.exe'
+& cl.exe /nologo /std:c++20 /EHsc /W4 /WX /permissive- /utf-8 /DUNICODE /D_UNICODE /DNOMINMAX /O2 /MT (Join-Path $projectRoot 'tests\DesignPolishTests.cpp') "/Fe:$designOutput" "/Fo:$(Join-Path $projectRoot 'build\tests\motion\DesignPolishTests.obj')" /link d2d1.lib user32.lib gdi32.lib
+if ($LASTEXITCODE -ne 0) { throw 'Design polish checks did not compile.' }
+& $designOutput
+if ($LASTEXITCODE -ne 0) { throw 'Design polish checks failed.' }
 & cl.exe /nologo /std:c++20 /EHsc /W4 /WX /O2 /MT (Join-Path $projectRoot 'tests\DockMotionTests.cpp') "/Fe:$testOutput" "/Fo:$(Join-Path $projectRoot 'build\tests\motion\DockMotionTests.obj')"
 if ($LASTEXITCODE -ne 0) { throw 'Dock motion test compilation failed.' }
 & $testOutput

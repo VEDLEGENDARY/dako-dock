@@ -82,6 +82,8 @@ class HardwareStats {
             FreeMibTable(interfaces);
         }
         sampled_ = now;
+        point.gpu = next.gpuPercent;
+        point.gpuValid = next.gpuValid;
         next.history.Push(now, point);
         next.uptimeSeconds = now / 1000;
         SYSTEM_POWER_STATUS power{};

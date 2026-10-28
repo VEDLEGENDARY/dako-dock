@@ -12,17 +12,18 @@ struct Point {
     float x, y;
 };
 // Flared shoulders attach to the top edge; the lower center is narrower.
-inline std::array<Point, 35> Notch(float left, float top, float width, float height) {
-    std::array<Point, 35> points{};
-    for (int i = 0; i <= 16; ++i) {
-        float t = i / 16.0f, u = 1 - t;
+template <int Segments = 16>
+inline std::array<Point, 2 * (Segments + 1) + 1> Notch(float left, float top, float width, float height) {
+    std::array<Point, 2 * (Segments + 1) + 1> points{};
+    for (int i = 0; i <= Segments; ++i) {
+        float t = i / static_cast<float>(Segments), u = 1 - t;
         points[i] = {left + width * (3 * u * u * t * 0.11f + 3 * u * t * t * 0.11f + t * t * t * 0.22f),
                      top + height * (u * u * u + 3 * u * u * t)};
-        points[17 + i] = {left +
+        points[Segments + 1 + i] = {left +
                               width * (0.78f * u * u * u + 3 * u * u * t * 0.89f + 3 * u * t * t * 0.89f + t * t * t),
                           top + height * (3 * u * t * t + t * t * t)};
     }
-    points[34] = points[0];
+    points.back() = points[0];
     for (auto &point : points)
         point.y = top + height - (point.y - top);
     return points;
@@ -48,23 +49,26 @@ inline bool BrowserExecutable(std::wstring_view path) {
     return false;
 }
 inline float PanelTop(bool browser) { return browser ? 112.0f : 0.0f; }
-inline std::array<Point, 69> Attached(float left, float top, float width, float height, float corner = 22) {
-    std::array<Point, 69> out{};
+template <int Segments = 16>
+inline std::array<Point, 4 * (Segments + 1) + 1> Attached(float left, float top, float width, float height,
+                                                       float corner = layout::Metrics::PanelRadius) {
+    std::array<Point, 4 * (Segments + 1) + 1> out{};
     float r = std::min(corner, height / 2), shoulder = 24;
     auto curve = [&](int offset, Point a, Point b, Point c, Point d) {
-        for (int i = 0; i <= 16; ++i) {
-            float t = i / 16.0f, u = 1 - t;
+        for (int i = 0; i <= Segments; ++i) {
+            float t = i / static_cast<float>(Segments), u = 1 - t;
             out[offset + i] = {u * u * u * a.x + 3 * u * u * t * b.x + 3 * u * t * t * c.x + t * t * t * d.x,
                                u * u * u * a.y + 3 * u * u * t * b.y + 3 * u * t * t * c.y + t * t * t * d.y};
         }
     };
     curve(0, {left - shoulder, top}, {left - 3, top}, {left, top + 3}, {left, top + r});
-    curve(17, {left, top + height - r}, {left, top + height}, {left, top + height}, {left + r, top + height});
-    curve(34, {left + width - r, top + height}, {left + width, top + height}, {left + width, top + height},
+    curve(Segments + 1, {left, top + height - r}, {left, top + height}, {left, top + height}, {left + r, top + height});
+    curve(2 * (Segments + 1), {left + width - r, top + height}, {left + width, top + height},
+          {left + width, top + height},
           {left + width, top + height - r});
-    curve(51, {left + width, top + r}, {left + width, top + 3}, {left + width + 3, top},
+    curve(3 * (Segments + 1), {left + width, top + r}, {left + width, top + 3}, {left + width + 3, top},
           {left + width + shoulder, top});
-    out[68] = out[0];
+    out.back() = out[0];
     return out;
 }
 // Exact critically damped spring integration: reversal preserves velocity and never snaps.

@@ -9,6 +9,8 @@ namespace telemetry {
 struct Point {
     double cpu = 0, ram = 0, receive = 0, send = 0;
     bool cpuValid = false, ramValid = false, networkValid = false;
+    double gpu = 0;
+    bool gpuValid = false;
 };
 class History {
     std::array<Point, 60> points_{};

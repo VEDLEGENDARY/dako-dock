@@ -1,6 +1,7 @@
 #pragma once
 #include "DockShell.h"
 #include "UiTypography.h"
+#include "GeometryCache.h"
 #include <d2d1.h>
 #include <dwrite.h>
 #include <wincodec.h>
@@ -12,6 +13,7 @@ using Microsoft::WRL::ComPtr;
 inline D2D1_RECT_F Rect(layout::Rect rect) { return {rect.left, rect.top, rect.right, rect.bottom}; }
 struct Resources {
     std::shared_ptr<type::Library> typography;
+    graphics::GeometryCache geometryCache;
     ComPtr<IDWriteTextFormat> text, icon;
     ComPtr<IWICImagingFactory> images;
     std::map<std::wstring, ComPtr<ID2D1Bitmap>> icons;
@@ -86,20 +88,16 @@ inline HRESULT Paint(ID2D1RenderTarget *target, IDWriteFactory *writer, Resource
     auto pill = geometry.pill;
     if (options.island) {
         float y = options.edge == anchor::Edge::Bottom ? pill.top : 0;
-        auto polygon = anchor::ForEdge(
-            options.edge, dock::Attached(pill.left, y, pill.Width(), 72 - pill.top, options.radius), y, 72 - pill.top);
         ComPtr<ID2D1Factory> factory;
         target->GetFactory(&factory);
-        ComPtr<ID2D1PathGeometry> path;
-        ComPtr<ID2D1GeometrySink> sink;
-        if (SUCCEEDED(factory->CreatePathGeometry(&path)) && SUCCEEDED(path->Open(&sink))) {
-            sink->BeginFigure({polygon[0].x, polygon[0].y}, D2D1_FIGURE_BEGIN_FILLED);
-            for (size_t i = 1; i < polygon.size(); ++i)
-                sink->AddLine({polygon[i].x, polygon[i].y});
-            sink->EndFigure(D2D1_FIGURE_END_CLOSED);
-            sink->Close();
+        auto *path = resources.geometryCache.Surface(factory.Get(), false, pill.left, y, pill.Width(),
+                                                     72 - pill.top, options.radius, options.edge);
+        if (path) {
             brush->SetColor(D2D1::ColorF(theme::Surface));
-            target->FillGeometry(path.Get(), brush.Get());
+            target->FillGeometry(path, brush.Get());
+            brush->SetColor(D2D1::ColorF(contrast ? theme::Border : theme::Edge,
+                                        contrast ? 1.0f : palette::Tokens::HairlineOuter));
+            target->DrawGeometry(path, brush.Get(), contrast ? 2.0f : 1.0f);
         }
     } else {
         if (!contrast) {

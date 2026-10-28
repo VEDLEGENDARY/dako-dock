@@ -1,14 +1,17 @@
 #include "Island.h"
 
-std::array<POINT, 35> Island::NotchPixels(float scale) const {
-    auto curve = dock::Notch(renderMode ? 0 : (envelopeWidth - theme::DockWidth) / 2, HandleY(), theme::DockWidth,
-                             theme::DockHeight);
-    curve = anchor::ForEdge(edge, curve, HandleY(), theme::DockHeight);
-    std::array<POINT, 35> points{};
-    for (size_t i = 0; i < points.size(); ++i)
-        points[i] = {static_cast<LONG>(std::lround(curve[i].x * scale)),
-                     static_cast<LONG>(std::lround(curve[i].y * scale))};
-    return points;
+std::vector<POINT> Island::NotchPixels(float scale) const {
+    float x = renderMode ? 0 : (envelopeWidth - theme::DockWidth) / 2;
+    auto convert = [&](auto curve) {
+        curve = anchor::ForEdge(edge, curve, HandleY(), theme::DockHeight);
+        std::vector<POINT> points;
+        for (auto p : curve)
+            points.push_back({static_cast<LONG>(std::lround(p.x * scale)),
+                              static_cast<LONG>(std::lround(p.y * scale))});
+        return points;
+    };
+    return dpi > 144 ? convert(dock::Notch<24>(x, HandleY(), theme::DockWidth, theme::DockHeight))
+                     : convert(dock::Notch(x, HandleY(), theme::DockWidth, theme::DockHeight));
 }
 
 void Island::PaintNotch(HDC dc) {
@@ -26,47 +29,73 @@ void Island::PaintNotch(HDC dc) {
 }
 
 void Island::DrawNotch() {
-    auto points = dock::Notch(renderMode ? 0 : (envelopeWidth - theme::DockWidth) / 2, HandleY(), theme::DockWidth,
-                              theme::DockHeight);
-    ComPtr<ID2D1PathGeometry> geometry;
-    Check(factory->CreatePathGeometry(&geometry));
-    ComPtr<ID2D1GeometrySink> sink;
-    Check(geometry->Open(&sink));
-    sink->BeginFigure({points[0].x, points[0].y}, D2D1_FIGURE_BEGIN_FILLED);
-    for (size_t i = 1; i < points.size(); ++i)
-        sink->AddLine({points[i].x, points[i].y});
-    sink->EndFigure(D2D1_FIGURE_END_CLOSED);
-    Check(sink->Close());
-    brush->SetColor(Color(theme::Surface));
-    target->FillGeometry(geometry.Get(), brush.Get());
+    float x = renderMode ? 0 : (envelopeWidth - theme::DockWidth) / 2;
+    auto *path = geometryCache.Surface(factory.Get(), true, x, HandleY(), theme::DockWidth, theme::DockHeight,
+                                       0, edge);
+    if (path) {
+        brush->SetColor(Color(theme::Surface));
+        target->FillGeometry(path, brush.Get());
+    }
 }
 
-std::array<POINT, 69> Island::AttachedPixels(float scale) const {
-    auto outline = dock::Attached((envelopeWidth - width) / 2, PanelY(), width, height, theme::Radius);
-    outline = anchor::ForEdge(edge, outline, PanelY(), height);
-    std::array<POINT, 69> points{};
-    for (size_t i = 0; i < points.size(); ++i)
-        points[i] = {static_cast<LONG>(std::lround(outline[i].x * scale)),
-                     static_cast<LONG>(std::lround(outline[i].y * scale))};
-    return points;
+std::vector<POINT> Island::AttachedPixels(float scale) const {
+    float x = (envelopeWidth - width) / 2;
+    auto convert = [&](auto curve) {
+        curve = anchor::ForEdge(edge, curve, PanelY(), height);
+        std::vector<POINT> points;
+        for (auto p : curve)
+            points.push_back({static_cast<LONG>(std::lround(p.x * scale)),
+                              static_cast<LONG>(std::lround(p.y * scale))});
+        return points;
+    };
+    return dpi > 144 ? convert(dock::Attached<24>(x, PanelY(), width, height, theme::Radius))
+                     : convert(dock::Attached(x, PanelY(), width, height, theme::Radius));
 }
 
 void Island::IslandSurface() {
-    auto outline = anchor::ForEdge(
-        edge, dock::Attached((envelopeWidth - width) / 2, PanelY(), width, height, theme::Radius), PanelY(), height);
-    ComPtr<ID2D1PathGeometry> path;
-    ComPtr<ID2D1GeometrySink> sink;
-    if (FAILED(factory->CreatePathGeometry(&path)) || FAILED(path->Open(&sink)))
+    auto *path = geometryCache.Surface(factory.Get(), false, 0, 0, width, height, theme::Radius, edge);
+    if (!path)
         return;
-    sink->BeginFigure({outline[0].x, outline[0].y}, D2D1_FIGURE_BEGIN_FILLED);
-    for (size_t i = 1; i < outline.size(); ++i)
-        sink->AddLine({outline[i].x, outline[i].y});
-    sink->EndFigure(D2D1_FIGURE_END_CLOSED);
-    sink->Close();
-    brush->SetColor(Color(theme::Surface));
-    target->FillGeometry(path.Get(), brush.Get());
-    brush->SetColor(Color(theme::Border));
-    target->DrawGeometry(path.Get(), brush.Get(), highContrast ? 2.0f : 1.0f);
+    float pixel = 96 / dpi, x = std::round((envelopeWidth - width) / 2 / pixel) * pixel;
+    float y = std::round(PanelY() / pixel) * pixel;
+    D2D1::Matrix3x2F saved;
+    target->GetTransform(&saved);
+    target->SetTransform(D2D1::Matrix3x2F::Translation(x, y) * saved);
+    brush->SetColor(Color(theme::Surface, backdropAvailable && !opaqueMaterial && !highContrast ? .94f : 1.0f));
+    target->FillGeometry(path, brush.Get());
+    target->SetTransform(D2D1::Matrix3x2F::Scale((width - pixel) / width, (height - pixel) / height) *
+                         D2D1::Matrix3x2F::Translation(x + pixel / 2, y + pixel / 2) * saved);
+    brush->SetColor(Color(highContrast ? theme::Border : theme::Edge,
+                          highContrast ? 1.0f : palette::Tokens::HairlineOuter));
+    target->DrawGeometry(path, brush.Get(), highContrast ? 2.0f : pixel);
+    target->SetTransform(saved);
+    if (!highContrast) {
+        float freeY = edge == anchor::Edge::Bottom ? y + pixel * 1.5f : y + height - pixel * 1.5f;
+        brush->SetColor(Color(theme::Edge, palette::Tokens::HairlineInner));
+        target->DrawLine({x + theme::Radius, freeY}, {x + width - theme::Radius, freeY}, brush.Get(), pixel);
+    }
+}
+
+void Island::PositionShadow() {
+    if (renderMode) {
+        shadow.Hide();
+        return;
+    }
+    RECT host{};
+    GetWindowRect(window, &host);
+    float scale = dpi / 96, w = SurfaceWidth(), h = SurfaceHeight();
+    float top = edge == anchor::Edge::Bottom ? PanelY() + height - h : PanelY();
+    RECT panel{host.left + static_cast<LONG>(std::lround((envelopeWidth - w) / 2 * scale)),
+                host.top + static_cast<LONG>(std::lround(top * scale)),
+                host.left + static_cast<LONG>(std::lround((envelopeWidth + w) / 2 * scale)),
+                host.top + static_cast<LONG>(std::lround((top + h) * scale))};
+    MONITORINFO monitor{sizeof(monitor)};
+    bool fits = GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &monitor) &&
+                monitor.rcMonitor.right - monitor.rcMonitor.left >= (w + 96) * scale &&
+                monitor.rcMonitor.bottom - monitor.rcMonitor.top >= (h + 96) * scale;
+    shadow.Position(backdropWindow && IsWindowVisible(backdropWindow) ? backdropWindow : window, panel, dpi,
+                     theme::Radius, edge, dockReveal.value,
+                     fits && !highContrast && !opaqueMaterial && !fullscreenContext && dockReveal.value > 0);
 }
 
 LRESULT CALLBACK Island::BackdropProcedure(HWND handle, UINT message, WPARAM wparam, LPARAM lparam) {
@@ -87,15 +116,22 @@ void Island::PositionBackdrop() {
     RECT host{};
     GetWindowRect(window, &host);
     float scale = dpi / 96;
-    int x = host.left + static_cast<int>(std::lround((envelopeWidth - width) * scale / 2)),
+    int shoulder = static_cast<int>(std::lround(24 * scale));
+    int x = host.left + static_cast<int>(std::lround((envelopeWidth - width) * scale / 2)) - shoulder,
         y = host.top + static_cast<int>(std::lround(PanelY() * scale)),
-        w = static_cast<int>(std::lround(width * scale)), h = static_cast<int>(std::lround(height * scale));
+        w = static_cast<int>(std::lround(width * scale)) + shoulder * 2,
+        h = static_cast<int>(std::lround(height * scale));
     RECT next{x, y, x + w, y + h};
     if (EqualRect(&next, &backdropPlacement) && IsWindowVisible(backdropWindow))
         return;
     backdropPlacement = next;
-    int radius = static_cast<int>(theme::Radius * scale);
-    HRGN region = CreateRoundRectRgn(0, 0, w + 1, h + 1, radius * 2, radius * 2);
+    auto points = AttachedPixels(scale);
+    int originX = x - host.left, originY = y - host.top;
+    for (auto &point : points) {
+        point.x -= originX;
+        point.y -= originY;
+    }
+    HRGN region = CreatePolygonRgn(points.data(), static_cast<int>(points.size()), WINDING);
     if (!SetWindowRgn(backdropWindow, region, FALSE))
         DeleteObject(region);
     SetWindowPos(backdropWindow, window, x, y, w, h, SWP_NOACTIVATE | SWP_SHOWWINDOW);
@@ -411,31 +447,29 @@ void Island::Tabs() {
 void Island::DrawRing(float x, float y, float radius, float value, unsigned color, float thickness) {
     if (layoutOnly)
         return;
-    brush->SetColor(Color(theme::CardHover));
+    thickness = std::clamp(radius * .25f, 6.0f, 10.0f);
+    brush->SetColor(Color(theme::Inset));
     target->DrawEllipse(D2D1::Ellipse({x, y}, radius, radius), brush.Get(), thickness);
     value = std::clamp(value, 0.0f, 1.0f);
-    if (value <= 0)
+    if (value < .0025f)
         return;
     brush->SetColor(Color(color));
-    if (value >= 0.999f) {
+    if (value > .9975f) {
         target->DrawEllipse(D2D1::Ellipse({x, y}, radius, radius), brush.Get(), thickness);
         return;
     }
-    // A small bounded polyline avoids allocating an immutable path every tick.
-    constexpr int segments = 120;
-    float end = value * 6.28318530718f, start = -1.57079632679f;
-    D2D1_POINT_2F previous{x, y - radius};
-    int count = std::max(1, static_cast<int>(std::ceil(value * segments)));
-    for (int i = 1; i <= count; ++i) {
-        float angle = start + end * i / count;
-        D2D1_POINT_2F point{x + radius * std::cos(angle), y + radius * std::sin(angle)};
-        if (!ringStroke)
-            Check(factory->CreateStrokeStyle(D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND,
-                                                                         D2D1_CAP_STYLE_ROUND, D2D1_LINE_JOIN_ROUND),
-                                             nullptr, 0, &ringStroke));
-        target->DrawLine(previous, point, brush.Get(), thickness, ringStroke.Get());
-        previous = point;
-    }
+    auto *path = geometryCache.Arc(factory.Get(), radius, value);
+    if (!path)
+        return;
+    if (!ringStroke)
+        Check(factory->CreateStrokeStyle(D2D1::StrokeStyleProperties(D2D1_CAP_STYLE_ROUND, D2D1_CAP_STYLE_ROUND,
+                                                                     D2D1_CAP_STYLE_ROUND, D2D1_LINE_JOIN_ROUND),
+                                         nullptr, 0, &ringStroke));
+    D2D1::Matrix3x2F saved;
+    target->GetTransform(&saved);
+    target->SetTransform(D2D1::Matrix3x2F::Translation(x, y) * saved);
+    target->DrawGeometry(path, brush.Get(), thickness, ringStroke.Get());
+    target->SetTransform(saved);
 }
 
 void Island::TextButton(int id, D2D1_RECT_F rect, const std::wstring &text, bool primary, bool enabled) {

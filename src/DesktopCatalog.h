@@ -134,8 +134,8 @@ class DesktopCatalog {
         }
         CoUninitialize();
     }
-    static WallpaperEntry Decode(IWICImagingFactory *images, const std::wstring &path, double maxWidth = 320,
-                                 double maxHeight = 200) {
+    static WallpaperEntry Decode(IWICImagingFactory *images, const std::wstring &path, double maxWidth = 720,
+                                 double maxHeight = 720) {
         WallpaperEntry result;
         result.path = path;
         result.title = std::filesystem::path(path).stem().wstring();
@@ -150,7 +150,7 @@ class DesktopCatalog {
         UINT width = 0, height = 0;
         if (FAILED(frame->GetSize(&width, &height)) || !width || !height)
             return result;
-        // Cap decoded surfaces at 320x200. Never retain a full-resolution wallpaper bitmap.
+        // A single bounded mip serves the carousel at 100-200% DPI; never retain a full-size photo.
         double ratio = std::min({1.0, maxWidth / width, maxHeight / height});
         result.width = std::max(1U, static_cast<UINT>(width * ratio));
         result.height = std::max(1U, static_cast<UINT>(height * ratio));

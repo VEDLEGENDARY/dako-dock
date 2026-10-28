@@ -43,6 +43,8 @@
 #include "SettingsCore.h"
 #include "BundledFont.h"
 #include "UiTypography.h"
+#include "GeometryCache.h"
+#include "AmbientShadow.h"
 #include "SpeedTest.h"
 #include "LayoutEngine.h"
 #include "MotionController.h"
@@ -329,6 +331,8 @@ class Island {
     DWORD systemTransparency = 1;
     ComPtr<ID2D1RoundedRectangleGeometry> wallpaperMask;
     ComPtr<ID2D1StrokeStyle> ringStroke;
+    graphics::GeometryCache geometryCache;
+    graphics::AmbientShadow shadow;
     HWND backdropWindow = nullptr;
     RECT backdropPlacement{};
     HMONITOR refreshMonitor = nullptr;
@@ -437,6 +441,8 @@ class Island {
     std::vector<AppEntry> apps;
     std::vector<WallpaperEntry> wallpapers;
     std::vector<ComPtr<ID2D1Bitmap>> thumbnails;
+    std::map<ID2D1Bitmap *, ComPtr<ID2D1BitmapBrush>> imageBrushes;
+    void Photo(ID2D1Bitmap *bitmap, D2D1_RECT_F rect, float opacity = 1, float parallax = 0);
     std::vector<size_t> filteredApps;
     std::wstring appQuery, selectedAppKey;
     size_t appPage = 0, selectedWallpaper = 0;
@@ -510,13 +516,14 @@ class Island {
     float HandleY() const;
     float PanelY() const;
     float browserClearance = 112;
-    std::array<POINT, 35> NotchPixels(float scale) const;
+    std::vector<POINT> NotchPixels(float scale) const;
     void PaintNotch(HDC dc);
     void DrawNotch();
-    std::array<POINT, 69> AttachedPixels(float scale) const;
+    std::vector<POINT> AttachedPixels(float scale) const;
     void IslandSurface();
     static LRESULT CALLBACK BackdropProcedure(HWND handle, UINT message, WPARAM wparam, LPARAM lparam);
     void PositionBackdrop();
+    void PositionShadow();
     void ConfigureMaterial();
     void Graphics();
     void Place();

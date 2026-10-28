@@ -9,6 +9,34 @@ void Island::ReplaceWallpapers(std::vector<WallpaperEntry> next) {
             selectedWallpaper = i;
     wallpaperFocus.Snap(static_cast<float>(selectedWallpaper));
     thumbnails.clear();
+    imageBrushes.clear();
+}
+
+void Island::Photo(ID2D1Bitmap *bitmap, D2D1_RECT_F rect, float opacity, float parallax) {
+    if (layoutOnly || !bitmap)
+        return;
+    auto &picture = imageBrushes[bitmap];
+    if (!picture) {
+        ComPtr<ID2D1DeviceContext> context;
+        if (SUCCEEDED(target.As(&context))) {
+            ComPtr<ID2D1BitmapBrush1> modern;
+            context->CreateBitmapBrush(bitmap, D2D1::BitmapBrushProperties1(D2D1_EXTEND_MODE_CLAMP,
+                D2D1_EXTEND_MODE_CLAMP, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC), &modern);
+            picture = modern;
+        } else
+            target->CreateBitmapBrush(bitmap, D2D1::BitmapBrushProperties(D2D1_EXTEND_MODE_CLAMP,
+                D2D1_EXTEND_MODE_CLAMP, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR), &picture);
+    }
+    if (!picture)
+        return;
+    auto size = bitmap->GetSize();
+    float ratio = std::max((rect.right - rect.left + 8) / size.width,
+                           (rect.bottom - rect.top + 8) / size.height);
+    picture->SetTransform(D2D1::Matrix3x2F::Scale(ratio, ratio) * D2D1::Matrix3x2F::Translation(
+        (rect.left + rect.right - size.width * ratio) / 2 + parallax,
+        (rect.top + rect.bottom - size.height * ratio) / 2));
+    picture->SetOpacity(opacity);
+    target->FillRoundedRectangle(D2D1::RoundedRect(rect, layout::CardRadius, layout::CardRadius), picture.Get());
 }
 
 void Island::ChooseWallpaperFolder() {
@@ -163,15 +191,7 @@ void Island::Wallpaper() {
                     target->SetTransform(
                         D2D1::Matrix3x2F::Skew(-9, 0, {(rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2}) *
                         transform);
-                    auto size = thumbnails[index]->GetSize();
-                    float ratio =
-                              std::max((rect.right - rect.left) / size.width, (rect.bottom - rect.top) / size.height),
-                          sw = (rect.right - rect.left) / ratio, sh = (rect.bottom - rect.top) / ratio;
-                    target->PushAxisAlignedClip(rect, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-                    target->DrawBitmap(
-                        thumbnails[index].Get(), rect, distance ? 0.6f : 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
-                        {(size.width - sw) / 2, (size.height - sh) / 2, (size.width + sw) / 2, (size.height + sh) / 2});
-                    target->PopAxisAlignedClip();
+                    Photo(thumbnails[index].Get(), rect, distance ? .6f : 1.0f);
                     target->SetTransform(transform);
                 }
             }

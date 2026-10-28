@@ -284,10 +284,12 @@ void Island::ReleaseGraphics() {
     frameTickReady = false;
     if (backdropWindow)
         ShowWindow(backdropWindow, SW_HIDE);
+    shadow.Hide();
     previousPane.Reset();
     wallpaperMask.Reset();
     appIcons.clear();
     thumbnails.clear();
+    imageBrushes.clear();
     brush.Reset();
     target.Reset();
     hostTarget.Reset();

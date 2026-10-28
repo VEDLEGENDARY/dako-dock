@@ -15,19 +15,15 @@ void Island::Sparkline(D2D1_RECT_F rect, int metric, unsigned color) {
         Text(L"Collecting visible samples…", rect, type::Caption, theme::Muted);
         return;
     }
-    double maximum = metric == 2 ? 1.0 : 100.0;
-    if (metric == 2)
-        for (size_t i = 0; i < history.Size(); ++i)
-            maximum = std::max(maximum, history.At(i).receive + history.At(i).send);
     bool previousValid = false;
     D2D1_POINT_2F previous{};
     for (size_t i = 0; i < history.Size(); ++i) {
         const auto &point = history.At(i);
-        bool valid = metric == 0 ? point.cpuValid : metric == 1 ? point.ramValid : point.networkValid;
-        double value = metric == 0 ? point.cpu : metric == 1 ? point.ram : point.receive + point.send;
+        bool valid = metric == 0 ? point.cpuValid : metric == 1 ? point.gpuValid : point.ramValid;
+        double value = metric == 0 ? point.cpu : metric == 1 ? point.gpu : point.ram;
         D2D1_POINT_2F current{rect.right - (static_cast<float>(history.Size() - 1 - i)) * (rect.right - rect.left) / 59,
                               rect.bottom -
-                                  static_cast<float>(std::clamp(value / maximum, 0.0, 1.0)) * (rect.bottom - rect.top)};
+                                  static_cast<float>(std::clamp(value / 100, 0.0, 1.0)) * (rect.bottom - rect.top)};
         if (valid && previousValid)
             Line(previous.x, previous.y, current.x, current.y, color, 2);
         previous = current;
@@ -42,12 +38,18 @@ void Island::Stats() {
     double values[]{system.totalCpu, hardwareState.gpuPercent, static_cast<double>(system.memoryLoad)};
     bool valid[]{system.cpuValid, hardwareState.gpuValid, system.memoryValid};
     const wchar_t *names[]{L"CPU", L"GPU", L"RAM"};
-    unsigned colors[]{theme::Accent, theme::Tertiary, theme::Secondary};
+    unsigned colors[]{theme::Accent, theme::Secondary, theme::Tertiary};
     for (int i = 0; i < 3; ++i) {
         float x = b.left + i * (cell + 8);
         Card({x, b.top, x + cell, b.top + 178});
-        DrawRing(x + cell / 2, b.top + 56, 32, valid[i] ? static_cast<float>(values[i] / 100) : 0.0f, colors[i], 6);
-        Text(valid[i] ? Number(values[i]) + L"%" : L"—", {x, b.top + 40, x + cell, b.top + 72}, type::Control,
+        rings[i].goal = valid[i] ? static_cast<float>(values[i] / 100) : 0.0f;
+        if (reducedMotion || renderMode || highContrast)
+            rings[i].Snap(rings[i].goal);
+        else if (!layoutOnly && rings[i].Moving())
+            ArmMotion();
+        DrawRing(x + cell / 2, b.top + 56, 32, rings[i].value, colors[i], 6);
+        Text(valid[i] ? Number(rings[i].value * 100) + L"%" : L"—", {x, b.top + 40, x + cell, b.top + 72},
+             type::Control,
              theme::Text, DWRITE_TEXT_ALIGNMENT_CENTER);
         Text(names[i], {x + 6, b.top + 100, x + cell - 6, b.top + 126}, type::Control, theme::Text,
              DWRITE_TEXT_ALIGNMENT_CENTER);
@@ -57,11 +59,7 @@ void Island::Stats() {
                                               Number(hardwareState.totalGiB, 1) + L" GB";
         Text(details, {x + 8, b.top + 126, x + cell - 8, b.top + 150}, type::Caption, theme::Muted,
              DWRITE_TEXT_ALIGNMENT_CENTER);
-        Text(i == 0   ? std::to_wstring(hardwareState.processes) + L" proc"
-             : i == 1 ? Number(hardwareState.vramGiB, 1) + L" GB VRAM"
-                      : Number(system.availableGiB, 1) + L" GB free",
-             {x + 4, b.top + 150, x + cell - 4, b.top + 174}, type::Caption, theme::Muted,
-             DWRITE_TEXT_ALIGNMENT_CENTER);
+        Sparkline({x + 12, b.top + 154, x + cell - 12, b.top + 170}, i, colors[i]);
         AddHit(2020 + i, {x, b.top, x + cell, b.top + 178},
                std::wstring(names[i]) + L". " + details + L". " + Number(values[i]) + L" percent", false);
     }
@@ -94,7 +92,10 @@ void Island::Stats() {
              : entry.cpuValid ? Number(entry.cpu) + L"%"
                               : L"—",
              {b.right - 70, row, b.right - 12, row + 22}, type::Caption, theme::Muted, DWRITE_TEXT_ALIGNMENT_TRAILING);
-        Line(x + 12, row + 23, b.right - 12, row + 23, theme::Secondary, 2);
+        double maximum = statsMemory ? (ranked.empty() ? 1 : std::max(1.0, ranked.front().workingMiB)) : 100;
+        float proportion = static_cast<float>(std::clamp((statsMemory ? entry.workingMiB : entry.cpu) / maximum,
+                                                         0.0, 1.0));
+        Line(x + 12, row + 23, x + 12 + (b.right - x - 24) * proportion, row + 23, theme::Accent, 2);
     }
     float sy = y + 160;
     Card({x, sy, b.right, sy + 112});
