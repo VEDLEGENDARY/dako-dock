@@ -18,6 +18,7 @@ struct AppEntry {
     std::wstring parsingName, appId, executable;
     std::shared_ptr<std::vector<BYTE>> iconPixels;
     UINT iconWidth = 0, iconHeight = 0;
+    UINT iconExtent = 0;
     bool iconAttempted = false;
     AppEntry(std::wstring label = {}, std::wstring identity = {})
         : name(std::move(label)), parsingName(std::move(identity)) {}
@@ -543,7 +544,8 @@ class DesktopCatalog {
             },
             2, generation);
     }
-    void RequestIcons(std::vector<std::wstring> keys) {
+    void RequestIcons(std::vector<std::wstring> keys, UINT extent = 192) {
+        extent = std::clamp(extent, 64U, 512U);
         {
             std::scoped_lock lock(resultMutex_);
             if (iconsPending_)
@@ -551,14 +553,14 @@ class DesktopCatalog {
             bool needed = false;
             for (const auto &key : keys)
                 for (const auto &app : apps_)
-                    if (app.parsingName == key && !app.iconAttempted)
+                    if (app.parsingName == key && (!app.iconAttempted || app.iconExtent < extent))
                         needed = true;
             if (!needed)
                 return;
             iconsPending_ = true;
         }
         Queue(
-            [this, keys = std::move(keys)] {
+            [this, keys = std::move(keys), extent] {
                 try {
                     ComPtr<IWICImagingFactory> images;
                     Check(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
@@ -569,14 +571,17 @@ class DesktopCatalog {
                         {
                             std::scoped_lock lock(resultMutex_);
                             for (auto &app : apps_)
-                                if (app.parsingName == key)
+                                if (app.parsingName == key) {
                                     app.iconAttempted = true;
+                                    app.iconExtent = extent;
+                                }
                         }
                         ComPtr<IShellItemImageFactory> item;
                         if (FAILED(SHCreateItemFromParsingName(key.c_str(), nullptr, IID_PPV_ARGS(&item))))
                             continue;
                         HBITMAP bitmap = nullptr;
-                        if (FAILED(item->GetImage({128, 128}, SIIGBF_ICONONLY, &bitmap)))
+                        int extentPixels = static_cast<int>(extent);
+                        if (FAILED(item->GetImage({extentPixels, extentPixels}, SIIGBF_ICONONLY, &bitmap)))
                             continue;
                         ComPtr<IWICBitmap> source;
                         HRESULT result = images->CreateBitmapFromHBITMAP(bitmap, nullptr, WICBitmapUseAlpha, &source);
@@ -589,7 +594,7 @@ class DesktopCatalog {
                                                     WICBitmapDitherTypeNone, nullptr, 0, WICBitmapPaletteTypeCustom));
                         UINT w = 0, h = 0;
                         converter->GetSize(&w, &h);
-                        if (w > 128 || h > 128)
+                        if (w > extent || h > extent)
                             continue;
                         auto pixels = std::make_shared<std::vector<BYTE>>(static_cast<size_t>(w) * h * 4);
                         if (FAILED(converter->CopyPixels(nullptr, w * 4, static_cast<UINT>(pixels->size()),

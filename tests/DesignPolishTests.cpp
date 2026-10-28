@@ -4,6 +4,7 @@
 #include "../src/AmbientShadow.h"
 #include "../src/LayoutEngine.h"
 #include "../src/WallpaperModel.h"
+#include "../src/DockView.h"
 #include <cstdio>
 #include <cstdlib>
 
@@ -13,7 +14,52 @@ void RequireDesign(bool value, const char *message) {
         std::exit(1);
     }
 }
+void VerifyDockResources(ID2D1Factory *factory) {
+    Microsoft::WRL::ComPtr<IWICImagingFactory> images;
+    RequireDesign(
+        SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&images))),
+        "WIC icon factory");
+    Microsoft::WRL::ComPtr<IWICBitmap> surface;
+    images->CreateBitmap(128, 128, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, &surface);
+    Microsoft::WRL::ComPtr<ID2D1RenderTarget> target;
+    RequireDesign(
+        SUCCEEDED(factory->CreateWicBitmapRenderTarget(
+            surface.Get(),
+            D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_SOFTWARE,
+                                         D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)),
+            &target)),
+        "icon cache target");
+    dockview::Resources resources;
+    resources.images = images;
+    desktop::DockGroup group;
+    group.key = L"fixture:first";
+    group.width = group.height = 32;
+    group.pixels = std::make_shared<std::vector<BYTE>>(32 * 32 * 4, static_cast<BYTE>(255));
+    auto *base = resources.Icon(target.Get(), group, false, 1);
+    auto *large = resources.Icon(target.Get(), group, true, 1);
+    RequireDesign(base && large && base != large && resources.icons.size() == 2,
+                  "base and magnified icons have separate cached surfaces");
+    std::wstring largeKey;
+    for (const auto &[key, bitmap] : resources.icons)
+        if (bitmap.Get() == large)
+            largeKey = key;
+    for (int i = 0; i < 125; ++i) {
+        group.key = L"fixture:" + std::to_wstring(i);
+        resources.Icon(target.Get(), group, false, 1);
+    }
+    group.key = L"fixture:first";
+    RequireDesign(resources.Icon(target.Get(), group, false, 1) == base, "hot icon is reused");
+    for (int i = 125; i < 131; ++i) {
+        group.key = L"fixture:" + std::to_wstring(i);
+        resources.Icon(target.Get(), group, false, 1);
+    }
+    group.key = L"fixture:first";
+    RequireDesign(resources.icons.size() == 128 && !resources.icons.contains(largeKey) &&
+                      resources.Icon(target.Get(), group, false, 1) == base,
+                  "LRU evicts cold icons individually and keeps the hot surface");
+}
 int main() {
+    RequireDesign(SUCCEEDED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED)), "COM initialization");
     Microsoft::WRL::ComPtr<ID2D1Factory> factory;
     RequireDesign(SUCCEEDED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, factory.GetAddressOf())),
                   "D2D factory");
@@ -76,5 +122,38 @@ int main() {
     RequireDesign(center.scale == 1 && center.opacity == 1 && left.x == -right.x && left.skew == -right.skew &&
                       left.scale == right.scale && left.scale < 1 && left.opacity < 1,
                   "fractional carousel poses are continuous, mirrored and attenuated");
+    std::vector<desktop::DockGroup> groups(4);
+    for (size_t i = 0; i < groups.size(); ++i)
+        groups[i].key = L"fixture:" + std::to_wstring(i);
+    auto normal = desktop::SolveDock(900, groups, {});
+    auto first = std::find_if(normal.hits.begin(), normal.hits.end(),
+                              [](const auto &hit) { return hit.action == desktop::DockGroupFirst; });
+    RequireDesign(first != normal.hits.end(), "dock group is visible");
+    auto magnified = desktop::SolveDock(900, groups, {}, {}, 0, first->rect.CenterX(), 1);
+    auto peak = std::find_if(magnified.hits.begin(), magnified.hits.end(),
+                             [](const auto &hit) { return hit.action == desktop::DockGroupFirst; });
+    RequireDesign(peak != magnified.hits.end() && std::abs(peak->rect.Height() - 56) < .01f &&
+                      peak->rect.bottom == magnified.baseline && magnified.dotY - peak->rect.bottom == 4,
+                  "56 DIP magnification keeps the baseline and running dot outside the icon");
+    desktop::DockOptions topOptions;
+    topOptions.edge = anchor::Edge::Top;
+    auto topDock = desktop::SolveDock(900, groups, {}, topOptions, 0, first->rect.CenterX(), 1);
+    auto topPeak = std::find_if(topDock.hits.begin(), topDock.hits.end(),
+                                [](const auto &hit) { return hit.action == desktop::DockGroupFirst; });
+    RequireDesign(topPeak != topDock.hits.end() && topPeak->rect.top == topDock.baseline &&
+                      topPeak->rect.top - topDock.dotY == 4 &&
+                      topPeak->rect.top + peak->rect.bottom == topDock.stripHeight,
+                  "top-edge icons and fixed running dots mirror bottom-edge geometry");
+    dockview::Resources motion;
+    motion.Synchronize(normal, groups, -1, -1, true);
+    for (int frame = 0; frame < 72; ++frame)
+        motion.Step(1.0f / 120);
+    RequireDesign(!motion.Moving(), "new dock icons settle and release motion");
+    motion.Launch(groups[0].key);
+    for (int frame = 0; frame < 72; ++frame)
+        motion.Step(1.0f / 120);
+    RequireDesign(!motion.Moving(), "two-hop dock launch feedback stops within 600 ms");
+    VerifyDockResources(factory.Get());
     std::puts("PASS: Bezier bounds, half-DIP reuse, bounded geometry LRU, continuous ring arcs and DPI sampling.");
+    CoUninitialize();
 }

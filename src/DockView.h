@@ -2,11 +2,15 @@
 #include "DockShell.h"
 #include "UiTypography.h"
 #include "GeometryCache.h"
+#include "MotionController.h"
+#include "DepthCache.h"
 #include <d2d1.h>
+#include <d2d1_1.h>
 #include <dwrite.h>
 #include <wincodec.h>
 #include <wrl/client.h>
 #include <map>
+#include <deque>
 
 namespace dockview {
 using Microsoft::WRL::ComPtr;
@@ -14,66 +18,211 @@ inline D2D1_RECT_F Rect(layout::Rect rect) { return {rect.left, rect.top, rect.r
 struct Resources {
     std::shared_ptr<type::Library> typography;
     graphics::GeometryCache geometryCache;
+    graphics::DepthCache depth;
     ComPtr<IDWriteTextFormat> text, icon;
     ComPtr<IWICImagingFactory> images;
     std::map<std::wstring, ComPtr<ID2D1Bitmap>> icons;
+    std::deque<std::wstring> iconLru;
+    struct Visual {
+        dock::Spring appearance{0}, running{0}, x{0}, hover{0}, drag{0};
+        dock::Feedback bounce;
+        float bounceClock = 1;
+        bool secondHop = false;
+        bool positioned = false;
+    };
+    std::map<std::wstring, Visual> visuals;
+    std::map<int, dock::Spring> actionHover;
+    dock::Spring focusOpacity{1};
+    int previousFocus = -1;
+    std::wstring pulseKey, clockText;
+    ComPtr<IDWriteTextLayout> clockLayout;
+    float clockWidth = 0, clockHeight = 0;
     bool Initialize(IDWriteFactory *factory) {
         if (text && icon)
             return true;
         typography = type::Acquire(factory);
         text = typography->formats[type::Label];
         icon = typography->formats[type::Icon];
-        for (auto *format : {text.Get(), icon.Get()}) {
-            format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
-            format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
-            format->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
-            DWRITE_TRIMMING trim{DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0};
-            ComPtr<IDWriteInlineObject> ellipsis;
-            factory->CreateEllipsisTrimmingSign(format, &ellipsis);
-            format->SetTrimming(&trim, ellipsis.Get());
-        }
         CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&images));
         return true;
     }
-    ID2D1Bitmap *Icon(ID2D1RenderTarget *target, const desktop::DockGroup &group) {
+    void ResetBitmaps() {
+        icons.clear();
+        iconLru.clear();
+        depth.Reset();
+    }
+    void Synchronize(const desktop::DockLayout &layout, const std::vector<desktop::DockGroup> &groups, int hovered,
+                     int dragged, bool animated) {
+        for (const auto &hit : layout.hits) {
+            if (hit.action < desktop::DockGroupFirst) {
+                auto &spring = actionHover[hit.action];
+                spring.goal = hit.action == hovered ? 1.0f : 0.0f;
+                if (!animated)
+                    spring.Snap(spring.goal);
+                continue;
+            }
+            const auto &group = groups[hit.action - desktop::DockGroupFirst];
+            auto [it, inserted] = visuals.try_emplace(group.key);
+            auto &v = it->second;
+            if (inserted || !v.positioned) {
+                v.x.Snap(hit.rect.left);
+                v.positioned = true;
+            }
+            v.appearance.goal = 1;
+            v.running.goal = group.windows.empty() ? 0.0f : 1.0f;
+            v.x.goal = hit.rect.left;
+            v.hover.goal = hit.action == hovered ? 1.0f : 0.0f;
+            v.drag.goal = hit.action - desktop::DockGroupFirst == dragged ? 1.0f : 0.0f;
+            if (!animated) {
+                for (auto *spring : {&v.appearance, &v.running, &v.x, &v.hover, &v.drag})
+                    spring->Snap(spring->goal);
+                v.bounce.Snap(0);
+                v.bounceClock = 1;
+            }
+        }
+        for (auto it = visuals.begin(); it != visuals.end();)
+            if (std::none_of(groups.begin(), groups.end(), [&](const auto &group) { return group.key == it->first; }))
+                it = visuals.erase(it);
+            else
+                ++it;
+    }
+    bool Moving() const {
+        if (focusOpacity.Moving())
+            return true;
+        for (const auto &[id, spring] : actionHover) {
+            (void)id;
+            if (spring.Moving())
+                return true;
+        }
+        for (const auto &[key, v] : visuals) {
+            (void)key;
+            if (v.appearance.Moving() || v.running.Moving() || v.x.Moving() || v.hover.Moving() || v.drag.Moving() ||
+                v.bounce.Moving() || v.bounceClock < .55f)
+                return true;
+        }
+        return false;
+    }
+    void Step(float seconds, float speed = 1) {
+        focusOpacity.Step(seconds, dock::motion::Focus, speed);
+        for (auto &[id, spring] : actionHover) {
+            (void)id;
+            spring.Step(seconds, dock::motion::Snappy, speed);
+        }
+        for (auto &[key, v] : visuals) {
+            (void)key;
+            v.appearance.Step(seconds, dock::motion::Settle, speed);
+            v.running.Step(seconds, dock::motion::Snappy, speed);
+            v.x.Step(seconds, dock::motion::Settle, speed);
+            v.hover.Step(seconds, dock::motion::Snappy, speed);
+            v.drag.Step(seconds, dock::motion::Lively, speed);
+            if (v.bounceClock < .55f) {
+                v.bounceClock += seconds * speed;
+                if (!v.secondHop && v.bounceClock >= .18f) {
+                    v.secondHop = true;
+                    v.bounce.Snap(0);
+                    v.bounce.velocity = 160;
+                }
+                if (v.bounceClock >= .55f)
+                    v.bounce.Snap(0);
+                else
+                    v.bounce.Step(seconds, speed);
+            }
+        }
+    }
+    void Launch(const std::wstring &key) {
+        auto &v = visuals[key];
+        if (v.bounceClock < .55f)
+            return;
+        v.bounceClock = 0;
+        v.secondHop = false;
+        v.bounce.Snap(0);
+        v.bounce.velocity = 240;
+    }
+    void DrawClock(ID2D1RenderTarget *target, IDWriteFactory *writer, ID2D1Brush *brush, const std::wstring &value,
+                   D2D1_RECT_F rect) {
+        float width = rect.right - rect.left, height = rect.bottom - rect.top;
+        if (!clockLayout || clockText != value || clockWidth != width || clockHeight != height) {
+            clockText = value;
+            clockWidth = width;
+            clockHeight = height;
+            clockLayout.Reset();
+            if (FAILED(writer->CreateTextLayout(value.c_str(), static_cast<UINT32>(value.size()), text.Get(), width,
+                                                height, &clockLayout)))
+                return;
+            clockLayout->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+            if (typography->numbers)
+                clockLayout->SetTypography(typography->numbers.Get(), {0, static_cast<UINT32>(value.size())});
+        }
+        target->DrawTextLayout({rect.left, rect.top}, clockLayout.Get(), brush, D2D1_DRAW_TEXT_OPTIONS_CLIP);
+    }
+    ID2D1Bitmap *Icon(ID2D1RenderTarget *target, const desktop::DockGroup &group, bool large, float scale) {
         HICON native = nullptr;
         for (const auto &window : group.windows)
             if (window.icon) {
                 native = window.icon->handle;
                 break;
             }
+        UINT extent = static_cast<UINT>(std::clamp(std::ceil((large ? 56.0f : 40.0f) * scale * 1.5f), 32.0f, 512.0f));
         auto key = group.key + L":" + std::to_wstring(reinterpret_cast<UINT_PTR>(native)) + L":" +
-                   std::to_wstring(reinterpret_cast<UINT_PTR>(group.pixels.get()));
+                   std::to_wstring(reinterpret_cast<UINT_PTR>(group.pixels.get())) + L":" + std::to_wstring(extent);
         auto found = icons.find(key);
-        if (found != icons.end())
+        if (found != icons.end()) {
+            std::erase(iconLru, key);
+            iconLru.push_back(key);
             return found->second.Get();
-        if (icons.size() >= 128)
-            icons.clear();
-        ComPtr<ID2D1Bitmap> bitmap;
-        if (group.pixels && group.width && group.height) {
-            target->CreateBitmap(
-                D2D1::SizeU(group.width, group.height), group.pixels->data(), group.width * 4,
-                D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)),
-                &bitmap);
-        } else if (native && images) {
-            ComPtr<IWICBitmap> source;
-            if (SUCCEEDED(images->CreateBitmapFromHICON(native, &source)))
-                target->CreateBitmapFromWicBitmap(source.Get(), nullptr, &bitmap);
         }
+        ComPtr<IWICBitmap> source;
+        if (images && group.pixels && group.width && group.height) {
+            images->CreateBitmapFromMemory(group.width, group.height, GUID_WICPixelFormat32bppPBGRA, group.width * 4,
+                                           static_cast<UINT>(group.pixels->size()), group.pixels->data(), &source);
+        } else if (images && native)
+            images->CreateBitmapFromHICON(native, &source);
+        ComPtr<ID2D1Bitmap> bitmap;
+        if (source) {
+            UINT width = 0, height = 0;
+            source->GetSize(&width, &height);
+            float ratio = std::min({1.0f, extent / static_cast<float>(std::max(1U, width)),
+                                    extent / static_cast<float>(std::max(1U, height))});
+            ComPtr<IWICBitmapScaler> scaled;
+            if (SUCCEEDED(images->CreateBitmapScaler(&scaled)) &&
+                SUCCEEDED(scaled->Initialize(source.Get(), std::max(1U, static_cast<UINT>(width * ratio)),
+                                             std::max(1U, static_cast<UINT>(height * ratio)),
+                                             WICBitmapInterpolationModeFant)))
+                target->CreateBitmapFromWicBitmap(scaled.Get(), nullptr, &bitmap);
+        }
+        while (icons.size() >= 128 && !iconLru.empty()) {
+            icons.erase(iconLru.front());
+            iconLru.pop_front();
+        }
+        iconLru.push_back(key);
         return icons.emplace(std::move(key), bitmap).first->second.Get();
     }
 };
 inline HRESULT Paint(ID2D1RenderTarget *target, IDWriteFactory *writer, Resources &resources, float width,
                      const std::vector<desktop::DockGroup> &groups, const desktop::DockStatus &status, int hovered = -1,
                      int focused = -1, float flash = 1, desktop::DockOptions options = {}, size_t first = 0,
-                     float pointer = -1000, float strength = 0, bool contrast = false) {
+                     float pointer = -1000, float strength = 0, bool contrast = false, bool animated = false,
+                     int dragged = -1) {
     if (!resources.Initialize(writer))
         return E_FAIL;
     auto geometry = desktop::SolveDock(width, groups, status, options, first, pointer, strength);
+    resources.Synchronize(geometry, groups, hovered, dragged, animated);
+    if (resources.previousFocus != focused) {
+        resources.previousFocus = focused;
+        resources.focusOpacity.Snap(animated ? 0.0f : 1.0f);
+        resources.focusOpacity.goal = 1;
+    }
     ComPtr<ID2D1SolidColorBrush> brush;
     HRESULT result = target->CreateSolidColorBrush(D2D1::ColorF(theme::Text), &brush);
     if (FAILED(result))
         return result;
+    ComPtr<ID2D1DeviceContext> context;
+    target->QueryInterface(IID_PPV_ARGS(&context));
+    D2D1::Matrix3x2F transform;
+    target->GetTransform(&transform);
+    float dpiX = 96, dpiY = 96;
+    target->GetDpi(&dpiX, &dpiY);
+    float scale = dpiX / 96 * std::max(.01f, std::abs(transform._11)), pixel = 1 / scale;
     auto fill = [&](layout::Rect r, unsigned color, float radius, float alpha = 1.0f) {
         brush->SetColor(D2D1::ColorF(color, alpha));
         target->FillRoundedRectangle(D2D1::RoundedRect(Rect(r), radius, radius), brush.Get());
@@ -87,76 +236,112 @@ inline HRESULT Paint(ID2D1RenderTarget *target, IDWriteFactory *writer, Resource
     }
     auto pill = geometry.pill;
     if (options.island) {
-        float y = options.edge == anchor::Edge::Bottom ? pill.top : 0;
         ComPtr<ID2D1Factory> factory;
         target->GetFactory(&factory);
-        auto *path = resources.geometryCache.Surface(factory.Get(), false, pill.left, y, pill.Width(),
-                                                     72 - pill.top, options.radius, options.edge);
+        auto *path = resources.geometryCache.Surface(factory.Get(), false, 0, 0, pill.Width(), pill.Height(),
+                                                     options.radius, options.edge);
         if (path) {
+            target->SetTransform(D2D1::Matrix3x2F::Translation(pill.left, pill.top) * transform);
             brush->SetColor(D2D1::ColorF(theme::Surface));
             target->FillGeometry(path, brush.Get());
-            brush->SetColor(D2D1::ColorF(contrast ? theme::Border : theme::Edge,
-                                        contrast ? 1.0f : palette::Tokens::HairlineOuter));
-            target->DrawGeometry(path, brush.Get(), contrast ? 2.0f : 1.0f);
+            target->SetTransform(D2D1::Matrix3x2F::Scale((pill.Width() - pixel) / pill.Width(),
+                                                         (pill.Height() - pixel) / pill.Height()) *
+                                 D2D1::Matrix3x2F::Translation(pill.left + pixel / 2, pill.top + pixel / 2) *
+                                 transform);
+            brush->SetColor(
+                D2D1::ColorF(contrast ? theme::Border : theme::Edge, contrast ? 1.0f : palette::Tokens::HairlineOuter));
+            target->DrawGeometry(path, brush.Get(), contrast ? 2.0f : pixel);
+            target->SetTransform(transform);
         }
     } else {
-        if (!contrast) {
-            // The soft lower rim stays inside the native capsule input region.
-            fill(pill, theme::Ink, 28, .12f);
-            fill({pill.left + .8f, pill.top + .8f, pill.right - .8f, pill.bottom - 2}, theme::Surface, 27);
-        } else
-            fill(pill, theme::Surface, 28);
-        brush->SetColor(D2D1::ColorF(contrast ? theme::Text : theme::Ink, contrast ? 1.0f : .25f));
-        target->DrawRoundedRectangle(
-            D2D1::RoundedRect({pill.left + .6f, pill.top + .6f, pill.right - .6f, pill.bottom - .6f}, 28, 28),
-            brush.Get(), contrast ? 2.0f : 1.0f);
+        fill(pill, theme::Surface, pill.Height() / 2);
+        brush->SetColor(
+            D2D1::ColorF(contrast ? theme::Border : theme::Edge, contrast ? 1.0f : palette::Tokens::HairlineOuter));
+        target->DrawRoundedRectangle(D2D1::RoundedRect(Rect(pill), pill.Height() / 2, pill.Height() / 2), brush.Get(),
+                                     contrast ? 2.0f : pixel);
     }
-    brush->SetColor(D2D1::ColorF(theme::Border));
-    for (float divider : geometry.dividers)
-        target->DrawLine({divider, 24}, {divider, 48}, brush.Get(), 1);
+    if (!contrast) {
+        float y = options.edge == anchor::Edge::Bottom ? pill.top + pixel * 1.5f : pill.bottom - pixel * 1.5f;
+        brush->SetColor(D2D1::ColorF(theme::Edge, palette::Tokens::HairlineInner));
+        target->DrawLine({pill.left + options.radius, y}, {pill.right - options.radius, y}, brush.Get(), pixel);
+    }
+    brush->SetColor(D2D1::ColorF(contrast ? theme::Border : theme::Edge, contrast ? 1.0f : palette::Tokens::Divider));
+    for (float divider : geometry.dividers) {
+        float x = (std::floor(divider / pixel) + .5f) * pixel;
+        target->DrawLine({x, geometry.dividerTop}, {x, geometry.dividerBottom}, brush.Get(), pixel);
+    }
     for (const auto &hit : geometry.hits) {
         bool isGroup = hit.action >= desktop::DockGroupFirst;
         const desktop::DockGroup *app = isGroup ? &groups[hit.action - desktop::DockGroupFirst] : nullptr;
-        if (hit.action == hovered || hit.action == focused || hit.active)
-            fill(hit.rect, hit.active ? theme::AccentSoft : theme::CardHover, 12);
-        if (app && app->flash) {
-            brush->SetColor(D2D1::ColorF(theme::Focus, .5f + .5f * flash));
-            target->DrawRoundedRectangle(D2D1::RoundedRect(Rect(hit.rect), 12, 12), brush.Get(), 1.5f);
-        }
-        auto icon = app ? resources.Icon(target, *app) : nullptr;
-        if (icon) {
-            auto r = hit.rect;
-            float size = std::min(options.iconSize, r.Height() - 4);
-            float cx = r.CenterX(), cy = (r.top + r.bottom) / 2;
-            target->DrawBitmap(icon, {cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2});
+        auto r = hit.rect;
+        float opacity = 1, hover = 0, running = 1;
+        if (app) {
+            auto &v = resources.visuals[app->key];
+            hover = v.hover.value;
+            running = std::clamp(v.running.value, 0.0f, 1.0f);
+            opacity = std::clamp(v.appearance.value, 0.0f, 1.0f);
+            float size = std::min(56.0f, r.Height() * (.6f + .4f * opacity) * (1 + .15f * v.drag.value));
+            float cx = v.x.value + r.Width() / 2;
+            float bounce = std::clamp(v.bounce.value, 0.0f, 6.0f) * anchor::Grow(options.edge);
+            float top = options.edge == anchor::Edge::Bottom ? geometry.baseline - size : geometry.baseline;
+            r = {cx - size / 2, top + bounce, cx + size / 2, top + size + bounce};
+            auto layer = D2D1::LayerParameters();
+            layer.opacity = opacity * (resources.pulseKey == app->key ? flash : 1);
+            target->PushLayer(layer, nullptr);
+            if (!contrast && v.drag.value > .01f)
+                resources.depth.Paint(target, Rect(r), dpiX * std::abs(transform._11), layout::ControlRadius,
+                                      options.edge);
+        } else
+            hover = resources.actionHover[hit.action].value;
+        if (hover > 0 || hit.active || hit.action == focused)
+            fill(r, hit.active ? theme::AccentSoft : theme::CardHover, layout::ControlRadius,
+                 contrast || hit.active ? 1.0f : hover * .6f);
+        auto bitmap = app ? resources.Icon(target, *app, r.Height() > 42, scale) : nullptr;
+        if (bitmap) {
+            float size = std::min(r.Height(), options.iconSize * r.Height() / 40);
+            float cx = r.CenterX(), top = options.edge == anchor::Edge::Bottom ? r.bottom - size : r.top;
+            D2D1_RECT_F destination{cx - size / 2, top, cx + size / 2, top + size};
+            if (context)
+                context->DrawBitmap(bitmap, &destination, 1, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC, nullptr,
+                                    nullptr);
+            else
+                target->DrawBitmap(bitmap, destination);
         } else if (hit.action == desktop::DockApps) {
-            float x = hit.rect.CenterX(), y = (hit.rect.top + hit.rect.bottom) / 2;
-            brush->SetColor(D2D1::ColorF(theme::Accent));
-            target->FillRoundedRectangle(D2D1::RoundedRect({x - 10, y - 12, x + 8, y + 12}, 9, 9), brush.Get());
-            brush->SetColor(D2D1::ColorF(theme::Surface));
-            target->FillEllipse(D2D1::Ellipse({x - 1, y}, 4, 5), brush.Get());
+            float x = r.CenterX() - 8.5f, y = (r.top + r.bottom) / 2 - 8.5f;
             brush->SetColor(D2D1::ColorF(theme::Text));
-            target->DrawLine({x + 10, y - 12}, {x + 10, y + 12}, brush.Get(), 2);
+            for (int row = 0; row < 2; ++row)
+                for (int column = 0; column < 2; ++column) {
+                    D2D1_RECT_F square{x + column * 10, y + row * 10, x + column * 10 + 7, y + row * 10 + 7};
+                    target->FillRoundedRectangle(D2D1::RoundedRect(square, 7.0f / 4, 7.0f / 4), brush.Get());
+                }
         } else {
-            brush->SetColor(D2D1::ColorF(hit.active ? theme::SelectedText : theme::Text));
+            brush->SetColor(D2D1::ColorF(app ? theme::Text : dock::Mix(theme::Muted, theme::Text, hover)));
             std::wstring glyph = hit.label;
             if (app) {
                 const wchar_t *glyphs[]{L"\xE756", L"\xE774", L"\xE715", L"\xE8B7", L"\xE70F"};
                 glyph =
                     app->key.starts_with(L"fixture:") ? glyphs[(hit.action - desktop::DockGroupFirst) % 5] : L"\xE8A5";
             }
-            target->DrawTextW(glyph.c_str(), static_cast<UINT32>(glyph.size()),
-                              hit.action == desktop::DockClock ? resources.text.Get() : resources.icon.Get(),
-                              Rect(hit.rect), brush.Get());
+            if (hit.action == desktop::DockClock)
+                resources.DrawClock(target, writer, brush.Get(), glyph, Rect(r));
+            else
+                target->DrawTextW(glyph.c_str(), static_cast<UINT32>(glyph.size()),
+                                  app ? resources.typography->formats[type::LargeIcon].Get() : resources.icon.Get(),
+                                  Rect(r), brush.Get());
         }
-        if (app && options.runningDots && !app->windows.empty()) {
-            brush->SetColor(D2D1::ColorF(app->active ? theme::Focus : theme::Muted));
-            target->FillEllipse(D2D1::Ellipse({hit.rect.CenterX(), 60}, app->active ? 2.3f : 1.7f, 1.7f), brush.Get());
+        if (app && options.runningDots && running > 0) {
+            brush->SetColor(D2D1::ColorF(contrast ? theme::Text : app->active ? theme::Accent : theme::Muted));
+            target->FillEllipse(
+                D2D1::Ellipse({r.CenterX(), geometry.dotY}, (app->active ? 2.5f : 1.5f) * running, 1.5f * running),
+                brush.Get());
         }
         if (hit.action == focused) {
-            brush->SetColor(D2D1::ColorF(theme::Focus));
-            target->DrawRoundedRectangle(D2D1::RoundedRect(Rect(hit.rect), 12, 12), brush.Get(), 2);
+            brush->SetColor(D2D1::ColorF(theme::Focus, contrast ? 1 : resources.focusOpacity.value));
+            target->DrawRoundedRectangle(D2D1::RoundedRect(Rect(r), layout::ControlRadius, layout::ControlRadius),
+                                         brush.Get(), contrast ? 2.0f : pixel * 1.5f);
         }
+        if (app)
+            target->PopLayer();
     }
     if (translucent)
         target->PopLayer();

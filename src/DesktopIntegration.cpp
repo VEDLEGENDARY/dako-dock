@@ -137,6 +137,7 @@ void Island::UpdateDocks() {
         pins.push_back(std::move(pin));
     }
     desktop::DockStatus status;
+    dockOptions.opaque = opaqueMaterial;
     status.wifi = system.wifi;
     status.volume = system.muted ? L"Muted" : Number(system.volume * 100) + L" percent";
     status.weather = weather.available     ? Number(weather.temperature) + L"°C"
@@ -149,7 +150,8 @@ void Island::UpdateDocks() {
         std::vector<std::wstring> keys;
         for (const auto &key : appPreferences.favorites)
             keys.push_back(key);
-        catalog->RequestIcons(std::move(keys));
+        UINT extent = static_cast<UINT>(std::ceil(56 * std::max(2.0f, dpi / 96) * textScale * 1.5f));
+        catalog->RequestIcons(std::move(keys), extent);
     }
 }
 void Island::OpenFromDock(int action, HMONITOR monitor) {

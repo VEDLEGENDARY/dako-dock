@@ -17,7 +17,8 @@ void Island::RequestVisibleIcons() {
         if (i < apps.size())
             keys.push_back(AppKey(apps[i]));
     }
-    catalog->RequestIcons(std::move(keys));
+    UINT extent = static_cast<UINT>(std::ceil(56 * dpi / 96 * textScale * 1.5f));
+    catalog->RequestIcons(std::move(keys), extent);
 }
 
 std::wstring Island::AppKey(const AppEntry &app) const { return app.parsingName.empty() ? app.name : app.parsingName; }

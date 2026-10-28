@@ -56,6 +56,7 @@ struct DockShell::Impl {
         size_t first = 0;
         DockLayout geometry;
         dockview::Resources resources;
+        graphics::AmbientShadow shadow;
         ComPtr<IAccessible> accessible;
         DockAccessible *provider = nullptr;
         float Scale() const { return dpi / 96.0f * shell->textScale; }
@@ -154,16 +155,36 @@ struct DockShell::Impl {
                                          static_cast<int>(std::lround(pill.bottom * pixels)), radius, radius);
         if (options.island) {
             DeleteObject(region);
-            float y = options.edge == anchor::Edge::Bottom ? pill.top : 0;
-            auto polygon =
-                anchor::ForEdge(options.edge, dock::Attached(pill.left, y, pill.Width(), 72 - pill.top, options.radius),
-                                y, 72 - pill.top);
-            std::array<POINT, 69> points{};
-            for (size_t i = 0; i < points.size(); ++i)
-                points[i] = {static_cast<LONG>(std::lround(polygon[i].x * pixels)),
-                             static_cast<LONG>(std::lround(polygon[i].y * pixels))};
-            region = CreatePolygonRgn(points.data(), static_cast<int>(points.size()), WINDING);
+            auto makeRegion = [&](auto polygon) {
+                polygon = anchor::ForEdge(options.edge, polygon, pill.top, pill.Height());
+                std::vector<POINT> points;
+                for (auto p : polygon)
+                    points.push_back(
+                        {static_cast<LONG>(std::lround(p.x * pixels)), static_cast<LONG>(std::lround(p.y * pixels))});
+                return CreatePolygonRgn(points.data(), static_cast<int>(points.size()), WINDING);
+            };
+            region =
+                pixels > 1.5f
+                    ? makeRegion(dock::Attached<24>(pill.left, pill.top, pill.Width(), pill.Height(), options.radius))
+                    : makeRegion(dock::Attached(pill.left, pill.top, pill.Width(), pill.Height(), options.radius));
         }
+        for (const auto &hit : bar.hits)
+            if (hit.action >= DockGroupFirst) {
+                auto r = hit.rect;
+                r.left -= 4;
+                r.right += 4;
+                if (options.edge == anchor::Edge::Bottom)
+                    r.top -= 8;
+                else
+                    r.bottom += 8;
+                int corner = static_cast<int>(layout::ControlRadius * pixels * 2);
+                HRGN icon = CreateRoundRectRgn(static_cast<int>(std::floor(r.left * pixels)),
+                                               static_cast<int>(std::floor(r.top * pixels)),
+                                               static_cast<int>(std::ceil(r.right * pixels)),
+                                               static_cast<int>(std::ceil(r.bottom * pixels)), corner, corner);
+                CombineRgn(region, region, icon, RGN_OR);
+                DeleteObject(icon);
+            }
         if (bar.hideOffset)
             OffsetRgn(region, 0, static_cast<int>(std::lround(bar.hideOffset * bar.Scale())));
         if (!SetWindowRgn(bar.window, region, TRUE))
@@ -251,7 +272,7 @@ struct DockShell::Impl {
                      rect.bottom - rect.top, SWP_NOACTIVATE);
         if (changed || dpiChanged || !bar.target) {
             bar.target.Reset();
-            bar.resources.icons.clear();
+            bar.resources.ResetBitmaps();
             bar.composition.Reset();
             HRESULT rendered = bar.composition.Create(bar.window, factory.Get(), rect.right - rect.left,
                                                       rect.bottom - rect.top, static_cast<float>(bar.dpi), &bar.target);
@@ -310,6 +331,8 @@ struct DockShell::Impl {
             if (hide == bar->hidden)
                 continue;
             bar->hidden = hide;
+            if (hide)
+                bar->shadow.Hide();
             if (!hide) {
                 status = ReadClock(std::move(status));
                 Rebuild(*bar);
@@ -332,9 +355,10 @@ struct DockShell::Impl {
             Rebuild(bar);
             return;
         }
-        if (!bar.motionTime)
+        if (!bar.motionTime) {
             bar.motionTime = GetTickCount64();
-        SetTimer(bar.window, MotionTimer, 16, nullptr);
+            SetTimer(bar.window, MotionTimer, 16, nullptr);
+        }
     }
     void Paint(DockSurface &bar) {
         PAINTSTRUCT paint{};
@@ -343,20 +367,37 @@ struct DockShell::Impl {
             bar.target->BeginDraw();
             bar.target->SetTransform(D2D1::Matrix3x2F::Scale(textScale, textScale));
             float pulse = 1;
-            if (!reduced && bar.pulseEnd > GetTickCount64())
-                pulse = .5f + .5f * std::cos((bar.pulseEnd - GetTickCount64()) / 1800.0f * 18.8495559f);
+            if (reduced && bar.pulseEnd > GetTickCount64()) {
+                float elapsed = 1 - (bar.pulseEnd - GetTickCount64()) / 120.0f;
+                pulse = .7f + .3f * std::abs(2 * elapsed - 1);
+            }
             bar.target->SetTransform(D2D1::Matrix3x2F::Scale(textScale, textScale) *
                                      D2D1::Matrix3x2F::Translation(0, bar.hideOffset * textScale));
             dockview::Paint(bar.target.Get(), writer.Get(), bar.resources, bar.Width(), bar.groups, status, bar.hover,
                             GetFocus() == bar.window ? bar.focus : -1, pulse, options, bar.first, bar.pointer.value,
-                            reduced ? 0 : bar.magnify.value, contrast);
+                            reduced ? 0 : bar.magnify.value, contrast, !reduced, bar.drag);
             if (SUCCEEDED(bar.target->EndDraw()))
                 bar.composition.Present();
+            if (!reduced && bar.resources.Moving())
+                ArmMotion(bar);
         }
+        RECT bounds{};
+        GetWindowRect(bar.window, &bounds);
+        auto pill = bar.geometry.pill;
+        float scale = bar.Scale();
+        RECT surface{bounds.left + static_cast<LONG>(std::lround(pill.left * scale)),
+                     bounds.top + static_cast<LONG>(std::lround(pill.top * scale)),
+                     bounds.left + static_cast<LONG>(std::lround(pill.right * scale)),
+                     bounds.top + static_cast<LONG>(std::lround(pill.bottom * scale))};
+        bool fits = (pill.Width() + 96) * scale <= bounds.right - bounds.left;
+        bar.shadow.Position(bar.window, surface, bar.dpi * textScale, options.radius, options.edge, 1,
+                            fits && !options.opaque && !contrast && !bar.hidden && !bar.hideOffset);
         EndPaint(bar.window, &paint);
     }
     int Hit(const DockSurface &bar, float x, float y) const {
-        if (!CapsuleContains(bar.geometry.pill, x, y))
+        if (!CapsuleContains(bar.geometry.pill, x, y) &&
+            std::none_of(bar.hits.begin(), bar.hits.end(),
+                         [&](const DockHit &hit) { return hit.action >= DockGroupFirst && hit.rect.Contains(x, y); }))
             return -1;
         for (const auto &hit : bar.hits)
             if (hit.rect.Contains(x, y))
@@ -374,6 +415,18 @@ struct DockShell::Impl {
         }
         InvalidateRect(bar.window, nullptr, FALSE);
     }
+    void LaunchFeedback(DockSurface &bar, const std::wstring &key) {
+        if (contrast)
+            return;
+        if (reduced) {
+            bar.resources.pulseKey = key;
+            bar.pulseEnd = GetTickCount64() + 120;
+            SetTimer(bar.window, FlashTimer, 16, nullptr);
+        } else {
+            bar.resources.Launch(key);
+            ArmMotion(bar);
+        }
+    }
     void ActivateGroup(DockSurface &bar, size_t index, bool launch = false) {
         if (index >= bar.groups.size())
             return;
@@ -381,6 +434,7 @@ struct DockShell::Impl {
         activeMonitor = bar.monitor;
         HidePreview();
         if (launch || group.windows.empty()) {
+            LaunchFeedback(bar, group.key);
             if (!group.launchKey.empty() && callbacks.launch)
                 callbacks.launch(group.launchKey);
             return;
@@ -753,7 +807,7 @@ struct DockShell::Impl {
             break;
         case WM_DPICHANGED:
             bar.target.Reset();
-            bar.resources.icons.clear();
+            bar.resources.ResetBitmaps();
             Position(bar);
             return 0;
         case WM_DISPLAYCHANGE:
@@ -779,10 +833,11 @@ struct DockShell::Impl {
                 auto now = GetTickCount64();
                 float dt = std::min(.05f, (now - bar.motionTime) / 1000.0f);
                 bar.motionTime = now;
-                bar.magnify.Step(dt, 34);
-                bar.pointer.Step(dt, 34);
+                bar.magnify.Step(dt, dock::motion::Snappy, options.motionSpeed);
+                bar.pointer.Step(dt, dock::motion::Snappy, options.motionSpeed);
+                bar.resources.Step(dt, options.motionSpeed);
                 Rebuild(bar);
-                if (!bar.magnify.Moving() && !bar.pointer.Moving()) {
+                if (!bar.magnify.Moving() && !bar.pointer.Moving() && !bar.resources.Moving()) {
                     KillTimer(bar.window, MotionTimer);
                     bar.motionTime = 0;
                 }
@@ -795,7 +850,7 @@ struct DockShell::Impl {
                 ArmClock();
             }
             if (wparam == FlashTimer) {
-                if (reduced || GetTickCount64() >= bar.pulseEnd)
+                if (GetTickCount64() >= bar.pulseEnd)
                     KillTimer(bar.window, FlashTimer);
                 InvalidateRect(bar.window, nullptr, FALSE);
             }
@@ -830,6 +885,10 @@ struct DockShell::Impl {
                 (std::abs(GET_X_LPARAM(lparam) - bar.pressedPoint.x) > DipPixels(6, bar.dpi) ||
                  std::abs(GET_Y_LPARAM(lparam) - bar.pressedPoint.y) > DipPixels(6, bar.dpi)))
                 bar.drag = bar.pressed - DockGroupFirst;
+            if (bar.drag >= 0) {
+                bar.magnify.goal = 0;
+                InvalidateRect(bar.window, nullptr, FALSE);
+            }
             return 0;
         }
         case WM_MOUSEHOVER:
@@ -975,8 +1034,9 @@ struct DockShell::Impl {
             if (recovery && !preview)
                 recovery->ForgetBar(bar->window);
             bar->target.Reset();
+            bar->shadow.Hide();
             bar->composition.Reset();
-            bar->resources.icons.clear();
+            bar->resources.ResetBitmaps();
             if (bar->tooltip)
                 DestroyWindow(bar->tooltip);
             if (bar->window)
@@ -1222,10 +1282,10 @@ void DockShell::Flash(HWND window) {
         self.Rebuild(*bar);
         bool contains =
             std::any_of(bar->groups.begin(), bar->groups.end(), [&](const DockGroup &group) { return group.flash; });
-        if (contains && !self.reduced) {
-            bar->pulseEnd = GetTickCount64() + 1800;
-            SetTimer(bar->window, FlashTimer, 32, nullptr);
-        }
+        if (contains)
+            for (const auto &group : bar->groups)
+                if (group.flash)
+                    self.LaunchFeedback(*bar, group.key);
     }
 }
 void DockShell::Focus(HMONITOR monitor) {

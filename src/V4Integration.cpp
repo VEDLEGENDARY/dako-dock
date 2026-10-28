@@ -23,6 +23,7 @@ void Island::ApplyV4Values() {
     dockOptions.labels = options.Bool(L"Labels");
     dockOptions.runningDots = options.Bool(L"RunningDots");
     dockOptions.opacity = options.Int(L"Opacity") / 100.0f;
+    dockOptions.motionSpeed = options.Int(L"Animation") / 100.0f;
     dockOptions.hideApps = v4::Split(options.Text(L"HideApps"));
     dockOptions.monitorMode = options.Text(L"Monitor");
     visibleTabs.clear();

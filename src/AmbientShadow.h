@@ -62,12 +62,16 @@ class AmbientShadow {
             }
         }
     }
-    bool Build(int width, int height, float dpi, float radius) {
-        ReleaseBitmap();
+
+  public:
+    static std::vector<unsigned> Slice(float dpi, float radius, float sigma, float inset, float opacity, int &tile,
+                                       int &cut) {
         float scale = dpi / 96;
-        int margin = static_cast<int>(std::lround(48 * scale));
-        int corner = static_cast<int>(std::ceil(radius * scale)), cut = margin + corner;
-        int tile = cut * 2 + 8, right = tile - margin;
+        int margin = static_cast<int>(std::lround(inset * scale));
+        int corner = static_cast<int>(std::ceil(radius * scale));
+        cut = margin + corner;
+        tile = cut * 2 + 8;
+        int right = tile - margin;
         std::vector<float> slice(static_cast<size_t>(tile) * tile);
         for (int y = margin; y < right; ++y)
             for (int x = margin; x < right; ++x) {
@@ -76,7 +80,18 @@ class AmbientShadow {
                 slice[y * tile + x] = distance <= corner * corner ? 1.0f : 0.0f;
             }
         // Three box filters approximate sigma=20 DIP without a runtime image dependency.
-        Blur(slice, tile, std::max(1, static_cast<int>(std::lround(20 * scale))));
+        Blur(slice, tile, std::max(1, static_cast<int>(std::lround(sigma * scale))));
+        std::vector<unsigned> pixels(slice.size());
+        for (size_t i = 0; i < slice.size(); ++i)
+            pixels[i] = static_cast<unsigned>(std::lround(std::clamp(slice[i] * opacity, 0.0f, 1.0f) * 255)) << 24;
+        return pixels;
+    }
+
+  private:
+    bool Build(int width, int height, float dpi, float radius) {
+        ReleaseBitmap();
+        int tile = 0, cut = 0;
+        auto slice = Slice(dpi, radius, 20, 48, .38f, tile, cut);
         BITMAPINFO info{};
         info.bmiHeader = {sizeof(BITMAPINFOHEADER), width, -height, 1, 32, BI_RGB, 0, 0, 0, 0, 0};
         void *raw = nullptr;
@@ -93,9 +108,7 @@ class AmbientShadow {
         };
         for (int y = 0; y < height; ++y)
             for (int x = 0; x < width; ++x) {
-                auto alpha = static_cast<unsigned>(std::lround(std::clamp(
-                    slice[source(y, height) * tile + source(x, width)] * .38f, 0.0f, 1.0f) * 255));
-                pixels[static_cast<size_t>(y) * width + x] = alpha << 24;
+                pixels[static_cast<size_t>(y) * width + x] = slice[source(y, height) * tile + source(x, width)];
             }
         return true;
     }
@@ -125,10 +138,9 @@ class AmbientShadow {
             type.hInstance = GetModuleHandleW(nullptr);
             type.lpszClassName = L"Dako.AmbientShadow";
             RegisterClassW(&type);
-            window_ = CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE |
-                                         WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
-                                     type.lpszClassName, L"", WS_POPUP, 0, 0, 1, 1, nullptr, nullptr,
-                                     type.hInstance, nullptr);
+            window_ = CreateWindowExW(
+                WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+                type.lpszClassName, L"", WS_POPUP, 0, 0, 1, 1, nullptr, nullptr, type.hInstance, nullptr);
         }
         if (!window_)
             return;
@@ -140,7 +152,7 @@ class AmbientShadow {
             key_ = key;
         }
         POINT destination{panel.left - margin,
-                           panel.top - margin + static_cast<LONG>(std::lround(10 * dpi / 96 * anchor::Grow(edge)))};
+                          panel.top - margin + static_cast<LONG>(std::lround(10 * dpi / 96 * anchor::Grow(edge)))};
         BYTE alpha = static_cast<BYTE>(std::lround(std::clamp(reveal, 0.0f, 1.0f) * 255));
         BLENDFUNCTION blend{AC_SRC_OVER, 0, alpha, AC_SRC_ALPHA};
         SIZE size{w, h};

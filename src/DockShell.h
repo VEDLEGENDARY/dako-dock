@@ -128,9 +128,10 @@ inline std::vector<DockGroup> BuildDockGroups(const std::vector<PinEntry> &pins,
 }
 struct DockOptions {
     bool reversedScroll = false, autoHide = false, island = false, magnify = true, labels = true, runningDots = true;
+    bool opaque = true;
     anchor::Edge edge = anchor::Edge::Bottom;
     int fullscreenPolicy = 0;
-    float radius = 20, iconSize = 36, opacity = 1;
+    float radius = layout::PanelRadius, iconSize = 40, opacity = 1, motionSpeed = 1;
     std::vector<std::wstring> hideApps;
     std::wstring monitorMode = L"Each";
     unsigned statusMask = 31;
@@ -152,6 +153,7 @@ struct DockHit {
 };
 struct DockLayout {
     layout::Rect pill, apps;
+    float stripHeight = 72, baseline = 64, dotY = 68, dividerTop = 34, dividerBottom = 54;
     std::vector<DockHit> hits;
     std::vector<float> dividers;
     size_t visibleGroups = 0, firstGroup = 0;
@@ -159,7 +161,7 @@ struct DockLayout {
 inline DockLayout SolveDock(float width, const std::vector<DockGroup> &groups, const DockStatus &status,
                             DockOptions options = {}, size_t first = 0, float pointer = -1000, float strength = 0) {
     DockLayout out;
-    float limit = std::max(100.0f, std::min(width * .90f, width - 16));
+    float limit = std::max(100.0f, std::min(width * .90f, width - 48));
     bool compact = limit < 380;
     if (limit < 308) {
         options.showDesktop = false;
@@ -183,20 +185,26 @@ inline DockLayout SolveDock(float width, const std::vector<DockGroup> &groups, c
     }
     float fixed = 24 + launcher + 16 + statuses + 16;
     float available = std::max(32.0f, limit - fixed);
-    size_t capacity = static_cast<size_t>(std::max(0.0f, std::floor((available - 16) / 46)));
+    size_t capacity = static_cast<size_t>(std::max(0.0f, std::floor((available - 32) / 46)));
     bool overflow = groups.size() > capacity;
     if (overflow && capacity)
-        capacity = static_cast<size_t>(std::max(0.0f, std::floor((available - 48) / 46)));
+        capacity = static_cast<size_t>(std::max(0.0f, std::floor((available - 64) / 46)));
     out.visibleGroups = std::min(capacity, groups.size());
     out.firstGroup = groups.empty() ? 0 : std::min(first, groups.size() - 1);
     if (out.firstGroup + out.visibleGroups > groups.size())
         out.firstGroup = groups.size() - out.visibleGroups;
-    float apps = groups.empty() ? 12.0f : 16 + 46 * static_cast<float>(out.visibleGroups) + (overflow ? 32.0f : 0.0f);
+    float apps = groups.empty() ? 12.0f : 32 + 46 * static_cast<float>(out.visibleGroups) + (overflow ? 32.0f : 0.0f);
     apps = std::min(apps, available);
     float total = std::min(limit, fixed + apps), x = (width - total) / 2;
-    out.pill = {x, 8, x + total, 64};
+    bool bottom = options.edge == anchor::Edge::Bottom;
+    out.pill = {x, bottom ? 16.0f : 0.0f, x + total, bottom ? 72.0f : 56.0f};
+    out.baseline = bottom ? out.pill.bottom - 8 : out.pill.top + 8;
+    out.dotY = out.baseline + (bottom ? 4 : -4);
+    out.dividerTop = (out.pill.top + out.pill.bottom) / 2 - 10;
+    out.dividerBottom = out.dividerTop + 20;
     auto add = [&](int id, float size, const std::wstring &name, const std::wstring &label, bool active = false) {
-        out.hits.push_back({id, id, {x, 16, x + size, 56}, name, label, active});
+        float top = bottom ? out.baseline - 40 : out.baseline;
+        out.hits.push_back({id, id, {x, top, x + size, top + 40}, name, label, active});
         x += size;
     };
     x += 12;
@@ -208,12 +216,16 @@ inline DockLayout SolveDock(float width, const std::vector<DockGroup> &groups, c
         add(DockTaskView, 40, L"Task view", L"\xE7C4");
     out.dividers.push_back(x + 8);
     x += 16;
-    out.apps = {x, 12, x + apps, 60};
+    out.apps = {x, 0, x + apps, out.stripHeight};
     std::vector<float> sizes;
     float occupied = 0;
+    float natural = out.visibleGroups ? 46 * static_cast<float>(out.visibleGroups) - 6 : 0;
+    float naturalX = x + std::max(0.0f, (apps - (overflow ? 32 : 0) - natural) / 2);
     for (size_t slot = 0; slot < out.visibleGroups; ++slot) {
-        float base = x + 8 + static_cast<float>(slot) * 46 + 20;
-        float d = (pointer - base) / 60, size = 40 + 8 * std::clamp(strength, 0.0f, 1.0f) * std::exp(-d * d);
+        float base = naturalX + static_cast<float>(slot) * 46 + 20;
+        float distance = std::min(1.0f, std::abs(pointer - base) / 72);
+        float falloff = .5f + .5f * std::cos(distance * 3.14159265359f);
+        float size = 40 + 16 * std::clamp(strength, 0.0f, 1.0f) * falloff;
         sizes.push_back(size);
         occupied += size + (slot ? 6 : 0);
     }
@@ -223,13 +235,13 @@ inline DockLayout SolveDock(float width, const std::vector<DockGroup> &groups, c
         const auto &group = groups[i];
         if (i && group.pinned != groups[i - 1].pinned)
             out.dividers.push_back(appX - 3);
-        float size = sizes[slot], center = 36;
+        float size = sizes[slot], top = bottom ? out.baseline - size : out.baseline;
         std::wstring name = group.name + (group.pinned ? L", pinned" : L"");
         name +=
             group.windows.empty() ? L", launch" : L", " + std::to_wstring(group.windows.size()) + L" running windows";
         out.hits.push_back({DockGroupFirst + static_cast<int>(i),
                             DockGroupFirst + static_cast<int>(i),
-                            {appX, center - size / 2, appX + size, center + size / 2},
+                            {appX, top, appX + size, top + size},
                             name,
                             L"\xE8A5",
                             group.active});
@@ -240,7 +252,8 @@ inline DockLayout SolveDock(float width, const std::vector<DockGroup> &groups, c
         float scrollX = std::max(out.apps.left, x - 32);
         out.hits.push_back({DockOverflow,
                             DockOverflow,
-                            {scrollX, 16, scrollX + 32, 56},
+                            {scrollX, bottom ? out.baseline - 40 : out.baseline, scrollX + 32,
+                             bottom ? out.baseline : out.baseline + 40},
                             L"Scroll pinned and running apps",
                             L"\xE76C"});
     }

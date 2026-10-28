@@ -2,6 +2,7 @@
 #include <appmodel.h>
 #include <shellapi.h>
 #include <shobjidl.h>
+#include <shlobj.h>
 #include <initguid.h>
 #include <propkey.h>
 #include <wrl/client.h>
@@ -25,14 +26,20 @@ void ProcessIdentity(DWORD id, WindowEntry &entry) {
     }
     CloseHandle(process);
 }
-std::shared_ptr<WindowIcon> ReadIcon(HWND window) {
+std::shared_ptr<WindowIcon> ReadIcon(HWND window, const std::wstring &path) {
+    if (!path.empty()) {
+        UINT extent = std::clamp(56 * GetDpiForWindow(window) / 64, 192U, 512U);
+        HICON large = nullptr;
+        if (SUCCEEDED(SHDefExtractIconW(path.c_str(), 0, 0, &large, nullptr, MAKELONG(extent, 0))) && large)
+            return std::make_shared<WindowIcon>(large);
+    }
     DWORD_PTR value = 0;
-    SendMessageTimeoutW(window, WM_GETICON, ICON_SMALL2, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 20, &value);
+    SendMessageTimeoutW(window, WM_GETICON, ICON_BIG, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 20, &value);
     HICON icon = reinterpret_cast<HICON>(value);
     if (!icon)
-        icon = reinterpret_cast<HICON>(GetClassLongPtrW(window, GCLP_HICONSM));
-    if (!icon)
         icon = reinterpret_cast<HICON>(GetClassLongPtrW(window, GCLP_HICON));
+    if (!icon)
+        icon = reinterpret_cast<HICON>(GetClassLongPtrW(window, GCLP_HICONSM));
     if (!icon)
         return {};
     HICON copy = CopyIcon(icon);
@@ -188,8 +195,9 @@ void WindowList::Run() {
         std::map<HWND, std::pair<DWORD, std::shared_ptr<WindowIcon>>> next;
         for (auto &entry : entries) {
             auto found = seen.find(entry.window);
-            entry.icon = found != seen.end() && found->second.first == entry.process ? found->second.second
-                                                                                     : ReadIcon(entry.window);
+            entry.icon = found != seen.end() && found->second.first == entry.process
+                             ? found->second.second
+                             : ReadIcon(entry.window, entry.executable);
             next[entry.window] = {entry.process, entry.icon};
         }
         seen = std::move(next);
