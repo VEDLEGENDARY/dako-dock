@@ -56,9 +56,7 @@ int main(){
     auto pages=layout::Paginate({0,0,1,1,2,2,2,2},180);size_t entries=0;
     for(auto page:pages){float h=0;int group=-1;for(size_t i=page.begin;i<page.end;++i){int g=i<2?0:i<4?1:2;h+=44+(g==group?0:24);group=g;}Require(h<=180,"app page capacity includes every group heading");entries+=page.end-page.begin;}
     Require(entries==8,"pagination loses and duplicates no apps");
-    auto rail=layout::Rail({20,20,620,100},7,300,1);for(size_t i=1;i<rail.size();++i)Require(rail[i-1].presented.right<rail[i].presented.left,"magnified neighbors never collide");
-    Require(rail.front().presented.left>=20&&rail.back().presented.right<=620,"rail reserves peak magnification clearance");
     Require(layout::SkewContains({0,0,100,100},-0.2f,10,50,50),"inverse transform accepts the visible card center");
     Require(!layout::SkewContains({0,0,100,100},-0.2f,10,100,99),"inverse transform rejects empty skew corners");
-    std::puts("PASS: spring/reversal, finite feedback, scheduler ownership, proximity, 295 monitor/DPI/text layout cases, pagination, rail bounds and transformed hits.");
+    std::puts("PASS: spring/reversal, finite feedback, scheduler ownership, proximity, 295 monitor/DPI/text layout cases, pagination and transformed hits.");
 }

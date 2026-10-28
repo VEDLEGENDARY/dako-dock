@@ -1,5 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
+& (Join-Path $PSScriptRoot 'test-island.ps1')
 New-Item -ItemType Directory -Force -Path (Join-Path $projectRoot 'build\tests\motion') | Out-Null
 & (Join-Path $PSScriptRoot 'test-modules.ps1')
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'

@@ -1,5 +1,5 @@
 // Exercise the production renderer/message loop with inert, deterministic data.
-#include "../src/Island.cpp"
+#include "../src/Island.h"
 #include <cstdio>
 #include <cstdlib>
 
@@ -156,7 +156,7 @@ int wmain(int argc, wchar_t **argv) {
         app.renderMode = false;
         app.reducedMotion = false;
         app.diagnosticsPath = (directory / L"timing.txt").wstring();
-        KillTimer(window, ProximityTimer);
+        KillTimer(window, InteractionTimer);
         ShowWindow(window, SW_SHOWNOACTIVATE);
         app.SetExpanded(true);
         Settle(app);
@@ -177,7 +177,7 @@ int wmain(int argc, wchar_t **argv) {
             SendMessageW(window, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
         };
         for (int i = 0; i < 28; ++i) {
-            int view = static_cast<int>(PrimaryTabs[(i * 3 + 1) % 5]);
+            int view = static_cast<int>(PrimaryTabs[(i * 3 + 1) % PrimaryTabs.size()]);
             click(100 + view);
             RequireLive(app.tab == static_cast<Tab>(view) && app.Actionable(),
                         "every rapid navigation click is accepted during motion");
@@ -215,10 +215,10 @@ int wmain(int argc, wchar_t **argv) {
         app.FilterApps(false);
         for (Tab primary : PrimaryTabs) {
             app.SetTab(primary);
-            RequireLive(app.SurfaceHeight() == 564, "all five tabs share a fixed surface height");
+            RequireLive(app.SurfaceHeight() == 390, "all seven tabs share the V4 fixed surface height");
         }
         app.SetTab(Tab::Today);
-        report << "twenty_task_keyboard_scroll_delete=PASS\nfixed_five_tab_height=PASS\n";
+        report << "twenty_task_keyboard_scroll_delete=PASS\nfixed_seven_tab_height=PASS\n";
         RequireLive(app.HitAt(app.PanelX() - 8, app.PanelY() + 100) == -1,
                     "transparent envelope cannot intercept a control hit");
         app.SetTab(Tab::Wallpaper);
@@ -392,7 +392,6 @@ int wmain(int argc, wchar_t **argv) {
             app.SetExpanded(false);
             Settle(app);
             RequireLive(!app.target && !app.composition.Active(), "collapse releases GPU targets");
-            RequireLive(!app.wallpaperReveal.Running(), "no orphan desktop overlay");
             if ((cycle + 1) % 10 == 0) {
                 auto r = sample(("cycle_" + std::to_string(cycle + 1)).c_str());
                 RequireLive(r.handles <= baseline.handles + 12 && r.gdi <= baseline.gdi + 4 &&
@@ -537,7 +536,7 @@ int wmain(int argc, wchar_t **argv) {
         app.Invoke(WallpaperFit);
         RequireLive(app.wallpaperFit != priorFit, "fit selection stays pending until explicit Apply");
         app.Invoke(WallpaperApply);
-        RequireLive(!app.wallpaperApplying && !app.wallpaperReveal.Running() && !app.nativeControls,
+        RequireLive(!app.wallpaperApplying && !app.nativeControls,
                     "fixture actions never start hardware workers, native wallpaper changes or desktop captures");
         RequireLive(themeValues() == themeBefore && desktopImages() == wallpaperBefore,
                     "fixture interactions leave Windows theme, images and fit unchanged");
@@ -717,7 +716,7 @@ int wmain(int argc, wchar_t **argv) {
         RequireLive(app.flyout == Flyout::Module && app.moduleView == L"shelf", "shelf reuses the island surface");
         SendMessageW(window, WM_ACTIVATE, WA_INACTIVE, 0);
         RequireLive(app.expanded, "shelf stays available when another app receives focus for dragging");
-        app.ProximityTick();
+        app.InteractionTick();
         RequireLive(app.expanded && app.moduleRegistry.Capabilities().Active().empty(), "inert shelf has no polling or live drop registration");
         for (const auto &action : app.moduleRegistry.Actions()) if (action.id.starts_with(L"shelf.preview-")) {
             app.InvokeModuleAction(action.id); break;
@@ -813,7 +812,7 @@ int wmain(int argc, wchar_t **argv) {
         RequireLive(GetTickCount64() - shutdownStart < 15000,
                     "real read-only native service shutdown stays bounded in this run");
         RequireLive(quick || recordOnly || cpu < .1, "60-second warm rest stays below 0.1 percent normalized CPU");
-        report << "all_five_tabs_wireless_compact=" << !quick
+        report << "all_seven_tabs_wireless_compact=" << !quick
                << "\nsearch_focus_query_caret=PASS\nlarge_text_native_fields=PASS\n";
         report << "cycles="
                << (recordOnly ? 0

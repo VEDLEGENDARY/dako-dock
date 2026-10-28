@@ -38,7 +38,7 @@ int main() {
         SettingsStore store(path);
         RequireFoundation(store.Get(L"Dako")[L"Appearance"] == L"2" && !fs::exists(path),
                           "legacy read is side-effect free");
-        RequireFoundation(store.Migrate() && store.Get(L"Schema")[L"Version"] == L"3", "versioned migration commits");
+        RequireFoundation(store.Migrate() && store.Get(L"Schema")[L"Version"] == std::to_wstring(SettingsStore::Version), "versioned migration commits");
         RequireFoundation(store.Get(L"Favorites")[L"0"] == L"fixture:star" &&
                               store.Get(L"Recent")[L"0"] == L"fixture:recent",
                           "favorites and recents migrate");

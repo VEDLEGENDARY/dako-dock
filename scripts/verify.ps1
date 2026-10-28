@@ -56,6 +56,9 @@ foreach ($scale in 100,125,150,175,200) { foreach ($text in 125,150,200,225) {
 } }
 foreach ($appearance in 0,1) { foreach ($page in 0,1,2,3) { $expected += "features-theme-$appearance-$page" } }
 
+$expected += @('v4-Controls','v4-Today','v4-Stats','v4-Clipboard','v4-Apps','v4-Wallpaper','v4-Power','v4-peek')
+foreach ($edge in 0,1) { foreach ($scale in 100,125,150,200) { $expected += "v4-dock-$edge-$scale" } }
+
 foreach ($name in $expected) {
     $capture = Get-Item -LiteralPath (Join-Path $renderDir "$name.png")
     $bytes = [System.IO.File]::ReadAllBytes($capture.FullName)

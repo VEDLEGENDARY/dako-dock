@@ -306,10 +306,13 @@ int wmain(int argc, wchar_t **argv) {
         DeleteObject(nativeRegion);
         SendMessageW(barWindow, desktop::DockCallback, ABN_FULLSCREENAPP, TRUE);
         PumpDock(50);
+        RequireDock(IsWindowVisible(barWindow)!=FALSE,"V4 Always show keeps the island above fullscreen");
+        desktop::DockOptions fullscreenPolicy;fullscreenPolicy.fullscreenPolicy=2;bars.Options(fullscreenPolicy);bars.RefreshFullscreen();
         RequireDock(!IsWindowVisible(barWindow), "fullscreen AppBar notification hides the bar");
         SendMessageW(barWindow, desktop::DockCallback, ABN_FULLSCREENAPP, FALSE);
         PumpDock(50);
         RequireDock(IsWindowVisible(barWindow) != FALSE, "fullscreen exit restores the bar");
+        bars.Options({});
         std::fprintf(stderr, "stage fullscreen PASS\n");
         Microsoft::WRL::ComPtr<IAccessible> accessible;
         RequireDock(SUCCEEDED(AccessibleObjectFromWindow(barWindow, static_cast<DWORD>(OBJID_CLIENT), IID_IAccessible,
