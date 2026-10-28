@@ -1,24 +1,7 @@
-#pragma once
-// Included by Island.cpp after the Island declaration.
-struct DockBodyScope {
-    Island &app;
-    D2D1::Matrix3x2F saved;
-    explicit DockBodyScope(Island &value) : app(value) {
-        app.buildingBody = true;
-        if (!app.layoutOnly) {
-            app.target->GetTransform(&saved);
-            app.target->PushAxisAlignedClip(app.Body(), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-            app.target->SetTransform(D2D1::Matrix3x2F::Translation(0, -app.scroll) * saved);
-        }
-    }
-    ~DockBodyScope() {
-        app.buildingBody = false;
-        if (!app.layoutOnly) {
-            app.target->SetTransform(saved);
-            app.target->PopAxisAlignedClip();
-        }
-    }
-};
+#include "Island.h"
+#include "SettingsPageModel.h"
+#include "IslandBodyScope.h"
+
 size_t Island::PaletteSlots() const {
     return std::min(size_t{6}, static_cast<size_t>(std::max(1.0f, (Body().bottom - Body().top - 48) / 44)));
 }
@@ -46,13 +29,13 @@ void Island::BuildPalette() {
     for (const auto &action : actions)
         all.push_back({L"action:" + std::to_wstring(action.first), action.second, L"", action.first});
     for (const auto &[id, label] : {std::pair{static_cast<int>(SleepNow), IDS_COMMAND_SLEEP},
-                                  std::pair{static_cast<int>(RestartNow), IDS_COMMAND_RESTART},
-                                  std::pair{static_cast<int>(Dark), IDS_COMMAND_DARK}})
+                                    std::pair{static_cast<int>(RestartNow), IDS_COMMAND_RESTART},
+                                    std::pair{static_cast<int>(Dark), IDS_COMMAND_DARK}})
         all.push_back({L"action:" + std::to_wstring(id), modules::String(label), L"", id});
     all.push_back({L"features", modules::String(IDS_FEATURES), L"", 2900});
     for (const auto &action : moduleRegistry.Actions())
-        all.push_back({L"module:" + action.id, action.text.empty() ? modules::String(action.label) : action.text,
-                       L"", 0, nullptr, action.id});
+        all.push_back({L"module:" + action.id, action.text.empty() ? modules::String(action.label) : action.text, L"",
+                       0, nullptr, action.id});
     for (const auto &app : apps)
         all.push_back({L"app:" + AppKey(app), app.name, AppKey(app)});
     for (const auto &item : runningWindows)
@@ -63,17 +46,20 @@ void Island::BuildPalette() {
     for (size_t index = 0; index < all.size(); ++index) {
         const auto &item = all[index];
         bool learn = !item.target && !item.moduleAction.starts_with(L"clipboard.") &&
-            !item.moduleAction.starts_with(L"utilities.result-") && !item.moduleAction.starts_with(L"files.result-") &&
-            !item.moduleAction.starts_with(L"shelf.") && !item.moduleAction.starts_with(L"windows.page-result-") &&
-            !item.moduleAction.starts_with(L"drives.eject-") && item.key.size() <= 512;
+                     !item.moduleAction.starts_with(L"utilities.result-") &&
+                     !item.moduleAction.starts_with(L"files.result-") && !item.moduleAction.starts_with(L"shelf.") &&
+                     !item.moduleAction.starts_with(L"windows.page-result-") &&
+                     !item.moduleAction.starts_with(L"drives.eject-") && item.key.size() <= 512;
         commandCatalog.Add({item.key, item.label, L"", learn, index}, [this, item] { ExecuteCommand(item); });
     }
     auto match = [](const command::CatalogAction &action, const std::wstring &query) {
-        if (query.empty()) return 0;
-        if (CompareStringEx(LOCALE_NAME_USER_DEFAULT, NORM_IGNORECASE, action.label.c_str(), -1,
-                            query.c_str(), -1, nullptr, nullptr, 0) == CSTR_EQUAL) return 3;
-        int found = FindNLSStringEx(LOCALE_NAME_USER_DEFAULT, FIND_FROMSTART | NORM_IGNORECASE,
-            action.label.c_str(), -1, query.c_str(), -1, nullptr, nullptr, nullptr, 0);
+        if (query.empty())
+            return 0;
+        if (CompareStringEx(LOCALE_NAME_USER_DEFAULT, NORM_IGNORECASE, action.label.c_str(), -1, query.c_str(), -1,
+                            nullptr, nullptr, 0) == CSTR_EQUAL)
+            return 3;
+        int found = FindNLSStringEx(LOCALE_NAME_USER_DEFAULT, FIND_FROMSTART | NORM_IGNORECASE, action.label.c_str(),
+                                    -1, query.c_str(), -1, nullptr, nullptr, nullptr, 0);
         return found < 0 ? -1 : found == 0 ? 2 : 1;
     };
     // Canonical target spelling can differ from typed escaping (for example ! versus %21).
@@ -120,8 +106,10 @@ void Island::ExecutePalette(size_t slot) {
     auto item = paletteItems[index];
     commandCatalog.Invoke(item.key);
     if (commandCatalog.Dirty() && !renderMode && !fixtureGeometry && !previewMode) {
-        if (SettingsStore(preferencesPath).Update(L"CommandRanking", commandCatalog.Save())) commandCatalog.SavedSuccessfully();
-        else note = modules::String(IDS_SAVE_FAILED);
+        if (SettingsStore(preferencesPath).Update(L"CommandRanking", commandCatalog.Save()))
+            commandCatalog.SavedSuccessfully();
+        else
+            note = modules::String(IDS_SAVE_FAILED);
     }
 }
 void Island::ExecuteCommand(const PaletteItem &item) {

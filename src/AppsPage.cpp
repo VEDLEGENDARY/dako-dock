@@ -1,8 +1,118 @@
-#pragma once
-// Included by Island.cpp after the Island declaration.
-bool Island::CompactApps() const {
-    return Layout().body.Height() < 124;
+#include "Island.h"
+
+size_t Island::AppIndex(size_t slot) const {
+    return appPage < appPages.size() && appPages[appPage].begin + slot < appPages[appPage].end
+               ? filteredApps[appPages[appPage].begin + slot]
+               : apps.size();
 }
+
+void Island::RequestVisibleIcons() {
+    if (!catalog || renderMode || tab != Tab::Apps)
+        return;
+    std::vector<std::wstring> keys;
+    for (size_t i : railApps)
+        keys.push_back(AppKey(apps[i]));
+    for (size_t slot = 0; slot < AppSlots(); ++slot) {
+        size_t i = AppIndex(slot);
+        if (i < apps.size())
+            keys.push_back(AppKey(apps[i]));
+    }
+    catalog->RequestIcons(std::move(keys));
+}
+
+std::wstring Island::AppKey(const AppEntry &app) const { return app.parsingName.empty() ? app.name : app.parsingName; }
+
+bool Island::Favorite(const AppEntry &app) const {
+    return std::find(appPreferences.favorites.begin(), appPreferences.favorites.end(), AppKey(app)) !=
+           appPreferences.favorites.end();
+}
+
+int Island::AppGroup(const AppEntry &app) const {
+    return Favorite(app) ? 0
+           : std::find(appPreferences.recent.begin(), appPreferences.recent.end(), AppKey(app)) !=
+                   appPreferences.recent.end()
+               ? 1
+               : 2;
+}
+
+void Island::FilterApps(bool reset) {
+    FilterRunning();
+    filteredApps.clear();
+    if (reset)
+        appPage = 0;
+    for (size_t i = 0; i < apps.size(); ++i)
+        if (appQuery.empty() ||
+            FindNLSStringEx(LOCALE_NAME_USER_DEFAULT, FIND_FROMSTART | NORM_IGNORECASE, apps[i].name.c_str(), -1,
+                            appQuery.c_str(), -1, nullptr, nullptr, nullptr, 0) >= 0)
+            filteredApps.push_back(i);
+    std::stable_sort(filteredApps.begin(), filteredApps.end(), [this](size_t a, size_t b) {
+        int ga = AppGroup(apps[a]), gb = AppGroup(apps[b]);
+        if (ga != gb)
+            return ga < gb;
+        if (ga == 1) {
+            auto ai = std::find(appPreferences.recent.begin(), appPreferences.recent.end(), AppKey(apps[a])),
+                 bi = std::find(appPreferences.recent.begin(), appPreferences.recent.end(), AppKey(apps[b]));
+            return ai < bi;
+        }
+        return CompareStringEx(LOCALE_NAME_USER_DEFAULT, NORM_IGNORECASE, apps[a].name.c_str(), -1,
+                               apps[b].name.c_str(), -1, nullptr, nullptr, 0) == CSTR_LESS_THAN;
+    });
+    if (std::none_of(filteredApps.begin(), filteredApps.end(),
+                     [this](size_t i) { return AppKey(apps[i]) == selectedAppKey; }))
+        selectedAppKey = filteredApps.empty() ? L"" : AppKey(apps[filteredApps.front()]);
+    railApps.clear();
+    for (size_t i : filteredApps)
+        if (Favorite(apps[i]) && railApps.size() < 7)
+            railApps.push_back(i);
+    RepageApps();
+    if (tab == Tab::Apps)
+        RetargetLayout();
+}
+
+void Island::EnsureAppSearch() {
+    if (appSearch || renderMode || capturingPane || layoutOnly)
+        return;
+    appSearch = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL, 0, 0, 1, 1, window,
+                                reinterpret_cast<HMENU>(401), nullptr, nullptr);
+    LabelInput(appSearch, L"Search installed apps");
+    SendMessageW(appSearch, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(L"Search installed apps…"));
+    SendMessageW(appSearch, EM_SETLIMITTEXT, 120, 0);
+    EnsureEditResources();
+    SendMessageW(appSearch, WM_SETFONT, reinterpret_cast<WPARAM>(editFont), TRUE);
+    PositionInputs();
+    if (!appQuery.empty())
+        SetWindowTextW(appSearch, appQuery.c_str());
+}
+
+void Island::OpenApp(const AppEntry &app) {
+    PIDLIST_ABSOLUTE item = nullptr;
+    if (FAILED(SHParseDisplayName(app.parsingName.c_str(), nullptr, &item, 0, nullptr))) {
+        note = L"This application is no longer available.";
+        return;
+    }
+    SHELLEXECUTEINFOW action{sizeof(action)};
+    action.fMask = SEE_MASK_IDLIST | SEE_MASK_NOASYNC;
+    action.hwnd = window;
+    action.lpVerb = L"open";
+    action.lpIDList = item;
+    action.nShow = SW_SHOWNORMAL;
+    if (!ShellExecuteExW(&action))
+        note = L"Windows could not open this application.";
+    else {
+        auto key = AppKey(app);
+        auto &recent = appPreferences.recent;
+        recent.erase(std::remove(recent.begin(), recent.end(), key), recent.end());
+        recent.insert(recent.begin(), key);
+        if (recent.size() > 16)
+            recent.resize(16);
+        if (!previewMode && !appPreferences.Save())
+            note = L"Opened app; could not save recent launches.";
+        FilterApps(false);
+    }
+    CoTaskMemFree(item);
+}
+
+bool Island::CompactApps() const { return Layout().body.Height() < 124; }
 bool Island::ShowAppRail() const {
     return Layout().body.Height() >= (runningIndices.empty() ? 200.0f : 300.0f) && !railApps.empty();
 }

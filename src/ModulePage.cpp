@@ -1,26 +1,40 @@
-#pragma once
+#include "Island.h"
+#include "IslandBodyScope.h"
+
 #include "ClipboardData.h"
 size_t Island::ModuleSlots() const {
-    if (!modulePanel.image) return PaletteSlots();
+    if (!modulePanel.image)
+        return PaletteSlots();
     float body = Body().bottom - Body().top;
     float preview = std::max(24.0f, std::min(96.0f, body - 56));
     return std::min(size_t{6}, static_cast<size_t>(std::max(1.0f, (body - preview - 12) / 44)));
 }
 void Island::InvokeModuleAction(const std::wstring &id) {
     auto action = moduleRegistry.FindAction(id);
-    if (!action) return;
+    if (!action)
+        return;
+    if (id.starts_with(L"clipboard.paste-")) {
+        clipboardSelected = std::stoull(id.substr(16));
+        ClipboardAction(8755);
+        return;
+    }
     ModalGuard modal(modalOpen);
     std::wstring input;
     if (action->input || action->confirmation) {
-        if (renderMode || fixtureGeometry) return;
+        if (renderMode || fixtureGeometry)
+            return;
         auto label = action->text.empty() ? modules::String(action->label) : action->text;
         auto explanation = modules::String(action->help ? action->help : IDS_CONFIRM_ACTION);
-        if (!action->details.empty()) explanation += L"\n\n" + action->details;
-        if (action->confirmation && MessageBoxW(window, explanation.c_str(), label.c_str(),
-                                                MB_YESNO | MB_DEFBUTTON2 | MB_ICONWARNING) != IDYES) return;
+        if (!action->details.empty())
+            explanation += L"\n\n" + action->details;
+        if (action->confirmation &&
+            MessageBoxW(window, explanation.c_str(), label.c_str(), MB_YESNO | MB_DEFBUTTON2 | MB_ICONWARNING) != IDYES)
+            return;
         if (action->input) {
-            auto value = PromptText(window, label, modules::String(action->help ? action->help : IDS_MODULE_INPUT), L"", 4096);
-            if (!value) return;
+            auto value =
+                PromptText(window, label, modules::String(action->help ? action->help : IDS_MODULE_INPUT), L"", 4096);
+            if (!value)
+                return;
             input = *value;
         }
     }
@@ -29,16 +43,20 @@ void Island::InvokeModuleAction(const std::wstring &id) {
         return;
     }
     auto requested = moduleRegistry.TakeView();
-    if (!requested.empty()) OpenModule(requested);
+    if (!requested.empty())
+        OpenModule(requested);
     else if (flyout == Flyout::Module) {
-        if (auto panel = moduleRegistry.View(moduleView, moduleQuery)) modulePanel = std::move(*panel);
-        if (modulePage * ModuleSlots() >= modulePanel.rows.size()) modulePage = 0;
+        if (auto panel = moduleRegistry.View(moduleView, moduleQuery))
+            modulePanel = std::move(*panel);
+        if (modulePage * ModuleSlots() >= modulePanel.rows.size())
+            modulePage = 0;
         RebuildLayout();
     }
 }
 void Island::OpenModule(const std::wstring &id) {
     auto panel = moduleRegistry.View(id, L"");
-    if (!panel) return;
+    if (!panel)
+        return;
     miniMode = false;
     flyout = Flyout::Module;
     tab = Tab::Apps;
@@ -47,7 +65,8 @@ void Island::OpenModule(const std::wstring &id) {
     modulePage = 0;
     modulePanel = std::move(*panel);
     scroll = 0;
-    if (connectivity) connectivity->CancelDiscovery();
+    if (connectivity)
+        connectivity->CancelDiscovery();
     SetExpanded(true);
     UpdateTimers();
     RebuildLayout();
@@ -56,13 +75,17 @@ void Island::OpenModule(const std::wstring &id) {
     SetForegroundWindow(window);
     SetFocus(window);
     for (size_t index = 0; index < hits.size(); ++index)
-        if (hits[index].id >= 5100 && hits[index].id < 5120) { FocusAt(static_cast<int>(index)); break; }
+        if (hits[index].id >= 5100 && hits[index].id < 5120) {
+            FocusAt(static_cast<int>(index));
+            break;
+        }
     InvalidateRect(window, nullptr, FALSE);
 }
 void Island::ModuleView() {
     auto layout = Layout();
     auto b = Body();
-    if (layout.emergency) CompactHeader(true);
+    if (layout.emergency)
+        CompactHeader(true);
     else {
         auto h = layout.header;
         SmallButton(FlyoutBack, {h.left, 8, h.left + 40, 44}, L"\xE72B", modules::String(IDS_BACK));
@@ -76,13 +99,13 @@ void Island::ModuleView() {
             if (!layoutOnly) {
                 const auto &image = *modulePanel.image;
                 ComPtr<ID2D1Bitmap> bitmap;
-                auto properties = D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
-                                                                          D2D1_ALPHA_MODE_IGNORE));
+                auto properties =
+                    D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE));
                 if (SUCCEEDED(target->CreateBitmap(D2D1::SizeU(image.width, image.height), image.bgra.data(),
                                                    image.width * 4, properties, &bitmap))) {
                     float scale = std::min((b.right - b.left) / image.width, preview / image.height);
-                    target->DrawBitmap(bitmap.Get(), {b.left, top, b.left + image.width * scale,
-                                                       top + image.height * scale});
+                    target->DrawBitmap(bitmap.Get(),
+                                       {b.left, top, b.left + image.width * scale, top + image.height * scale});
                 }
             }
             AddHit(7221, {b.left, top, b.right, top + preview}, modules::String(IDS_CLIP_IMAGE), false);
