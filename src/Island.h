@@ -45,6 +45,8 @@
 #include "UiTypography.h"
 #include "GeometryCache.h"
 #include "AmbientShadow.h"
+#include "DepthCache.h"
+#include "NativeChrome.h"
 #include "SpeedTest.h"
 #include "LayoutEngine.h"
 #include "MotionController.h"
@@ -333,6 +335,46 @@ class Island {
     ComPtr<ID2D1StrokeStyle> ringStroke;
     graphics::GeometryCache geometryCache;
     graphics::AmbientShadow shadow;
+    graphics::DepthCache depth;
+    nativechrome::Host chromeHost;
+    enum class ChromeKind { None, Confirm, Input, Menu };
+    struct MenuEntry {
+        std::wstring label;
+        int command = 0;
+        bool enabled = true, checked = false;
+        std::vector<MenuEntry> children;
+    };
+    struct Chrome {
+        ChromeKind kind = ChromeKind::None;
+        std::wstring title, detail, value, primary, restoreFocus;
+        std::vector<MenuEntry> items;
+        std::vector<std::pair<std::wstring, std::vector<MenuEntry>>> history;
+        D2D1_POINT_2F anchor{};
+        float scroll = 0, height = 160, detailHeight = 32;
+        size_t offset = 0, slots = 5;
+        int result = IDCANCEL, accept = IDOK, cancel = IDCANCEL;
+        bool closing = false, danger = false, savedModal = false;
+        dock::Spring blend{0};
+    } chrome;
+    HWND chromeEdit = nullptr;
+    static constexpr int ChromeInput = 404, ChromeCancel = 9600, ChromeAccept = 9601;
+    static constexpr int ChromeRow = 9700, ChromeBack = 9790, ChromePrevious = 9791, ChromeNext = 9792;
+    bool ChromeActive() const { return chrome.kind != ChromeKind::None; }
+    void BeginChrome(ChromeKind kind, const std::wstring &title, const std::wstring &detail,
+                     const std::wstring &initial = L"", size_t limit = 2048);
+    void DrawChrome();
+    void FinishChrome(int result);
+    void CloseChrome();
+    int WaitChrome();
+    bool ChromeAction(int id);
+    bool ChromeKey(WPARAM key);
+    void ScrollChrome(float amount);
+    int MessageBoxW(HWND owner, const wchar_t *text, const wchar_t *title, UINT flags);
+    std::optional<std::wstring> PromptText(HWND owner, const std::wstring &title, const std::wstring &help,
+                                           const std::wstring &initial, size_t limit = 2048);
+    static std::vector<MenuEntry> ReadMenu(HMENU menu);
+    int TrackPopupMenu(HMENU menu, UINT flags, int x, int y, int reserved, HWND owner, const RECT *exclude);
+    int OpenMenu(std::vector<MenuEntry> entries, D2D1_POINT_2F anchor, const std::wstring &title = L"Menu");
     HWND backdropWindow = nullptr;
     RECT backdropPlacement{};
     HMONITOR refreshMonitor = nullptr;
@@ -554,7 +596,7 @@ class Island {
     void SetTab(Tab value);
     D2D1_COLOR_F Color(unsigned rgb, float alpha = 1);
     void Fill(D2D1_RECT_F rect, unsigned color, float radius = layout::Metrics::ControlRadius);
-    void Card(D2D1_RECT_F rect, int level = 1, float hover = 0);
+    void Card(D2D1_RECT_F rect, int level = 1, float hover = 0, float radius = layout::CardRadius);
     void Text(const std::wstring &text, D2D1_RECT_F rect, int format = type::Body, unsigned color = theme::Text,
               DWRITE_TEXT_ALIGNMENT align = DWRITE_TEXT_ALIGNMENT_LEADING);
     void TwoLine(D2D1_RECT_F rect, const std::wstring &title, const std::wstring &subtitle,

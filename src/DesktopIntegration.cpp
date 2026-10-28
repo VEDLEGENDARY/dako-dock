@@ -59,6 +59,20 @@ void Island::StartDesktop() {
             ApplyInteraction();
         };
         callbacks.context = [this] { ContextMenu(); };
+        callbacks.menu = [this](HMENU menu, POINT point, HMONITOR monitor) {
+            panelMonitor = monitor;
+            if (docks && !ChromeActive()) {
+                RECT bounds = docks->Bounds(monitor);
+                UINT x = 96, y = 96;
+                GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &x, &y);
+                dpi = static_cast<float>(x);
+                ReleaseGraphics();
+                SetWindowPos(window, nullptr, bounds.left, bounds.top - 1, 0, 0,
+                             SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                RefreshGeometry();
+            }
+            return TrackPopupMenu(menu, TPM_RETURNCMD, point.x, point.y, 0, window, nullptr);
+        };
         docks = std::make_unique<desktop::DockShell>();
         docks->Options(dockOptions);
         if (!docks->Start(window, &shell, previewMode, textScale, std::move(callbacks), desktopRequested)) {

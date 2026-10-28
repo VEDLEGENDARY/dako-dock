@@ -311,6 +311,7 @@ class DockShell {
         std::function<void(const std::wstring &, bool)> pin;
         std::function<void(const std::wstring &)> error;
         std::function<void()> context;
+        std::function<int(HMENU, POINT, HMONITOR)> menu;
         std::function<void(const std::wstring &, HMONITOR)> recent;
     };
     DockShell();

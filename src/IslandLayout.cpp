@@ -93,6 +93,8 @@ void Island::RebuildLayout() {
                 ++it;
     }
     std::wstring status = note;
+    if (ChromeActive())
+        status += chrome.title + L". " + chrome.detail;
     if (flyout == Flyout::Wifi || flyout == Flyout::Bluetooth)
         status += flyout == Flyout::Wifi ? connections.wifiMessage : connections.bluetoothMessage;
     if (status != lastStatus) {
@@ -239,7 +241,9 @@ void Island::PositionInputs() {
         if (!input)
             return;
         auto found = std::find_if(hits.begin(), hits.end(), [&](const Hit &h) { return h.id == id; });
-        bool show = visible && found != hits.end();
+        bool show = visible && found != hits.end() && (!ChromeActive() || input == chromeEdit);
+        if (input == chromeEdit)
+            show = show && !chrome.closing && chrome.blend.value > .98f;
         if (show) {
             EnableWindow(input, found->enabled);
             auto r = found->rect;
@@ -270,6 +274,10 @@ void Island::PositionInputs() {
     position(appSearch, 401);
     position(wifiPassword, 402);
     position(clipboardEdit, 403);
+    position(chromeEdit, ChromeInput);
+    if (ChromeActive() && chrome.kind == ChromeKind::Input && chromeEdit && IsWindowVisible(chromeEdit) &&
+        focusedKey == StableKey(ChromeInput) && GetFocus() != chromeEdit)
+        SetFocus(chromeEdit);
 }
 
 void Island::RetargetLayout() {

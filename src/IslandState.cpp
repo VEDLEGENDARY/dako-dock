@@ -2,6 +2,10 @@
 #include "ClipboardPaste.h"
 
 void Island::SnapMotion() {
+    if (!expanded && ChromeActive()) {
+        chrome.result = chrome.cancel;
+        CloseChrome();
+    }
     if (!expanded) {
         dockReveal.goal = contentBlend.goal = 0;
         dockWidth.goal = theme::DockWidth;
@@ -12,7 +16,7 @@ void Island::SnapMotion() {
     revealClock = paneClock = 1;
     for (auto *v : {&dockReveal, &dockWidth, &dockHeight, &paneBlend, &wallpaperFocus, &tabLeft, &tabRight,
                     &railPointer, &railStrength, &paletteBlend, &contentBlend, &togglePosition, &wallpaperParallax,
-                    &volumeMotion, &composerFocus, &toastBlend, &focusBlend})
+                    &volumeMotion, &composerFocus, &toastBlend, &focusBlend, &chrome.blend})
         v->Snap(v->goal);
     for (auto &v : rings)
         v.Snap(v.goal);
@@ -40,6 +44,8 @@ void Island::SnapMotion() {
         (void)key;
         v.Snap(v.goal);
     }
+    if (ChromeActive() && chrome.closing)
+        CloseChrome();
     previousPane.Reset();
     frameClock.Stop();
     frameTickReady = false;
@@ -126,6 +132,10 @@ void Island::ArmMotion() {
 }
 
 void Island::SetExpanded(bool value, bool deliberate) {
+    if (!value && ChromeActive()) {
+        chrome.result = chrome.cancel;
+        CloseChrome();
+    }
     if (value && !expanded && GetForegroundWindow() != window)
         clipboardPasteTarget = ::clipboard::CapturePasteTarget();
     if (value && !expanded)
@@ -285,6 +295,11 @@ void Island::Transition() {
         advance(*spring, dock::motion::Soft, dt);
     advance(toastBlend, dock::motion::Fade, dt);
     advance(focusBlend, dock::motion::Focus, dt);
+    if (ChromeActive()) {
+        advance(chrome.blend, dock::motion::Fade, dt);
+        if (chrome.closing && !chrome.blend.Moving())
+            CloseChrome();
+    }
     for (auto &spring : rings)
         advance(spring, dock::motion::Soft, dt);
     for (auto &[id, spring] : hoverMotion) {

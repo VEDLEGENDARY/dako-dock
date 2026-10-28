@@ -199,6 +199,8 @@ void Island::Wallpaper() {
             target->PushLayer(layer, nullptr);
             target->SetTransform(D2D1::Matrix3x2F::Skew(pose.skew * 57.2957795f, 0, {cx, cy}) * saved);
         }
+        if (!layoutOnly && !highContrast && std::abs(delta) < .5f)
+            depth.Paint(target.Get(), rect, dpi * textScale, layout::CardRadius, edge);
         Card(rect, 2);
         const auto &entry = wallpapers[index];
         if (!layoutOnly && entry.pixels && !entry.pixels->empty()) {

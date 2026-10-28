@@ -123,7 +123,7 @@ class IslandAccessible final : public IAccessible, public IEnumVARIANT {
         if (index >= 0)
             return String(name, app->hits[index].name);
         if (child.vt == VT_I4 && child.lVal == CHILDID_SELF)
-            return String(name, L"Dako desktop island");
+            return String(name, app && app->ChromeActive() ? app->chrome.title : L"Dako desktop island");
         return E_INVALIDARG;
     }
     HRESULT STDMETHODCALLTYPE get_accValue(VARIANT child, BSTR *value) override {
@@ -162,19 +162,26 @@ class IslandAccessible final : public IAccessible, public IEnumVARIANT {
         auto *app = App();
         int index = Child(child, app);
         int id = index >= 0 ? app->hits[index].id : 0;
-        role->lVal = index < 0                                               ? ROLE_SYSTEM_PANE
-                     : ReadingControl(id)                                    ? ROLE_SYSTEM_STATICTEXT
-                     : (id >= 100 && id < 107) || (id >= 2901 && id <= 2904) ? ROLE_SYSTEM_PAGETAB
-                     : (id == Volume || id == Brightness)                    ? ROLE_SYSTEM_SLIDER
-                     : (id >= 200 && id < 220) || (id >= 900 && id < 1000) || id == FlyoutToggle || id == Dark ||
-                             id == Airplane || (id >= 2800 && id < 2807) || (id >= 2920 && id < 2940) || id == 2941
-                         ? ROLE_SYSTEM_CHECKBUTTON
-                     : id >= 400 && id <= 403 ? ROLE_SYSTEM_TEXT
-                     : (id >= 500 && id < 564) || (id >= 2400 && id < 2402) || (id >= 2600 && id < 2620) ||
-                             (id >= 2700 && id < 2720) || (id >= 8600 && id < 8625) || (id >= 300 && id < 400) ||
-                             (id >= 1000 && id < 1328)
-                         ? ROLE_SYSTEM_LISTITEM
-                         : ROLE_SYSTEM_PUSHBUTTON;
+        role->lVal =
+            index < 0
+                ? (app && app->ChromeActive()
+                       ? (app->chrome.kind == Island::ChromeKind::Menu ? ROLE_SYSTEM_MENUPOPUP : ROLE_SYSTEM_DIALOG)
+                       : ROLE_SYSTEM_PANE)
+            : ReadingControl(id)                                    ? ROLE_SYSTEM_STATICTEXT
+            : (id >= 100 && id < 107) || (id >= 2901 && id <= 2904) ? ROLE_SYSTEM_PAGETAB
+            : (id == Volume || id == Brightness)                    ? ROLE_SYSTEM_SLIDER
+            : (id >= 200 && id < 220) || (id >= 900 && id < 1000) || id == FlyoutToggle || id == Dark ||
+                    id == Airplane || (id >= 2800 && id < 2807) || (id >= 2920 && id < 2940) || id == 2941
+                ? ROLE_SYSTEM_CHECKBUTTON
+            : id >= 400 && id <= 404 ? ROLE_SYSTEM_TEXT
+            : (id >= 500 && id < 564) || (id >= 2400 && id < 2402) || (id >= 2600 && id < 2620) ||
+                    (id >= 2700 && id < 2720) || (id >= 8600 && id < 8625) || (id >= 300 && id < 400) ||
+                    (id >= 1000 && id < 1328)
+                ? ROLE_SYSTEM_LISTITEM
+            : app && app->chrome.kind == Island::ChromeKind::Menu && id >= Island::ChromeRow &&
+                    id < Island::ChromeRow + static_cast<int>(app->chrome.slots)
+                ? ROLE_SYSTEM_MENUITEM
+                : ROLE_SYSTEM_PUSHBUTTON;
         return S_OK;
     }
     HRESULT STDMETHODCALLTYPE get_accState(VARIANT child, VARIANT *state) override {

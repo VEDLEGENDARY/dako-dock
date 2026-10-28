@@ -1,4 +1,5 @@
 #include "FileSearchModule.h"
+#include "NativeChrome.h"
 #include "ModuleStrings.h"
 #include <shobjidl.h>
 #include <shellapi.h>
@@ -124,8 +125,9 @@ bool FileSearchModule::Invoke(const std::wstring &id, HWND owner) {
         if (!files::LocalPath(file))
             return false;
         auto explanation = String(IDS_FILES_RUN_WARNING) + L"\n\n" + file;
-        if (files::ConfirmOpen(file) && MessageBoxW(owner, explanation.c_str(), String(IDS_FILES_PICK).c_str(),
-                                                    MB_YESNO | MB_DEFBUTTON2 | MB_ICONWARNING) != IDYES)
+        if (files::ConfirmOpen(file) &&
+            nativechrome::Message(owner, explanation.c_str(), String(IDS_FILES_PICK).c_str(),
+                                  MB_YESNO | MB_DEFBUTTON2 | MB_ICONWARNING) != IDYES)
             return true;
         return launch_ && reinterpret_cast<INT_PTR>(
                               ShellExecuteW(owner, L"open", file.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) > 32;

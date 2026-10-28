@@ -467,7 +467,9 @@ struct DockShell::Impl {
         POINT point{};
         GetCursorPos(&point);
         SetForegroundWindow(bar.window);
-        int command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, 0, bar.window, nullptr);
+        int command = callbacks.menu ? callbacks.menu(menu, point, bar.monitor)
+                                     : TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, 0,
+                                                      bar.window, nullptr);
         DestroyMenu(menu);
         if (command >= 100)
             ActivateGroup(bar, static_cast<size_t>(command - 100));
@@ -521,7 +523,9 @@ struct DockShell::Impl {
         POINT point{};
         GetCursorPos(&point);
         SetForegroundWindow(bar.window);
-        int command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, 0, bar.window, nullptr);
+        int command = callbacks.menu ? callbacks.menu(menu, point, bar.monitor)
+                                     : TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, 0,
+                                                      bar.window, nullptr);
         DestroyMenu(menu);
         if (command == 1)
             ActivateGroup(bar, index, true);

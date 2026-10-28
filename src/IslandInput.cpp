@@ -147,6 +147,8 @@ void Island::LabelInput(HWND input, const wchar_t *name) {
 }
 
 void Island::Invoke(int id) {
+    if (ChromeAction(id))
+        return;
     if (id == 8970 || id == 8971) {
         TodayAction(id);
         return;
@@ -598,6 +600,19 @@ void Island::FocusAt(int index) {
         return;
     keyboardOpen = true;
     focusedKey = hits[index].key;
+    if (ChromeActive() && chrome.kind != ChromeKind::Menu) {
+        auto body = Body();
+        auto r = hits[index].rect;
+        if (r.top < body.top)
+            chrome.scroll = std::max(0.0f, chrome.scroll + r.top - body.top);
+        else if (r.bottom > body.bottom)
+            chrome.scroll += r.bottom - body.bottom;
+        chrome.scroll = std::clamp(chrome.scroll, 0.0f, std::max(0.0f, chrome.height - (body.bottom - body.top)));
+        RebuildLayout();
+        index = IndexForKey(focusedKey);
+        if (index < 0)
+            return;
+    }
     int action = hits[index].id;
     if (tab == Tab::Today && action >= 200 && action < 240) {
         size_t row = static_cast<size_t>(action >= 220 ? action - 220 : action - 200);
@@ -620,7 +635,7 @@ void Island::FocusAt(int index) {
     }
     auto h = hits[index];
     auto b = Body();
-    if (h.clip.top == b.top && h.clip.bottom == b.bottom) {
+    if (!ChromeActive() && h.clip.top == b.top && h.clip.bottom == b.bottom) {
         if (h.rect.top < b.top)
             scroll = std::max(0.0f, scroll + h.rect.top - b.top);
         else if (h.rect.bottom > b.bottom)
@@ -660,6 +675,8 @@ void Island::FocusAt(int index) {
 }
 
 void Island::Key(WPARAM key) {
+    if (ChromeKey(key))
+        return;
     if (tab == Tab::Clipboard && flyout == Flyout::None) {
         if (key == VK_TAB && !(GetKeyState(VK_CONTROL) & 0x8000)) {
             clipboardFilter = (clipboardFilter + ((GetKeyState(VK_SHIFT) & 0x8000) ? 3 : 1)) % 4;
@@ -1006,8 +1023,10 @@ void Island::OpenCompactMenu(bool views) {
     RECT bounds{};
     GetWindowRect(window, &bounds);
     float scale = dpi / 96;
-    int x = bounds.left + static_cast<int>((PanelX() + Layout().header.left * textScale) * scale),
-        y = bounds.top + static_cast<int>((PanelY() + Layout().headerHeight * textScale) * scale);
+    auto anchorRect = Layout().emergency ? R(Layout().header) : Footer();
+    int x = bounds.left + static_cast<int>((PanelX() + anchorRect.left * textScale) * scale);
+    float anchorY = edge == anchor::Edge::Bottom ? anchorRect.top : anchorRect.bottom;
+    int y = bounds.top + static_cast<int>((PanelY() + anchorY * textScale) * scale);
     SetForegroundWindow(window);
     int command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, x, y, 0, window, nullptr);
     DestroyMenu(menu);
@@ -1615,6 +1634,11 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
             InvalidateRect(window, nullptr, FALSE);
             return 0;
         case WM_COMMAND:
+            if (reinterpret_cast<HWND>(lparam) == app->chromeEdit && HIWORD(wparam) == EN_SETFOCUS) {
+                app->focusedKey = app->StableKey(Island::ChromeInput);
+                app->focused = app->IndexForKey(app->focusedKey);
+                return 0;
+            }
             if (reinterpret_cast<HWND>(lparam) == app->clipboardEdit && HIWORD(wparam) == EN_CHANGE) {
                 wchar_t query[121]{};
                 GetWindowTextW(app->clipboardEdit, query, 121);
@@ -1668,7 +1692,8 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
         case WM_CTLCOLOREDIT: {
             auto dc = reinterpret_cast<HDC>(wparam);
             auto input = reinterpret_cast<HWND>(lparam);
-            unsigned background = input == app->appSearch       ? theme::Card
+            unsigned background = input == app->chromeEdit      ? theme::Inset
+                                  : input == app->appSearch     ? theme::Card
                                   : input == app->clipboardEdit ? theme::Inset
                                   : input == app->taskEdit
                                       ? dock::Mix(theme::CardHover, theme::AccentSoft, app->composerFocus.value)
@@ -1775,6 +1800,13 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
             }
             return 0;
         case WM_LBUTTONDOWN:
+            if (app->ChromeActive()) {
+                int hit = app->HitAt(GET_X_LPARAM(lparam) * 96.0f / app->dpi, GET_Y_LPARAM(lparam) * 96.0f / app->dpi);
+                if (hit < 0 && app->chrome.kind == Island::ChromeKind::Menu) {
+                    app->FinishChrome(app->chrome.cancel);
+                    return 0;
+                }
+            }
             if (app->tab == Tab::Controls) {
                 int hit = app->HitAt(GET_X_LPARAM(lparam) * 96.0f / app->dpi, GET_Y_LPARAM(lparam) * 96.0f / app->dpi);
                 if (hit >= 0 && app->hits[hit].id == 2970 && app->media) {
@@ -1845,6 +1877,10 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
             InvalidateRect(window, nullptr, FALSE);
             return 0;
         case WM_MOUSEWHEEL: {
+            if (app->ChromeActive()) {
+                app->ScrollChrome(-GET_WHEEL_DELTA_WPARAM(wparam) / 120.0f * 36);
+                return 0;
+            }
             if (!app->expanded || app->miniMode) {
                 bool expand = anchor::WheelExpands(app->edge, GET_WHEEL_DELTA_WPARAM(wparam));
                 if (app->options.Text(L"Scroll") == L"Reversed")

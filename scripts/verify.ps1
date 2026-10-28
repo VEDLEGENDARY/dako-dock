@@ -11,6 +11,9 @@ $validation = Start-Process -FilePath $executable -ArgumentList ('--render-dir="
 if ($validation.ExitCode -ne 0) { throw "Native render/state/accessibility validation failed: $($validation.ExitCode). See $renderDir\verification.txt" }
 $views = 'controls','today','stats','clipboard','apps','wallpaper','power'
 $expected = @($views) + @('compact','wallpaper-last','wallpaper-error','wallpaper-64','wallpaper-one','wallpaper-empty','wifi-password','wifi','wifi-error','bluetooth','bluetooth-busy','media-mini','theme-blue','theme-pink','theme-light','theme-high-contrast','controls-final','browser-apps-200','browser-wifi-200')
+foreach ($appearance in 0..2) { foreach ($edge in 0..1) { foreach ($kind in @('confirm','editor','menu')) {
+    $expected += "polish-$kind-$appearance-$edge"
+} } }
 foreach ($scale in 100,125,150,175,200) {
     foreach ($view in $views) { $expected += "matrix-$view-$scale" }
     $expected += "matrix-today-scrolled-$scale"

@@ -94,19 +94,13 @@ void Island::RefreshToday() {
     }
 }
 void Island::TodayMenu() {
-    ModalGuard guard(modalOpen);
-    HMENU menu = CreatePopupMenu();
-    for (auto entry :
-         {std::pair{WeatherCity, L"Weather city / turn off…"}, std::pair{CalendarFeed, L"Calendar subscription…"},
-          std::pair{CalendarAdd, L"Add local event…"}, std::pair{CalendarClear, L"Clear local events…"},
-          std::pair{FocusShort, L"Focus: 5 minutes"}, std::pair{FocusMedium, L"Focus: 15 minutes"},
-          std::pair{FocusTwenty, L"Focus: 20 minutes"}, std::pair{TodayClocks, L"World clocks / stopwatch"}})
-        AppendMenuW(menu, MF_STRING, entry.first, entry.second);
-    POINT point{};
-    GetCursorPos(&point);
-    SetForegroundWindow(window);
-    int command = TrackPopupMenu(menu, TPM_RETURNCMD, point.x, point.y, 0, window, nullptr);
-    DestroyMenu(menu);
+    std::vector<MenuEntry> entries{
+        {L"Weather city / turn off…", WeatherCity}, {L"Calendar subscription…", CalendarFeed},
+        {L"Add local event…", CalendarAdd},         {L"Clear local events…", CalendarClear},
+        {L"Focus: 5 minutes", FocusShort},          {L"Focus: 15 minutes", FocusMedium},
+        {L"Focus: 20 minutes", FocusTwenty},        {L"World clocks / stopwatch", TodayClocks}};
+    auto clock = layout::TodayColumns(Layout())[0];
+    int command = OpenMenu(std::move(entries), {clock.right - 32, clock.top + 36}, L"Today");
     if (command) {
         if (command < WeatherCity)
             Invoke(command);

@@ -270,6 +270,33 @@ int wmain(int argc, wchar_t **argv) {
         app.SetExpanded(true);
         Settle(app);
         app.reducedMotion = true;
+        auto restoreKey = app.focusedKey;
+        PostMessageW(window, WM_KEYDOWN, VK_RETURN, 0);
+        RequireLive(app.MessageBoxW(window, L"Inert confirmation", L"Fixture", MB_YESNO | MB_DEFBUTTON2) == IDNO,
+                    "sheet defaults Enter to Cancel");
+        PostMessageW(window, WM_KEYDOWN, VK_TAB, 0);
+        PostMessageW(window, WM_KEYDOWN, VK_RETURN, 0);
+        RequireLive(app.MessageBoxW(window, L"Inert confirmation", L"Fixture", MB_YESNO | MB_DEFBUTTON2) == IDYES,
+                    "sheet confirms only after explicitly focusing its primary button");
+        RequireLive(app.focusedKey == restoreKey, "sheet restores the invoking focus identity");
+        PostMessageW(window, WM_KEYDOWN, VK_ESCAPE, 0);
+        RequireLive(!app.PromptText(window, L"Fixture editor", L"No data is sent.", L"initial"),
+                    "inline editor Escape cancels");
+        PostMessageW(window, WM_KEYDOWN, VK_RETURN, 0);
+        RequireLive(app.PromptText(window, L"Fixture editor", L"No data is sent.", L"initial") == L"initial",
+                    "inline editor preserves native EDIT text on Save");
+        PostMessageW(window, WM_KEYDOWN, VK_DOWN, 0);
+        PostMessageW(window, WM_KEYDOWN, VK_RETURN, 0);
+        RequireLive(app.OpenMenu({{L"First", 41}, {L"Disabled", 42, false}, {L"Last", 43}}, {20, 300}) == 43,
+                    "popover navigation skips disabled entries and preserves command IDs");
+        app.BeginChrome(Island::ChromeKind::Confirm, L"Fixture sheet", L"No system action.");
+        auto originalTab = app.tab;
+        app.Invoke(100 + static_cast<int>(Tab::Power));
+        RequireLive(app.tab == originalTab, "modal sheet consumes background invocations");
+        app.FinishChrome(IDCANCEL);
+        RequireLive(!app.ChromeActive() && !app.modalOpen && !IsWindowVisible(app.chromeEdit),
+                    "closed chrome releases modal state and hides the reusable native EDIT");
+        report << "in_island_confirm_editor_menu_focus_cancel=PASS\n";
         size_t reducedFrames = app.paintTimes.size();
         app.SetExpanded(false);
         RequireLive(!app.target && !app.composition.Active(), "reduced-motion collapse releases GPU targets");

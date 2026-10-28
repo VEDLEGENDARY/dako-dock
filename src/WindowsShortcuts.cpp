@@ -1,4 +1,5 @@
 #include "WindowsShortcuts.h"
+#include "NativeChrome.h"
 #include "ModuleStrings.h"
 #include "UtilityModule.h"
 #include "ClipboardModule.h"
@@ -80,8 +81,8 @@ bool WindowsShortcuts::InvokeWithText(const std::wstring &id, HWND owner, const 
     if (!uri || !launch_)
         return false;
     auto explanation = String(IDS_SETTINGS_URI_CONFIRM) + L"\n\n" + *uri;
-    if (MessageBoxW(owner, explanation.c_str(), String(IDS_SETTINGS_PAGE).c_str(),
-                    MB_YESNO | MB_DEFBUTTON2 | MB_ICONQUESTION) != IDYES)
+    if (nativechrome::Message(owner, explanation.c_str(), String(IDS_SETTINGS_PAGE).c_str(),
+                              MB_YESNO | MB_DEFBUTTON2 | MB_ICONQUESTION) != IDYES)
         return true;
     return launch_ && Open(owner, *uri);
 }

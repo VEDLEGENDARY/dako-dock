@@ -315,6 +315,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command, int) {
             MSG message{};
             BOOL status = 0;
             while ((status = GetMessageW(&message, nullptr, 0, 0)) > 0) {
+                if (message.hwnd == app.chromeEdit && message.message == WM_KEYDOWN &&
+                    (message.wParam == VK_RETURN || message.wParam == VK_ESCAPE || message.wParam == VK_TAB)) {
+                    app.Key(message.wParam);
+                    continue;
+                }
                 if (message.message == WM_KEYDOWN && (message.wParam == VK_NEXT || message.wParam == VK_PRIOR) &&
                     (GetKeyState(VK_CONTROL) & 0x8000) && GetAncestor(message.hwnd, GA_ROOT) == window) {
                     app.Key(message.wParam);

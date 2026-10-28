@@ -13,6 +13,11 @@ foreach ($name in @('v4-Controls','v4-Today','v4-Stats','v4-Power','v4-Wallpaper
     Copy-Item -LiteralPath (Join-Path $renders "$name.png") -Destination $evidence -Force
 }
 Copy-Item -LiteralPath (Join-Path $renders 'verification.txt') -Destination $evidence -Force
+if ($Phase -ge 7) {
+    foreach ($kind in @('confirm','editor','menu')) {
+        Copy-Item -LiteralPath (Join-Path $renders "polish-$kind-0-1.png") -Destination $evidence -Force
+    }
+}
 Set-Content -LiteralPath (Join-Path $evidence 'checks.txt') -Value @(
     "Phase ${Phase}: build /W4 /WX /permissive-, check-style, verify, test-motion passed.",
     'Before: docs/verification/design-baseline. After: this directory.',

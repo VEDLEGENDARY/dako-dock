@@ -265,16 +265,16 @@ void Island::Fill(D2D1_RECT_F rect, unsigned color, float radius) {
     }
 }
 
-void Island::Card(D2D1_RECT_F rect, int level, float hover) {
-    Fill(rect, level == 1 ? dock::Mix(theme::Card, theme::CardHover, hover) : theme::CardHover,
-         layout::Metrics::CardRadius);
+void Island::Card(D2D1_RECT_F rect, int level, float hover, float radius) {
+    Fill(rect, level == 1 ? dock::Mix(theme::Card, theme::CardHover, hover) : theme::CardHover, radius);
     if (layoutOnly || highContrast)
         return;
     float pixel = 96 / dpi / textScale;
     float y = (std::floor(rect.top / pixel) + .5f) * pixel;
     brush->SetColor(Color(theme::Edge, level == 1 ? palette::Tokens::HairlineInner : palette::Tokens::HairlineOuter));
-    target->DrawLine({rect.left + layout::Metrics::CardRadius, y}, {rect.right - layout::Metrics::CardRadius, y},
-                     brush.Get(), pixel);
+    if (level > 1)
+        target->DrawRoundedRectangle(D2D1::RoundedRect(rect, radius, radius), brush.Get(), pixel);
+    target->DrawLine({rect.left + radius, y}, {rect.right - radius, y}, brush.Get(), pixel);
 }
 
 void Island::Text(const std::wstring &text, D2D1_RECT_F rect, int format, unsigned color, DWRITE_TEXT_ALIGNMENT align) {
@@ -351,6 +351,8 @@ void Island::AddHit(int id, D2D1_RECT_F rect, std::wstring name, bool enabled) {
     if (id == 400 || id == 401 || id == 402 || id == 403) {
         hit.input = id == 400 ? taskEdit : id == 401 ? appSearch : id == 402 ? wifiPassword : clipboardEdit;
     }
+    if (id == ChromeInput)
+        hit.input = chromeEdit;
     hits.push_back(std::move(hit));
     (void)original;
 }
@@ -759,7 +761,11 @@ void Island::DrawToast() {
 
 void Island::PanelContent(bool header) {
     PageContent(header);
-    if (expanded && !miniMode)
+    if (ChromeActive()) {
+        hits.clear();
+        buildingBody = false;
+        DrawChrome();
+    } else if (expanded && !miniMode)
         DrawToast();
 }
 

@@ -103,7 +103,7 @@ void Island::ReadTextScale() {
         editFont = nullptr;
     }
     EnsureEditResources();
-    for (HWND input : {taskEdit, appSearch, wifiPassword, clipboardEdit})
+    for (HWND input : {taskEdit, appSearch, wifiPassword, clipboardEdit, chromeEdit})
         if (input)
             SendMessageW(input, WM_SETFONT, reinterpret_cast<WPARAM>(editFont), TRUE);
 }
@@ -274,6 +274,10 @@ void Island::Initialize() {
     RebuildLayout();
     ConfigureSlideshow();
     PreviewTrace("initialized");
+    chromeHost.message = [this](HWND owner, const wchar_t *text, const wchar_t *title, UINT flags) {
+        return MessageBoxW(owner, text, title, flags);
+    };
+    SetPropW(window, nativechrome::Property, &chromeHost);
     if (!renderMode && !previewMode && !DockEnabled()) {
         hotZone.Initialize(window);
         hotZone.Place(window, true, static_cast<UINT>(dpi));
@@ -294,6 +298,7 @@ void Island::ReleaseGraphics() {
     mediaBitmap.Reset();
     mediaPixels.reset();
     shimmerBrush.Reset();
+    depth.Reset();
     brush.Reset();
     target.Reset();
     hostTarget.Reset();
@@ -314,6 +319,7 @@ void Island::EnsureEditResources() {
 }
 
 Island::~Island() {
+    RemovePropW(window, nativechrome::Property);
     speedTest.reset();
     settingsWatch.reset();
     clipboardReadTask.Stop();

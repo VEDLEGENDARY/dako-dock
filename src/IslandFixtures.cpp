@@ -41,7 +41,7 @@ void Island::AssertScene() {
     auto l = Layout();
     if (SurfaceWidth() > envelopeWidth + 0.1f || SurfaceHeight() > envelopeHeight - PanelY() + 0.1f)
         winrt::throw_hresult(E_UNEXPECTED);
-    if (expanded && !miniMode && l.emergency) {
+    if (expanded && !miniMode && l.emergency && !ChromeActive()) {
         bool actions = false;
         for (const auto &h : hits)
             if (h.id == 1901 && VisibleHit(h))
@@ -63,12 +63,12 @@ void Island::AssertScene() {
             if (hits[i].key == hits[j].key)
                 winrt::throw_hresult(E_UNEXPECTED);
         }
-    if (tab == Tab::Apps && !filteredApps.empty() && flyout == Flyout::None && !Layout().emergency) {
+    if (tab == Tab::Apps && !filteredApps.empty() && flyout == Flyout::None && !Layout().emergency && !ChromeActive()) {
         auto first = std::find_if(hits.begin(), hits.end(), [](const Hit &h) { return h.id == 300; });
         if (first == hits.end() || first->rect.bottom > Body().bottom + 0.1f)
             winrt::throw_hresult(E_UNEXPECTED);
     }
-    if (flyout == Flyout::None && !miniMode && expanded && !Layout().emergency) {
+    if (flyout == Flyout::None && !miniMode && expanded && !Layout().emergency && !ChromeActive()) {
         for (Tab primary : PrimaryTabs) {
             int i = static_cast<int>(primary);
             auto rect = TabRect(i);
@@ -924,6 +924,34 @@ void Island::RenderSuite(const std::wstring &directory) {
         }
     }
     edge = anchor::Edge::Bottom;
+    tab = Tab::Power;
+    for (int appearance = 0; appearance < 3; ++appearance) {
+        lightAppearance = appearance == 1;
+        ConfigureAppearance(appearance == 2);
+        for (int edgeIndex = 0; edgeIndex < 2; ++edgeIndex) {
+            edge = edgeIndex ? anchor::Edge::Bottom : anchor::Edge::Top;
+            auto suffix = std::to_wstring(appearance) + L"-" + std::to_wstring(edgeIndex);
+            BeginChrome(ChromeKind::Confirm, L"Restart", L"Restart Windows? Save any open work before continuing.");
+            chrome.primary = L"Restart";
+            chrome.danger = true;
+            capture(L"polish-confirm-" + suffix);
+            FinishChrome(IDCANCEL);
+            BeginChrome(ChromeKind::Input, L"Weather city",
+                        L"Open-Meteo receives the city you enter. Leave it blank to keep weather offline.", L"Chicago");
+            capture(L"polish-editor-" + suffix);
+            FinishChrome(IDCANCEL);
+            BeginChrome(ChromeKind::Menu, L"Today options", L"");
+            chrome.items = {{L"Weather city…", WeatherCity},    {L"Calendar subscription…", CalendarFeed},
+                            {L"Add local event…", CalendarAdd}, {L"Clear local events", CalendarClear},
+                            {L"Focus duration…", FocusShort},   {L"World clocks…", TodayClocks}};
+            chrome.anchor = {Body().left, edge == anchor::Edge::Bottom ? Body().bottom : Body().top};
+            capture(L"polish-menu-" + suffix);
+            FinishChrome(IDCANCEL);
+        }
+    }
+    edge = anchor::Edge::Bottom;
+    lightAppearance = false;
+    ConfigureAppearance();
     tasks = std::move(v4SavedTasks);
     report << "PASS captures=" << captures
            << "; geometry, stable identity, catalog replacement, transformed scene and 5 DPI tiers. Software fixtures; "

@@ -1,0 +1,3 @@
+Phase 7: build /W4 /WX /permissive-, check-style, verify, test-motion passed.
+Before: docs/verification/design-baseline. After: this directory.
+Fixture renders are deterministic; live desktop and performance evidence are recorded separately.
