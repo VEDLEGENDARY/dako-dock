@@ -38,7 +38,7 @@ std::shared_ptr<WindowIcon> ReadIcon(HWND window) {
     HICON copy = CopyIcon(icon);
     return copy ? std::make_shared<WindowIcon>(copy) : nullptr;
 }
-}
+} // namespace
 std::optional<WindowEntry> WindowList::Inspect(HWND window, bool includeOwn) {
     if (!IsWindow(window) || GetAncestor(window, GA_ROOT) != window)
         return {};
@@ -210,7 +210,5 @@ bool WindowList::Activate(HWND window) {
         ShowWindowAsync(window, SW_RESTORE);
     return SetForegroundWindow(window) != FALSE;
 }
-bool WindowList::Close(HWND window) {
-    return IsWindow(window) && PostMessageW(window, WM_CLOSE, 0, 0);
-}
-}
+bool WindowList::Close(HWND window) { return IsWindow(window) && PostMessageW(window, WM_CLOSE, 0, 0); }
+} // namespace desktop

@@ -218,7 +218,8 @@ bool WriteTheme(bool dark) {
     }
     DWORD value = dark ? 0 : 1;
     privacy::Write audit(L"controls", L"registry-write",
-        L"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", L"theme-toggle-and-rollback");
+                         L"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                         L"theme-toggle-and-rollback");
     bool ok = true;
     for (int i = 0; i < 2; ++i)
         if (RegSetValueExW(key, names[i], 0, REG_DWORD, reinterpret_cast<BYTE *>(&value), sizeof(value)) !=
@@ -237,7 +238,7 @@ bool WriteTheme(bool dark) {
                         SMTO_ABORTIFHUNG, 500, &ignored);
     return audit.Complete(ok);
 }
-}
+} // namespace
 struct Service::Impl {
     HWND window;
     struct Notify {
@@ -385,8 +386,7 @@ struct Service::Impl {
         }
     }
 };
-Service::Service(HWND window) : impl_(std::make_unique<Impl>(window)) {
-}
+Service::Service(HWND window) : impl_(std::make_unique<Impl>(window)) {}
 Service::~Service() = default;
 void Service::Refresh(HMONITOR monitor) {
     impl_->Queue(0, [this, monitor] {
@@ -516,4 +516,4 @@ Snapshot Service::Read() {
     std::scoped_lock lock(impl_->resultMutex);
     return impl_->published;
 }
-}
+} // namespace controls

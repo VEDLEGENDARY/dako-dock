@@ -13,8 +13,7 @@
 
 namespace parity {
 using Microsoft::WRL::ComPtr;
-RecentDocuments::RecentDocuments(HWND owner) : owner_(owner), worker_([this] { Run(); }) {
-}
+RecentDocuments::RecentDocuments(HWND owner) : owner_(owner), worker_([this] { Run(); }) {}
 RecentDocuments::~RecentDocuments() {
     {
         std::scoped_lock lock(mutex_);
@@ -172,4 +171,4 @@ void CapabilityReport(const std::wstring &path) {
     report.flush();
     audit.Complete(static_cast<bool>(report));
 }
-}
+} // namespace parity

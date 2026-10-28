@@ -14,9 +14,7 @@ std::wstring Get(const Values &values, const wchar_t *key) {
     auto found = values.find(key);
     return found == values.end() ? std::wstring{} : found->second;
 }
-int Number(const Values &values, const wchar_t *key) {
-    return std::stoi(Get(values, key));
-}
+int Number(const Values &values, const wchar_t *key) { return std::stoi(Get(values, key)); }
 bool RestoreOne(const Values &values) {
     try {
         auto kind = Get(values, L"Kind");
@@ -24,7 +22,8 @@ bool RestoreOne(const Values &values) {
             return controls::RestoreEffect(values);
         if (kind == L"theme") {
             privacy::Write audit(L"recovery", L"registry-write",
-                L"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", L"restore-theme");
+                                 L"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                                 L"restore-theme");
             HKEY key = nullptr;
             if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
                                 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS)
@@ -111,7 +110,7 @@ bool RestoreOne(const Values &values) {
     }
     return false;
 }
-}
+} // namespace
 std::wstring Create() {
     PWSTR local = nullptr;
     if (FAILED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &local)))
@@ -230,4 +229,4 @@ bool RememberWallpaper(IUnknown *object) {
     Transaction transaction;
     return transaction.Remember(L"wallpaper", L"Windows", std::move(values));
 }
-}
+} // namespace effects
