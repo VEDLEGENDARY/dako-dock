@@ -38,7 +38,10 @@ struct App {
     std::wstring status;
     const std::vector<std::wstring> pages{L"General", L"Island",    L"Behavior",  L"Overlay", L"Appearance", L"Apps",
                                           L"Content", L"Clipboard", L"Wallpaper", L"Privacy", L"Advanced"};
-    explicit App(std::wstring path = {}) : storePath(std::move(path)), values(v4::ReadValues(storePath)) {}
+    explicit App(std::wstring path = {}) : storePath(std::move(path)), values(v4::ReadValues(storePath)) {
+        if (values.Bool(L"Offline"))
+            status = L"Offline is on. Privacy: set a city for weather; allow speed tests, then turn Offline off.";
+    }
     ~App() {
         if (font)
             DeleteObject(font);

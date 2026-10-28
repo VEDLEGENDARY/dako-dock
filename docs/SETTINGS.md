@@ -5,7 +5,7 @@ window works while the island is closed. Search filters the schema across all pa
 changes; visual controls preview immediately, and sliders commit their value on release. Closing or losing
 the settings process discards uncommitted previews. Reset page/all stages defaults for review before Apply.
 
-The curated schema has 36 preferences plus reset/import/export. Advanced contains safe mode, diagnostics
+The curated schema has 37 preferences plus reset/import/export. Advanced contains safe mode, diagnostics
 and the existing optional feature controls. There is no mascot, signing requirement or web runtime.
 
 ## Preferences
@@ -42,6 +42,7 @@ without restarting the island. Module construction/removal retains its separate 
 | Overlay | Hide in these apps | (empty) | Validated text (≤1024 characters) | Apply |
 | Content | Visible tabs (in order) | Controls;Today;Stats;Clipboard;Apps;Wallpaper;Power | Validated text (≤1024 characters) | Yes |
 | Content | Media sources | (empty) | Validated text (≤1024 characters) | Apply |
+| Content | Peek only while playing | 1 | Off / On | Apply |
 | Clipboard | Clipboard history size | 25 | 1–25 | Apply |
 | Clipboard | Clipboard retention (minutes) | 10 | 1–1440 | Apply |
 | Clipboard | Ignore clipboard apps | (empty) | Validated text (≤1024 characters) | Apply |
@@ -76,6 +77,19 @@ Export includes private calendar URLs and snippets in plain text. Import validat
 keys, types and ranges; it backs up the old store, discards imported module consent, preserves taskbar consent
 and cannot disable an active Offline preference. Clipboard snapshots and recovery journals are not exported.
 
+## Hover, overflow and slideshow
+
+Only the Dako launcher starts hover dwell. App icons retain hover/click access. Wheel input over the app
+strip scrolls forward/backward on either edge, independent of the expand-scroll preference. The launcher
+uses the edge-relative expand gesture. Peek only while playing defaults On; turn it Off to include paused
+sessions with metadata. Changes also re-evaluate an already-paused session.
+
+An explicit slideshow requires a configured local folder, a positive interval and at least two pictures.
+The folder is scanned only when the folder/interval configuration changes. Slideshow owns a separate
+playlist; browsing Recent or changing unrelated preferences does not move the selection or reset a deadline.
+A one-shot deadline schedules one apply, then rearms only after success. Disable/configure cancels and drains
+it; stale-generation messages are ignored. A failed apply stops the schedule until reconfigured.
+
 ## Taskbar, startup and network
 
 Ordinary startup displays the app island without reserving work area. Replace taskbar requires the separate
@@ -83,7 +97,7 @@ desktop consent/recovery flow. A layout choice or import cannot grant it. Ctrl+A
 Ctrl+Alt+Shift+Q exits. Start with Windows manages only this user's Dako value in the Windows Run key and
 points to this portable folder. Move the folder before enabling startup, or toggle startup after moving it.
 
-Weather needs a city and Offline disabled. Speed testing needs its opt-in, Offline disabled, and an explicit
+First-run Features and the settings window explain the Offline gates. Weather needs a city and Offline disabled. Speed testing needs its opt-in, Offline disabled, and an explicit
 Run speed test action. Calendar feeds still use the existing Today options. Native Windows Settings launches
 and other applications have their own network behavior.
 

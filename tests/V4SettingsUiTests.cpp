@@ -55,8 +55,8 @@ int wmain(int argc, wchar_t **argv) {
     SendMessageW(window, WM_COMMAND, MAKEWPARAM(10, BN_CLICKED), reinterpret_cast<LPARAM>(GetDlgItem(window, 10)));
     assert(v4::ReadValues(path).Text(L"Theme") == L"Paper");
     IAccessible *accessible = nullptr;
-    assert(SUCCEEDED(
-        AccessibleObjectFromWindow(theme, static_cast<DWORD>(OBJID_CLIENT), IID_IAccessible, reinterpret_cast<void **>(&accessible))));
+    assert(SUCCEEDED(AccessibleObjectFromWindow(theme, static_cast<DWORD>(OBJID_CLIENT), IID_IAccessible,
+                                                reinterpret_cast<void **>(&accessible))));
     VARIANT self{};
     self.vt = VT_I4;
     self.lVal = CHILDID_SELF;
@@ -72,6 +72,14 @@ int wmain(int argc, wchar_t **argv) {
     SendMessageW(scale, TBM_SETPOS, TRUE, 120);
     SendMessageW(window, WM_HSCROLL, MAKEWPARAM(TB_ENDTRACK, 120), reinterpret_cast<LPARAM>(scale));
     assert(v4::ReadValues(path).Int(L"Scale") == 120);
+    SendMessageW(nav, LB_SETCURSEL, 6, 0);
+    SendMessageW(window, WM_COMMAND, MAKEWPARAM(2, LBN_SELCHANGE), reinterpret_cast<LPARAM>(nav));
+    HWND playingOnly = GetDlgItem(window, 102);
+    assert(playingOnly && SendMessageW(playingOnly, BM_GETCHECK, 0, 0) == BST_CHECKED);
+    SendMessageW(playingOnly, BM_SETCHECK, BST_UNCHECKED, 0);
+    SendMessageW(window, WM_COMMAND, MAKEWPARAM(102, BN_CLICKED), reinterpret_cast<LPARAM>(playingOnly));
+    SendMessageW(window, WM_COMMAND, MAKEWPARAM(10, BN_CLICKED), reinterpret_cast<LPARAM>(GetDlgItem(window, 10)));
+    assert(!v4::ReadValues(path).Bool(L"PeekPlayingOnly"));
     SendMessageW(window, WM_CLOSE, 0, 0);
     assert(WaitForSingleObject(child.hProcess, 5000) == WAIT_OBJECT_0);
     DWORD exit = 1;

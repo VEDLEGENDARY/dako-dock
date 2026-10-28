@@ -102,6 +102,8 @@ inline std::wstring Wide(const char *value, int length) {
 #include "NotchHotZone.h"
 #include "PromptText.h"
 #include "DesktopCatalog.h"
+#include "OneShotDeadline.h"
+#include "SlideshowPlan.h"
 #include "HardwareStats.h"
 #include "ControlsService.h"
 #include "Connectivity.h"
@@ -400,6 +402,7 @@ class Island {
     void OpenSettings();
     void LoadV4Settings();
     void ApplyV4Values();
+    void UpdateInteractionMedia();
     void ApplyInteraction();
     void InteractionPointer(bool inside);
     void UpdateInteractionTimer();
@@ -424,6 +427,15 @@ class Island {
     std::vector<Task> tasks;
     TaskStore taskStore;
     std::unique_ptr<DesktopCatalog> catalog;
+    std::unique_ptr<DesktopCatalog> slideshowCatalog;
+    std::unique_ptr<OneShotDeadline> slideshowDeadline;
+    SlideshowPlan slideshow;
+    std::vector<WallpaperEntry> slideshowPictures;
+    size_t slideshowIndex = 0;
+    void ConfigureSlideshow();
+    void SlideshowReady(LPARAM generation);
+    void RunSlideshow(WPARAM generation);
+    void SlideshowFinished(WPARAM result, LPARAM detail);
     bool appsRequested = false, wallpapersRequested = false, appsLoading = false, wallpaperLoading = false;
     std::vector<AppEntry> apps;
     std::vector<WallpaperEntry> wallpapers;

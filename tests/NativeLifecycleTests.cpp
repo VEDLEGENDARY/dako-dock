@@ -595,61 +595,101 @@ int wmain(int argc, wchar_t **argv) {
         report << "s0_features_palette_toggle_cost_sampling_keyboard=PASS\n";
         app.moduleRegistry.Enable(L"windows");
         app.OpenPalette();
-        app.paletteQuery = L"ms-settings:privacy-webcam"; app.BuildPalette();
-        RequireLive(app.paletteItems.size() == 1 && app.paletteItems.front().moduleAction.starts_with(L"windows.page-result-"),
+        app.paletteQuery = L"ms-settings:privacy-webcam";
+        app.BuildPalette();
+        RequireLive(app.paletteItems.size() == 1 &&
+                        app.paletteItems.front().moduleAction.starts_with(L"windows.page-result-"),
                     "typed Settings link shares the palette catalog");
         auto ranksBeforeSettings = app.commandCatalog.Save();
-        app.ExecutePalette(0); Settle(app);
-        RequireLive(app.commandCatalog.Save() == ranksBeforeSettings, "typed Settings targets never enter learned ranking");
-        app.OpenPalette(); Settle(app);
+        app.ExecutePalette(0);
+        Settle(app);
+        RequireLive(app.commandCatalog.Save() == ranksBeforeSettings,
+                    "typed Settings targets never enter learned ranking");
+        app.OpenPalette();
+        Settle(app);
         std::wstring appUri = L"ms-settings:defaultapps?registeredAppUser=" + std::wstring(200, L'a') + L"%20Tools";
         auto editName = [&] {
             ComPtr<IAccessible> accessible;
-            RequireLive(SUCCEEDED(AccessibleObjectFromWindow(app.appSearch, static_cast<DWORD>(OBJID_CLIENT), IID_PPV_ARGS(&accessible))),
+            RequireLive(SUCCEEDED(AccessibleObjectFromWindow(app.appSearch, static_cast<DWORD>(OBJID_CLIENT),
+                                                             IID_PPV_ARGS(&accessible))),
                         "native search edit exposes accessibility");
-            VARIANT self{}; self.vt = VT_I4; self.lVal = CHILDID_SELF;
-            BSTR label = nullptr; HRESULT named = accessible->get_accName(self, &label);
+            VARIANT self{};
+            self.vt = VT_I4;
+            self.lVal = CHILDID_SELF;
+            BSTR label = nullptr;
+            HRESULT named = accessible->get_accName(self, &label);
             std::wstring result = label ? std::wstring(label, SysStringLen(label)) : std::wstring{};
-            SysFreeString(label); RequireLive(SUCCEEDED(named), "native search edit has a name"); return result;
+            SysFreeString(label);
+            RequireLive(SUCCEEDED(named), "native search edit has a name");
+            return result;
         };
-        RequireLive(editName() == modules::String(IDS_PALETTE_NAME), "native edit is named for commands while the palette is open");
-        SendMessageW(app.appSearch, EM_REPLACESEL, TRUE, reinterpret_cast<LPARAM>(appUri.c_str())); Settle(app);
+        RequireLive(editName() == modules::String(IDS_PALETTE_NAME),
+                    "native edit is named for commands while the palette is open");
+        SendMessageW(app.appSearch, EM_REPLACESEL, TRUE, reinterpret_cast<LPARAM>(appUri.c_str()));
+        Settle(app);
         RequireLive(app.paletteQuery == appUri && app.paletteItems.size() == 1 &&
-            SendMessageW(app.appSearch, EM_GETLIMITTEXT, 0, 0) == 4096,
-            "native palette accepts a complete context link beyond the old app-search limit");
-        app.ExecutePalette(0); Settle(app);
-        RequireLive(app.commandCatalog.Save() == ranksBeforeSettings, "parameter targets remain absent from learned ranking");
+                        SendMessageW(app.appSearch, EM_GETLIMITTEXT, 0, 0) == 4096,
+                    "native palette accepts a complete context link beyond the old app-search limit");
+        app.ExecutePalette(0);
+        Settle(app);
+        RequireLive(app.commandCatalog.Save() == ranksBeforeSettings,
+                    "parameter targets remain absent from learned ranking");
         SetWindowTextW(app.appSearch, L"");
         std::wstring excessive = L"ms-settings:camera?cameraId=" + std::wstring(1100, L'x');
-        SendMessageW(app.appSearch, EM_REPLACESEL, TRUE, reinterpret_cast<LPARAM>(excessive.c_str())); Settle(app);
-        RequireLive(app.paletteQuery == excessive && app.paletteItems.empty(), "oversized pasted targets are rejected without truncating into a valid URI");
-        SetWindowTextW(app.appSearch, L"ms-settings:defaultapps?registeredAUMID=Example!App"); Settle(app);
-        RequireLive(app.paletteItems.size() == 1 && app.paletteItems.front().label.find(L"Example%21App") != std::wstring::npos,
+        SendMessageW(app.appSearch, EM_REPLACESEL, TRUE, reinterpret_cast<LPARAM>(excessive.c_str()));
+        Settle(app);
+        RequireLive(app.paletteQuery == excessive && app.paletteItems.empty(),
+                    "oversized pasted targets are rejected without truncating into a valid URI");
+        SetWindowTextW(app.appSearch, L"ms-settings:defaultapps?registeredAUMID=Example!App");
+        Settle(app);
+        RequireLive(app.paletteItems.size() == 1 &&
+                        app.paletteItems.front().label.find(L"Example%21App") != std::wstring::npos,
                     "canonical escaping remains discoverable from the typed spelling");
-        app.SetTab(Tab::Apps); Settle(app);
-        RequireLive(SendMessageW(app.appSearch, EM_GETLIMITTEXT, 0, 0) == 120, "ordinary app search retains its original bound");
+        app.SetTab(Tab::Apps);
+        Settle(app);
+        RequireLive(SendMessageW(app.appSearch, EM_GETLIMITTEXT, 0, 0) == 120,
+                    "ordinary app search retains its original bound");
         RequireLive(editName() == L"Search installed apps", "native edit restores the app-search accessible name");
-        app.OpenPalette(); Settle(app); app.OpenFeatures(); Settle(app); app.SetTab(Tab::Apps); Settle(app);
-        RequireLive(editName() == L"Search installed apps", "indirect navigation through Features restores the native edit name");
+        app.OpenPalette();
+        Settle(app);
+        app.OpenFeatures();
+        Settle(app);
+        app.SetTab(Tab::Apps);
+        Settle(app);
+        RequireLive(editName() == L"Search installed apps",
+                    "indirect navigation through Features restores the native edit name");
         report << "s1_settings_parameters_native_input_canonical_inert=PASS\n";
-        app.InvokeModuleAction(L"windows.open"); Settle(app);
+        app.InvokeModuleAction(L"windows.open");
+        Settle(app);
         app.moduleQuery = L"ms-settings:privacy-webcam";
         app.modulePanel = *app.moduleRegistry.View(L"windows", app.moduleQuery);
-        app.RebuildLayout(); Settle(app);
-        RequireLive(app.modulePanel.rows.size() == 1 && app.modulePanel.rows.front().label.find(L"ms-settings:privacy-webcam") != std::wstring::npos,
+        app.RebuildLayout();
+        Settle(app);
+        RequireLive(app.modulePanel.rows.size() == 1 &&
+                        app.modulePanel.rows.front().label.find(L"ms-settings:privacy-webcam") != std::wstring::npos,
                     "typed Settings link also appears in the shared module view");
         for (const auto &[command, label] : {std::pair{static_cast<int>(SleepNow), IDS_COMMAND_SLEEP},
                                              std::pair{static_cast<int>(RestartNow), IDS_COMMAND_RESTART}}) {
-            app.OpenPalette(); app.paletteQuery = modules::String(label); app.BuildPalette();
-            RequireLive(app.paletteItems.size() == 1 && app.paletteItems.front().action == command, "system command has one palette route");
-            app.ExecutePalette(0); Settle(app);
-            RequireLive(app.note == modules::String(IDS_POWER_INERT), "power commands refuse fixtures before any dialog or system action");
+            app.OpenPalette();
+            app.paletteQuery = modules::String(label);
+            app.BuildPalette();
+            RequireLive(app.paletteItems.size() == 1 && app.paletteItems.front().action == command,
+                        "system command has one palette route");
+            app.ExecutePalette(0);
+            Settle(app);
+            RequireLive(app.note == modules::String(IDS_POWER_INERT),
+                        "power commands refuse fixtures before any dialog or system action");
         }
         bool beforeDark = app.controlState.dark;
-        app.OpenPalette(); app.paletteQuery = modules::String(IDS_COMMAND_DARK); app.BuildPalette();
-        RequireLive(app.paletteItems.size() == 1 && app.paletteItems.front().action == Dark, "dark-mode command shares the existing control action");
-        app.ExecutePalette(0); Settle(app);
-        RequireLive(app.controlState.dark != beforeDark, "inert dark-mode routing changes only the fixture presentation");
+        app.OpenPalette();
+        app.paletteQuery = modules::String(IDS_COMMAND_DARK);
+        app.BuildPalette();
+        RequireLive(app.paletteItems.size() == 1 && app.paletteItems.front().action == Dark,
+                    "dark-mode command shares the existing control action");
+        app.ExecutePalette(0);
+        Settle(app);
+        RequireLive(app.controlState.dark != beforeDark,
+                    "inert dark-mode routing changes only the fixture presentation");
         app.controlState.dark = beforeDark;
         app.moduleRegistry.ApplyPreset(modules::Preset::Minimal);
         report << "s1_settings_links_and_inert_system_commands=PASS\n";
@@ -662,35 +702,42 @@ int wmain(int argc, wchar_t **argv) {
         app.BuildPalette();
         RequireLive(app.paletteItems.size() == 1 && app.paletteItems.front().label.find(L"14") != std::wstring::npos,
                     "palette calculator result is searchable");
-        app.ExecutePalette(0); Settle(app);
-        RequireLive(app.moduleView == L"utilities" && app.flyout == Flyout::Module,
-                    "calculator reuses the island");
-        app.InvokeModuleAction(L"clipboard.open"); Settle(app);
+        app.ExecutePalette(0);
+        Settle(app);
+        RequireLive(app.moduleView == L"utilities" && app.flyout == Flyout::Module, "calculator reuses the island");
+        app.InvokeModuleAction(L"clipboard.open");
+        Settle(app);
         RequireLive(!app.clipboardReadTask.Busy() && app.moduleRegistry.Capabilities().Active().empty(),
                     "S1 render fixtures never read clipboard or create execution requests");
         for (const auto &action : app.moduleRegistry.Actions())
-            if (action.id.starts_with(L"clipboard.preview-") && action.text.find(modules::String(IDS_CLIP_IMAGE)) != std::wstring::npos) {
-                app.InvokeModuleAction(action.id); break;
+            if (action.id.starts_with(L"clipboard.preview-") &&
+                action.text.find(modules::String(IDS_CLIP_IMAGE)) != std::wstring::npos) {
+                app.InvokeModuleAction(action.id);
+                break;
             }
         Settle(app);
         RequireLive(app.modulePanel.image && app.IndexForKey(app.StableKey(7221)) >= 0,
                     "clipboard image preview has a named accessible readout");
-        app.InvokeModuleAction(L"clipboard.clear"); Settle(app);
+        app.InvokeModuleAction(L"clipboard.clear");
+        Settle(app);
         RequireLive(!app.modulePanel.image, "clearing history releases the image preview");
         app.moduleRegistry.ApplyPreset(modules::Preset::Minimal);
         app.OpenFeatures();
         report << "s1_calculator_clipboard_image_inert_lifecycle=PASS\n";
         app.moduleRegistry.Grant(L"keep-awake");
         RequireLive(app.moduleRegistry.Enable(L"keep-awake"), "keep-awake fixture starts");
-        app.OpenModule(L"keep-awake"); Settle(app);
+        app.OpenModule(L"keep-awake");
+        Settle(app);
         RequireLive(app.moduleRegistry.Invoke(L"keep-awake.rule-apps", window, L"editor.exe; player.exe"),
                     "rule names save in fixture memory");
         app.OpenModule(L"keep-awake");
-        app.modulePage = 10 / app.ModuleSlots(); app.RebuildLayout();
+        app.modulePage = 10 / app.ModuleSlots();
+        app.RebuildLayout();
         RequireLive(app.IndexForKey(app.StableKey(5100 + static_cast<int>(10 % app.ModuleSlots()))) >= 0,
                     "selected app rule has a keyboard/accessibility action");
         RequireLive(!app.moduleRegistry.Invoke(L"keep-awake.rules-start", window) &&
-                    app.moduleRegistry.Capabilities().Active().empty(), "preview rule start remains inert");
+                        app.moduleRegistry.Capabilities().Active().empty(),
+                    "preview rule start remains inert");
         app.moduleRegistry.ApplyPreset(modules::Preset::Minimal);
         report << "s1_keep_awake_rules_inert_accessible=PASS\n";
         app.moduleRegistry.Grant(L"files");
@@ -700,27 +747,36 @@ int wmain(int argc, wchar_t **argv) {
         app.BuildPalette();
         RequireLive(!app.paletteItems.empty() && app.paletteItems.front().moduleAction.starts_with(L"files.result-"),
                     "indexed file results share the command palette");
-        app.OpenFeatures(); Settle(app);
-        RequireLive(app.paletteItems.empty() && app.paletteQuery.empty(), "leaving the palette clears private search results");
-        app.InvokeModuleAction(L"files.open"); Settle(app);
+        app.OpenFeatures();
+        Settle(app);
+        RequireLive(app.paletteItems.empty() && app.paletteQuery.empty(),
+                    "leaving the palette clears private search results");
+        app.InvokeModuleAction(L"files.open");
+        Settle(app);
         app.moduleQuery = L"report";
         app.modulePanel = *app.moduleRegistry.View(L"files", app.moduleQuery);
-        app.RebuildLayout(); Settle(app);
+        app.RebuildLayout();
+        Settle(app);
         RequireLive(app.modulePanel.rows.front().label.find(L"report") != std::wstring::npos &&
-                        app.moduleRegistry.Capabilities().Active().empty(), "file island uses inert local fixtures");
+                        app.moduleRegistry.Capabilities().Active().empty(),
+                    "file island uses inert local fixtures");
         app.moduleRegistry.ApplyPreset(modules::Preset::Minimal);
         report << "s1_indexed_files_inert_lifecycle=PASS\n";
         app.moduleRegistry.Grant(L"shelf");
         RequireLive(app.moduleRegistry.Enable(L"shelf"), "shelf fixture starts");
-        app.InvokeModuleAction(L"shelf.open"); Settle(app);
+        app.InvokeModuleAction(L"shelf.open");
+        Settle(app);
         RequireLive(app.flyout == Flyout::Module && app.moduleView == L"shelf", "shelf reuses the island surface");
         SendMessageW(window, WM_ACTIVATE, WA_INACTIVE, 0);
         RequireLive(app.expanded, "shelf stays available when another app receives focus for dragging");
         app.InteractionTick();
-        RequireLive(app.expanded && app.moduleRegistry.Capabilities().Active().empty(), "inert shelf has no polling or live drop registration");
-        for (const auto &action : app.moduleRegistry.Actions()) if (action.id.starts_with(L"shelf.preview-")) {
-            app.InvokeModuleAction(action.id); break;
-        }
+        RequireLive(app.expanded && app.moduleRegistry.Capabilities().Active().empty(),
+                    "inert shelf has no polling or live drop registration");
+        for (const auto &action : app.moduleRegistry.Actions())
+            if (action.id.starts_with(L"shelf.preview-")) {
+                app.InvokeModuleAction(action.id);
+                break;
+            }
         Settle(app);
         RequireLive(app.modulePanel.rows.front().action.starts_with(L"shelf.copy-"), "shelf detail offers copy/drag");
         // Only the fixture hit is enabled here; the real module remains inert and rejects clipboard/drag IO.
@@ -729,33 +785,46 @@ int wmain(int argc, wchar_t **argv) {
         int copyHit = app.IndexForKey(app.StableKey(5100));
         RequireLive(copyHit >= 0, "shelf copy hit is present");
         auto copyRect = app.hits[copyHit].rect;
-        int copyX = static_cast<int>((app.PanelX() + (copyRect.left + copyRect.right) / 2 * app.textScale) * app.dpi / 96);
-        int copyY = static_cast<int>((app.PanelY() + (copyRect.top + copyRect.bottom) / 2 * app.textScale) * app.dpi / 96);
+        int copyX =
+            static_cast<int>((app.PanelX() + (copyRect.left + copyRect.right) / 2 * app.textScale) * app.dpi / 96);
+        int copyY =
+            static_cast<int>((app.PanelY() + (copyRect.top + copyRect.bottom) / 2 * app.textScale) * app.dpi / 96);
         SendMessageW(window, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(copyX, copyY));
         SendMessageW(window, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(copyX + 1, copyY));
         RequireLive(app.pressedId == 5100 && !app.pressedKey.empty(), "small pointer motion preserves a normal click");
         SendMessageW(window, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(copyX + 64, copyY));
         RequireLive(app.pressedId == 0 && app.pressedKey.empty() && GetCapture() != window &&
-            app.moduleRegistry.Capabilities().Active().empty(), "shelf drag threshold releases capture without invoking inert copy IO");
+                        app.moduleRegistry.Capabilities().Active().empty(),
+                    "shelf drag threshold releases capture without invoking inert copy IO");
         SendMessageW(window, WM_LBUTTONUP, 0, MAKELPARAM(copyX + 64, copyY));
         app.moduleRegistry.ApplyPreset(modules::Preset::Minimal);
         report << "s1_shelf_inert_surface_lifecycle=PASS\n";
-        app.moduleRegistry.Grant(L"recycle-bin"); app.moduleRegistry.Grant(L"drives");
-        RequireLive(app.moduleRegistry.Enable(L"recycle-bin") && app.moduleRegistry.Enable(L"drives"), "system fixtures enable");
-        app.InvokeModuleAction(L"recycle-bin.open"); Settle(app);
+        app.moduleRegistry.Grant(L"recycle-bin");
+        app.moduleRegistry.Grant(L"drives");
+        RequireLive(app.moduleRegistry.Enable(L"recycle-bin") && app.moduleRegistry.Enable(L"drives"),
+                    "system fixtures enable");
+        app.InvokeModuleAction(L"recycle-bin.open");
+        Settle(app);
         RequireLive(app.moduleView == L"recycle-bin" && app.modulePanel.rows.size() >= 6 &&
-            app.moduleRegistry.Capabilities().Active().empty(), "Recycle Bin uses synthetic totals in the shared island");
-        app.OpenPalette(); app.paletteQuery = modules::String(IDS_DRIVE_EJECT); app.BuildPalette();
+                        app.moduleRegistry.Capabilities().Active().empty(),
+                    "Recycle Bin uses synthetic totals in the shared island");
+        app.OpenPalette();
+        app.paletteQuery = modules::String(IDS_DRIVE_EJECT);
+        app.BuildPalette();
         RequireLive(app.paletteItems.size() == 1 && app.paletteItems.front().moduleAction.starts_with(L"drives.eject-"),
                     "removable target uses the common palette");
         auto beforeDeviceRanks = app.commandCatalog.Save();
-        app.ExecutePalette(0); Settle(app);
-        RequireLive(app.commandCatalog.Save() == beforeDeviceRanks && app.moduleRegistry.Capabilities().Active().empty(),
+        app.ExecutePalette(0);
+        Settle(app);
+        RequireLive(app.commandCatalog.Save() == beforeDeviceRanks &&
+                        app.moduleRegistry.Capabilities().Active().empty(),
                     "synthetic device action cannot prompt/eject or enter learned ranking");
-        app.InvokeModuleAction(L"drives.open"); Settle(app);
+        app.InvokeModuleAction(L"drives.open");
+        Settle(app);
         RequireLive(app.moduleView == L"drives" && app.modulePanel.rows.size() >= 4,
                     "removable metadata shares island layout and accessibility");
-        app.moduleRegistry.ApplyPreset(modules::Preset::Minimal); app.OpenFeatures();
+        app.moduleRegistry.ApplyPreset(modules::Preset::Minimal);
+        app.OpenFeatures();
         report << "s1_system_metadata_inert_surfaces=PASS\n";
         std::vector<double> paletteLatency;
         for (int attempt = 0; attempt < 11; ++attempt) {
@@ -764,12 +833,14 @@ int wmain(int argc, wchar_t **argv) {
             SendMessageW(window, WM_HOTKEY, 3, 0);
             UpdateWindow(window);
             double elapsed = duration<double, std::milli>(steady_clock::now() - begin).count();
-            if (attempt) paletteLatency.push_back(elapsed);
+            if (attempt)
+                paletteLatency.push_back(elapsed);
         }
         std::sort(paletteLatency.begin(), paletteLatency.end());
         report << "warm_palette_hotkey_to_paint_p95_ms=" << paletteLatency[8]
                << "\nwarm_palette_hotkey_to_paint_max_ms=" << paletteLatency.back() << '\n';
-        RequireLive(paletteLatency[8] < 100, "warm palette hotkey-to-paint p95 stays below 100ms in the native fixture");
+        RequireLive(paletteLatency[8] < 100,
+                    "warm palette hotkey-to-paint p95 stays below 100ms in the native fixture");
         app.SetExpanded(false);
         Settle(app);
         sample("warm_rest");
@@ -870,7 +941,11 @@ int wmain(int argc, wchar_t **argv) {
             auto bar = app.docks->PillBounds(panelMonitor);
             float scale = app.dpi / 96;
             float bottom = ownerBounds.top + (app.PanelY() + app.height) * scale;
-            RequireLive(bottom <= bar.top + 1, "production island opens above its monitor bar");
+            float top = ownerBounds.top + app.PanelY() * scale;
+            float join = static_cast<float>(static_cast<int>(4 * scale));
+            RequireLive(app.edge == anchor::Edge::Bottom ? std::abs(bottom - (bar.top + join)) <= 1
+                                                         : std::abs(top - (bar.bottom - join)) <= 1,
+                        "production island meets its app strip at the mirrored four-DIP shared join");
             RequireLive(app.SurfaceWidth() <= app.envelopeWidth + .1f,
                         "production bar island stays inside its monitor envelope");
             if (action == desktop::DockSearch) {

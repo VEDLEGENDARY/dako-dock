@@ -807,7 +807,9 @@ struct DockShell::Impl {
                 Rebuild(bar);
             }
             if (callbacks.pointer)
-                callbacks.pointer(true, bar.monitor);
+                callbacks.pointer(panelOpen || DockDwellContains(bar.geometry, GET_X_LPARAM(lparam) / bar.Scale(),
+                                                                 GET_Y_LPARAM(lparam) / bar.Scale()),
+                                  bar.monitor);
             TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE | TME_HOVER, bar.window, 250};
             TrackMouseEvent(&track);
             float mouse = GET_X_LPARAM(lparam) / bar.Scale();
@@ -835,12 +837,19 @@ struct DockShell::Impl {
                 ShowPreview(bar, bar.hover - DockGroupFirst);
             return 0;
         case WM_MOUSEWHEEL:
-            if (callbacks.expand &&
-                (anchor::WheelExpands(options.edge, GET_WHEEL_DELTA_WPARAM(wparam)) != options.reversedScroll)) {
+        case WM_MOUSEHWHEEL: {
+            POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+            ScreenToClient(bar.window, &point);
+            auto intent =
+                ResolveDockWheel(bar.geometry, options, point.x / bar.Scale(), point.y / bar.Scale() - bar.hideOffset,
+                                 GET_WHEEL_DELTA_WPARAM(wparam), message == WM_MOUSEHWHEEL);
+            if (callbacks.expand && intent == DockWheel::Expand) {
                 callbacks.expand(bar.monitor);
                 return 0;
             }
-            if (GET_WHEEL_DELTA_WPARAM(wparam) > 0)
+            if (intent == DockWheel::None)
+                return 0;
+            if (intent == DockWheel::PreviousApps)
                 bar.first = bar.first ? bar.first - 1 : 0;
             else if (bar.first + bar.geometry.visibleGroups < bar.groups.size())
                 ++bar.first;
@@ -848,6 +857,7 @@ struct DockShell::Impl {
             bar.magnify.Snap(0);
             Rebuild(bar);
             return 0;
+        }
         case WM_MOUSELEAVE:
             if (options.autoHide)
                 SetTimer(bar.window, AutoHideTimer, 550, nullptr);
@@ -1244,6 +1254,17 @@ bool DockShell::Contains(HWND window) const {
     for (const auto &bar : impl_->surfaces)
         if (bar->window == window)
             return true;
+    return false;
+}
+bool DockShell::DwellContains(POINT screen) const {
+    HWND under = GetAncestor(WindowFromPoint(screen), GA_ROOT);
+    for (const auto &bar : impl_->surfaces) {
+        if (bar->window != under)
+            continue;
+        POINT local = screen;
+        ScreenToClient(bar->window, &local);
+        return DockDwellContains(bar->geometry, local.x / bar->Scale(), local.y / bar->Scale() - bar->hideOffset);
+    }
     return false;
 }
 bool DockShell::RenderFixture(const std::wstring &path, UINT dpi, float textScale, int variant) {

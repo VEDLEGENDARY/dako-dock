@@ -1,0 +1,55 @@
+composition=1
+frame_readiness=1
+fallback_timer_ms=8
+twenty_task_keyboard_scroll_delete=PASS
+fixed_seven_tab_height=PASS
+rapid_mouse_navigation_28=PASS
+content_during_motion=PASS
+fields_during_motion=PASS
+wallpaper_grid_gutters=PASS
+portfolio_contrast=PASS
+stalled_and_reduced_motion_gpu_release=PASS
+recorded_swapchain_frames=76
+frame_statistics_hresult=2289696779
+display_refresh_hz=120
+warm_open handles=305 gdi=9 user=13 private_mib=88.7617 working_set_mib=112.465
+cycle_10 handles=276 gdi=10 user=13 private_mib=52.3438 working_set_mib=76.543
+cycle_20 handles=276 gdi=10 user=13 private_mib=52.8438 working_set_mib=76.75
+cycle_30 handles=276 gdi=10 user=13 private_mib=53.5156 working_set_mib=78.6953
+cycle_40 handles=276 gdi=10 user=13 private_mib=61.1406 working_set_mib=85.332
+cycle_50 handles=276 gdi=10 user=13 private_mib=60.6953 working_set_mib=85.2734
+v32_inert_controls_wallpaper_keyboard=PASS
+unsupported_brightness_hidden=PASS
+windows_settings_unchanged=PASS
+s0_features_palette_toggle_cost_sampling_keyboard=PASS
+s1_settings_parameters_native_input_canonical_inert=PASS
+s1_settings_links_and_inert_system_commands=PASS
+s1_calculator_clipboard_image_inert_lifecycle=PASS
+s1_keep_awake_rules_inert_accessible=PASS
+s1_indexed_files_inert_lifecycle=PASS
+s1_shelf_inert_surface_lifecycle=PASS
+s1_system_metadata_inert_surfaces=PASS
+warm_palette_hotkey_to_paint_p95_ms=8.3239
+warm_palette_hotkey_to_paint_max_ms=8.3752
+warm_rest handles=296 gdi=12 user=14 private_mib=54.7734 working_set_mib=85.4922
+warm_rest_60s handles=297 gdi=12 user=13 private_mib=28.1406 working_set_mib=58.582
+warm_rest_seconds=60
+normalized_cpu_percent=0.016572
+tick_p50_ms=8.3344
+tick_p95_ms=8.7011
+tick_p99_ms=13.3826
+paint_p95_ms=2.029
+presentation_samples=9911
+presented_vblank_interval_p50_ms=8.33333
+presented_vblank_interval_p95_ms=8.33333
+presented_vblank_interval_p99_ms=8.33333
+multiple_present_groups=427
+invalid_or_disjoint_statistics=91
+read_only_service_shutdown_10_cycles_ms=344
+all_seven_tabs_wireless_compact=1
+search_focus_query_caret=PASS
+large_text_native_fields=PASS
+cycles=50
+PASS: native composition cycles, interruption, GPU release, resource bounds, text-scale EDIT/caret and reported rest interval. Fixture-only: no hardware actions or screen-reader sign-off.
+production_bar_widgets_anchor_search=PASS
+preview_bar_notch_switch_preserves_work_areas=PASS

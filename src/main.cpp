@@ -262,7 +262,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command, int) {
         bool inspectMode = wcsstr(command, L"--inspect") != nullptr;
         HWND window =
             CreateWindowExW(WS_EX_TOPMOST | (app.previewMode ? WS_EX_APPWINDOW : WS_EX_TOOLWINDOW), WindowClass,
-                            app.previewMode ? L"Dako v4.0 — Isolated Preview" : L"Dako — Desktop Dock",
+                            app.previewMode ? L"Dako 4.0.0-rc.1 — Isolated Preview" : L"Dako — Desktop Dock",
                             WS_POPUP | WS_CLIPCHILDREN, 0, 0, 300, 100, nullptr, nullptr, instance, &app);
         if (!window) {
             MessageBoxW(nullptr, L"Dako could not create its native window.", L"Dako", MB_OK | MB_ICONERROR);

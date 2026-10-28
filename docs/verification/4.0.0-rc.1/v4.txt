@@ -1,0 +1,19 @@
+PASS all C++ source and test lines fit the 120-column limit.
+V4BehaviorTests.cpp
+PASS icon dwell exclusion, mirrored bidirectional app wheel, playing-only Peek, unchanged slideshow configuration, stale/completion guards and one-shot cancellation; no wallpaper writes
+ClipboardPasteTests.cpp
+PASS targeted paste: identity, standard edit, protected/read-only/disabled/stale target rejection; no clipboard IO
+IslandStateTests.cpp
+PASS event/state matrix, media churn debounce, stopped idle deadlines and mirrored polygon hit testing
+V4SettingsTests.cpp
+SettingsCore.cpp
+Generating Code...
+PASS V4 schema defaults/bounds, export-reset-import, atomic invalid-value rejection and corrupt-file preservation
+V4IpcTests.cpp
+SettingsCore.cpp
+Generating Code...
+PASS user-scoped preview pipe, event reload, rollback packets, forced settings-client exit and clean shutdown
+V4SettingsUiTests.cpp
+SettingsCore.cpp
+Generating Code...
+PASS independent settings GUI, native controls, accessible labels, Apply, slider commit and isolated store

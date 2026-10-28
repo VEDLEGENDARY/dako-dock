@@ -1,0 +1,757 @@
+{
+  "version": "4.0.0-rc.1",
+  "reviewedDate": "2026-10-28",
+  "baseCommit": "2fa49b070ba5e8d763e3615e1df3c1ae1d9fdb60",
+  "sourceNormalization": "UTF-8 text, BOM removed, CRLF normalized to LF",
+  "sourceSha256": "cee09aa58e17569679115b556685a5bcf005951d995e62db7a691fdee9daadfa",
+  "sources": [
+    {
+      "path": ".clang-format",
+      "sha256": "6dd1d5a13a572bdd5f785ba4ddbdca68365e8ed92dbdcba7e09495df96fb6a7b"
+    },
+    {
+      "path": "scripts/build.ps1",
+      "sha256": "a67f92a8e1c6893e0f5457241d020fca1f5b9a7e02d5da96c8a4f997570b5e2e"
+    },
+    {
+      "path": "scripts/check-style.ps1",
+      "sha256": "0329eb051ae34eb217d566176f3339a660fec11289d4e915e2ed00d1b091902e"
+    },
+    {
+      "path": "scripts/export-verification.ps1",
+      "sha256": "48293abed12394b3dbebaeef78c232958ca0c09176a24a61ce5c37f0baf77476"
+    },
+    {
+      "path": "scripts/fetch-wallpapers.ps1",
+      "sha256": "10825da34ca467aef63e13bd5b86987c2c809cf19eeb9977e58e3038ea212e09"
+    },
+    {
+      "path": "scripts/measure.ps1",
+      "sha256": "a8411c2b3504e75730cf2acb8f784ed03199adf2e31088ecf924adbd104add4a"
+    },
+    {
+      "path": "scripts/package.ps1",
+      "sha256": "03a382010d11bd9d753b40faf900dde5e94a28c640cf7d6d2b9fee6940fbed4b"
+    },
+    {
+      "path": "scripts/settings-docs.ps1",
+      "sha256": "2c5490393a18516a37b672fbbe181f646cdd41fd66a8e29853c7aecfc6c189c4"
+    },
+    {
+      "path": "scripts/sources.ps1",
+      "sha256": "0840de39b5323082a8d7c5f66a448bc624cbc4f6e5863342aef94655bf32079b"
+    },
+    {
+      "path": "scripts/test-clipboard-storage.ps1",
+      "sha256": "bc42c92eecbdb209b1656836a4b1dc7f031b55e0cb0a97ec20a8f7e17ead2dd9"
+    },
+    {
+      "path": "scripts/test-clipboard-transfer.ps1",
+      "sha256": "8cb9b417b1e76ac0c8f0ac9fd7f1fd5ea74cd3c2019b79046ff4fb346b642e6f"
+    },
+    {
+      "path": "scripts/test-clipboard-vault.ps1",
+      "sha256": "49729ad86d485f71a3524fa0b1fb1e2d1bee8b2556119946b4ba25aae9fe4b7d"
+    },
+    {
+      "path": "scripts/test-command-models.ps1",
+      "sha256": "5a41f18ca81d989b59f10579535c295d8f8bf1b7225c6f8fd0a7ca7992bdc7ab"
+    },
+    {
+      "path": "scripts/test-file-search.ps1",
+      "sha256": "9f4e4fd4c82a4b33c6d7ad22de0b9e890b7c5cf48af7c55f805c226097f9a8fc"
+    },
+    {
+      "path": "scripts/test-island.ps1",
+      "sha256": "18a1fd8502ee804486d9f073367589cdce7278b7faaf469726a72780c2546182"
+    },
+    {
+      "path": "scripts/test-keep-awake.ps1",
+      "sha256": "8d2e607364a9e6a8ffdf84c9a189a4215e4a5ea636c21c27ddf5a75f0b529559"
+    },
+    {
+      "path": "scripts/test-live.ps1",
+      "sha256": "5a4c1bb154aff06801831c86f2ae76249c9e33ccfc5d7c776a1e8d730db92032"
+    },
+    {
+      "path": "scripts/test-modules.ps1",
+      "sha256": "a723650afddfca67920a8621a9f3401d40ea9b7eeb6fe4016ed787a4f6720f06"
+    },
+    {
+      "path": "scripts/test-motion.ps1",
+      "sha256": "d5960f24452244a734b98dfedc1c2cf118ba4820718ab890733c47fcaba3af03"
+    },
+    {
+      "path": "scripts/test-settings-pages.ps1",
+      "sha256": "18349ebbe210af2f5e23a7cbc34fc39d60511a221ed04bc675f2499d77574d1d"
+    },
+    {
+      "path": "scripts/test-shelf.ps1",
+      "sha256": "ada35c9b5c082f3297c507bc25257641cb29f6c459931e1ef4ded5ae179d3d47"
+    },
+    {
+      "path": "scripts/test-shell.ps1",
+      "sha256": "919ab4023b3defdea11d021019fa7c2cf2eb20c19fc0c009ff87b602e304e8e5"
+    },
+    {
+      "path": "scripts/test-system-actions.ps1",
+      "sha256": "fb2ecfc99d2044989d771eae631180053cfe266f8fec2ba8e91fce0ca1027392"
+    },
+    {
+      "path": "scripts/test-v4.ps1",
+      "sha256": "bc5e711271f1bb9defeebfde4ae25649c8331da12374722384457c36033d6d34"
+    },
+    {
+      "path": "scripts/verify.ps1",
+      "sha256": "99403d81ee572950176543693e0b87ed6641540735c5e93199f5ef09f873741c"
+    },
+    {
+      "path": "src/AccessibilityGuids.cpp",
+      "sha256": "d41b469ee103711b44ed02a8b21b629050c793fee37bb3257ddb74d3376fbef5"
+    },
+    {
+      "path": "src/Anchor.h",
+      "sha256": "c6eb24834d754c705c4fd7597c68dd0a921504895688c500b694bb0310520b9e"
+    },
+    {
+      "path": "src/app.manifest",
+      "sha256": "9ae383cfc4ce8a41cb227a8d51fcfaa8f13459880cca59015da48e1262e7129a"
+    },
+    {
+      "path": "src/AppsPage.cpp",
+      "sha256": "e20f7a47a6bb97863c63529e77c1390a4b1cf425f35efd4af3fd014ae49a2932"
+    },
+    {
+      "path": "src/AsyncWait.h",
+      "sha256": "daa13aac047929acc6b19e56090e80f33736ac0a3b54f5caaa3fedc4d3135fb6"
+    },
+    {
+      "path": "src/AwakeRuleModel.h",
+      "sha256": "89d1a9a025cc7b786516d08391a456453bae38214b54db091eb331a165742773"
+    },
+    {
+      "path": "src/AwakeRules.cpp",
+      "sha256": "de0aefa9fcf5a37663c84848ca02e337f434f729b03a9f0318c87b477064928e"
+    },
+    {
+      "path": "src/AwakeRules.h",
+      "sha256": "ed1993672ec32b8ba08f86a675de0bebd2ccdc884503d5170e03891306ef9fd8"
+    },
+    {
+      "path": "src/BundledFont.h",
+      "sha256": "47b049ebfce40cae9330379fdd953b37e968310241a0ef479f564a04020cc155"
+    },
+    {
+      "path": "src/CalendarService.h",
+      "sha256": "9deaf1cb5e26d929085b3d8b2b7133d54fe55061e9b16771398bfee0b73f5414"
+    },
+    {
+      "path": "src/ClipboardData.h",
+      "sha256": "7e875c97317631485cee9886fdb521e2963da2276587f5911145e936302ae4ea"
+    },
+    {
+      "path": "src/ClipboardModel.h",
+      "sha256": "b5ae0c05ba25c81b3861c46ee4b0f652d5defa36ca0f5d0807dea1384bfd7a9e"
+    },
+    {
+      "path": "src/ClipboardModule.cpp",
+      "sha256": "4179f353deb7845ffe8ab3f6c92097536b28f4a7b609c48ba9c4787f777f9783"
+    },
+    {
+      "path": "src/ClipboardModule.h",
+      "sha256": "397b3340d68a8a17220245b72c8570a7ee2009a7e5aa116c04280b86495b41bf"
+    },
+    {
+      "path": "src/ClipboardPage.cpp",
+      "sha256": "89482f4b49b936d57fc75febab86f3edc8da6c374965124808fc2b53d6ffaa35"
+    },
+    {
+      "path": "src/ClipboardPaste.h",
+      "sha256": "0c47b46c91eb374a1a64c870be26dcba5ef55fffb96674c31725e7b95fe041e3"
+    },
+    {
+      "path": "src/ClipboardTask.h",
+      "sha256": "c8742ee9a70eb49a7a7b32c52669a70fa5a0996306ee4e5fbb7951adb3892f55"
+    },
+    {
+      "path": "src/ClipboardTransfer.cpp",
+      "sha256": "d6ec6f044ee939be53d613359d1005860df8bc65c85eb55dcf2590b5d2b4f5e2"
+    },
+    {
+      "path": "src/ClipboardTransfer.h",
+      "sha256": "686f39afb07c44f20e8b111d19bf6d2f80c30d58ef42e1811a0f2848ea3ca56f"
+    },
+    {
+      "path": "src/ClipboardVault.cpp",
+      "sha256": "e3b979eb343af44523e18ea51bc15cc92e0422e6324b1bcaf94cf8a158bf2c6d"
+    },
+    {
+      "path": "src/ClipboardVault.h",
+      "sha256": "8edddff3828cf4b5dda739e5a9beddf8bf5bb181c69b136956b81f624237e86d"
+    },
+    {
+      "path": "src/CommandCatalog.h",
+      "sha256": "02fc9728538e89a84469895b912c06749df68d4a0b52ca3522548eea3a40a314"
+    },
+    {
+      "path": "src/CommandModel.h",
+      "sha256": "967f1f0e5fdc81ec8b992743a1fa1db305e5eed004556696606d89619e592cb7"
+    },
+    {
+      "path": "src/CompositionSurface.h",
+      "sha256": "4491053ce2787bbe5b289bb6c1260fcb8893133466fa2b7b849128423cb7f899"
+    },
+    {
+      "path": "src/ConnectionPage.cpp",
+      "sha256": "2b8f79812ab1a24ed123cd8e0a213086f27e33dcd0c32b5030140caf90b8a427"
+    },
+    {
+      "path": "src/Connectivity.h",
+      "sha256": "5c5fa73feed0305bab067548a67a136a32230f76ed0d6b93faf58c462e3370fb"
+    },
+    {
+      "path": "src/ControlIntegration.cpp",
+      "sha256": "fc5cf8b84a7efe0d7f940711197d41d3ca208540cb35405e1ef6860f7975f9a2"
+    },
+    {
+      "path": "src/ControlsPage.cpp",
+      "sha256": "a6bb0a59618c75c2e965c4822650335b5a125404840b42a49123e60c4ed7b065"
+    },
+    {
+      "path": "src/ControlsService.cpp",
+      "sha256": "588412fee24f880155e1655c3649e664102d1adcad81dbf693ae5ccfbc29ffdd"
+    },
+    {
+      "path": "src/ControlsService.h",
+      "sha256": "35e9fa1c42f676bd044815319209d18ff8c8ae944e99354729131ef29c95d6d4"
+    },
+    {
+      "path": "src/DesktopCatalog.h",
+      "sha256": "2fe4a6d10ade16f11ff62bcc38ecc3209cf1100c0895ab9da15c793bb5cce661"
+    },
+    {
+      "path": "src/DesktopIntegration.cpp",
+      "sha256": "d81f49dec69d9763c302e7dff21d1eb33e5aa745f6d09a80e5596988916dc5c9"
+    },
+    {
+      "path": "src/DesktopShell.h",
+      "sha256": "06cce2c9d66af40a4c3a712d1f7664450f9e8f9d2572ab69130ab6dd74b6cf28"
+    },
+    {
+      "path": "src/DockAccessible.h",
+      "sha256": "156607d51a62d6a2eb592395da7059f609397ee1e1c57e2c62b72c0eda3c49a9"
+    },
+    {
+      "path": "src/DockMotion.h",
+      "sha256": "20b0238dd5150bad92db761e4d7be0ce8524629d9d1a11952f5e76340673fb87"
+    },
+    {
+      "path": "src/DockShell.cpp",
+      "sha256": "ec795bc99aa5d5dfac64dc1512da6a2aa9acbf6ed5a19b0ffb022536ee418534"
+    },
+    {
+      "path": "src/DockShell.h",
+      "sha256": "9755ab6e6134b30cca161c1380b7c0b575ec79fb00cd1bba8a3656d17c0163d2"
+    },
+    {
+      "path": "src/DockView.h",
+      "sha256": "c92d16d3b3c436dff319046887640a9f7846af9f18ca545049365d043256150a"
+    },
+    {
+      "path": "src/DrivesModule.cpp",
+      "sha256": "c7656eeea78dc39c1eb4f0567d3daa9e32b24369736ca32a902a26270a440729"
+    },
+    {
+      "path": "src/DrivesModule.h",
+      "sha256": "01317377e5a10a8dafda618b2922963ddb932c150d03b2421738012891ef246a"
+    },
+    {
+      "path": "src/EffectsJournal.h",
+      "sha256": "cf510a6afc341aa19c93f72af775f667ec1e5c93e60d7aebff92532ec127c13c"
+    },
+    {
+      "path": "src/FeaturesPage.cpp",
+      "sha256": "70ebb2c17ba78203bc277f56b38b5476de86c241089c635ba85d5c0d4bcee3cb"
+    },
+    {
+      "path": "src/FileSearchModel.h",
+      "sha256": "301fbf13254197c2e8aa58b8882b5c7c1323ecd5432cff21ceee591e7d6069db"
+    },
+    {
+      "path": "src/FileSearchModule.cpp",
+      "sha256": "92aacc98d00eb359459a33484a73ba869c2805c81acc77df62961b24e81744eb"
+    },
+    {
+      "path": "src/FileSearchModule.h",
+      "sha256": "5c3abbaada434ad6c21167479af2e0c39fed42aa377a22c0f210e1ed6740458b"
+    },
+    {
+      "path": "src/FrameClock.h",
+      "sha256": "4da6fc3a256be4582616796b54c60ac9794c26f84799c9c6ad4d3f4c94e18c83"
+    },
+    {
+      "path": "src/HardwareStats.h",
+      "sha256": "730ca76cccf83a8167726fab34e917428f8893240fd39779ef76041717948e8b"
+    },
+    {
+      "path": "src/Island.cpp",
+      "sha256": "10e5e5de932d44af491ff500e3a7590a13de128b663fdbe33a7625b15f26f1c5"
+    },
+    {
+      "path": "src/Island.h",
+      "sha256": "f7004f4fd4c47d56aca8b7d7fc21029cb5fd6bb229a2f9ad2bd4fca52f50a98f"
+    },
+    {
+      "path": "src/IslandAccessibility.cpp",
+      "sha256": "1a7b0e07fa72c23d7a5f0f474807edc8aab1129a860fbf6b04715d1af89b3490"
+    },
+    {
+      "path": "src/IslandBodyScope.h",
+      "sha256": "52bdd365a9ac8234bb5c8d4f92e136de6914dce0771e9abd61eed0baf82f1eba"
+    },
+    {
+      "path": "src/IslandFixtures.cpp",
+      "sha256": "899a360c00536fa2814933ccf4b3130ba865d2b86444c1faef971e09ffb13f51"
+    },
+    {
+      "path": "src/IslandInput.cpp",
+      "sha256": "a39a91ea09e0d86a9731d64fa662ca377a847e7ec0912502444e2911e6d3a65f"
+    },
+    {
+      "path": "src/IslandLayout.cpp",
+      "sha256": "546157701503ddae8c61b631102487340d19fc3910e5dd976f51724ed576b09f"
+    },
+    {
+      "path": "src/IslandPaint.cpp",
+      "sha256": "da67bc575ce88f947c6f086b7d520fe10e7a230b82ac355c9b0491e6de5c4f9e"
+    },
+    {
+      "path": "src/IslandState.cpp",
+      "sha256": "5c6597a15786145c4319eaee1865b1a3bc6281058bc42ac6c63b8ca3d53acaa2"
+    },
+    {
+      "path": "src/IslandState.h",
+      "sha256": "7d47a49a07ea6d9b814052537267de52fcb6a12dc0b77479144c6b846fdec87d"
+    },
+    {
+      "path": "src/KeepAwakeModule.cpp",
+      "sha256": "82afb2890e57f9137d206df2db00edd4483795bc237ddbd374e095ff3eeae766"
+    },
+    {
+      "path": "src/KeepAwakeModule.h",
+      "sha256": "2d79de5c6e5d5d21ad5b8ebb94661956ccea21e7bf2a15d2b19fa87ec1f2e069"
+    },
+    {
+      "path": "src/LayoutEngine.h",
+      "sha256": "3a44d25add49f3f9c2baccb1af2786ab5db57523858a74401d2a3e03c3203932"
+    },
+    {
+      "path": "src/LayoutMetrics.h",
+      "sha256": "ce9d3b8239435a1bbe7c202754414fa7da4b39219c9e07abfd897ba104946e6a"
+    },
+    {
+      "path": "src/main.cpp",
+      "sha256": "16480a3553b9937cd038202098b66e817a67ca47a95febb8dfe20a61cf21066c"
+    },
+    {
+      "path": "src/ModuleCheck.cpp",
+      "sha256": "275f8dcb35f242ffc9825d452d00a73093550c2b2f52d4dd69bc1bd8bd7ce126"
+    },
+    {
+      "path": "src/ModulePage.cpp",
+      "sha256": "d5f92e38fb01e9ffa846b0b8ab3bb6c6bd39b988e2544bf173296dc324a10403"
+    },
+    {
+      "path": "src/ModuleRegistry.cpp",
+      "sha256": "aff15cefe8224419ea9e94d0fc63362e3bba33a1d1e9d43f00787e0ea7ec5a02"
+    },
+    {
+      "path": "src/ModuleRegistry.h",
+      "sha256": "215136434864166b2ac387c6bc0258e17d75e165099e5c1f7a960b06660c9014"
+    },
+    {
+      "path": "src/ModuleStrings.h",
+      "sha256": "bed20583e72d830533f285eaf804766ca30401247516c3c0f5a3177d36707750"
+    },
+    {
+      "path": "src/ModuleStrings.rc",
+      "sha256": "6a9c19f1749ee36ed01f888c3455cc90e9eef497c43210eca3b54ea09a0b7014"
+    },
+    {
+      "path": "src/MotionController.h",
+      "sha256": "a4a8c3d293b716d3fc38e8f06c77f8983261503ca9fb46a15d0bff7ec5062fc3"
+    },
+    {
+      "path": "src/NativeServices.h",
+      "sha256": "8eb14c0e4af0485b4f052975fc0595b46f93bd223dbfa97ad933f97c6cf4ae1b"
+    },
+    {
+      "path": "src/NotchHotZone.h",
+      "sha256": "ec5e449a38a551e6c3fb8b58edb0ce60a9144cc2f52978a244549e8ddd001e7c"
+    },
+    {
+      "path": "src/OneShotDeadline.h",
+      "sha256": "e0f9a0348d61a12e61ba84b8e8ec7d0505f2fbe9d53dbeafa9a78ddbaa36f74a"
+    },
+    {
+      "path": "src/PalettePage.cpp",
+      "sha256": "c68929b0017e9d26612e8a34d0b7add2d9ac106dbac91f988ce2800634f51f16"
+    },
+    {
+      "path": "src/ParityServices.cpp",
+      "sha256": "4df9aa3811c77b8df9d6cf22a00cc7ea87096eb7397bc14e6d06860ee2332544"
+    },
+    {
+      "path": "src/ParityServices.h",
+      "sha256": "9b3de1be635bf51c1baed6bf81940ad8b5696ce2858e1cacf8a72a19ec14528a"
+    },
+    {
+      "path": "src/PowerPage.cpp",
+      "sha256": "6d50a60c3c4a1fedf90f04077c4ed9932cdbea61e378a6a30b9ab3f05d60917c"
+    },
+    {
+      "path": "src/PrivacyRuntime.h",
+      "sha256": "05a4838d9fdbef65cc394528333522db875bdb465c7e258ad5f1e99d8a2937eb"
+    },
+    {
+      "path": "src/PromptText.h",
+      "sha256": "dce54c94a4dee3b6ba6511f538411b9cd68d5b8e61064b11a29869adb5c6f00f"
+    },
+    {
+      "path": "src/RecycleBinModule.cpp",
+      "sha256": "275ea6f434f7b793179fc3d5b92bd1b24fde6cf25f2b006c49b38204c5291b54"
+    },
+    {
+      "path": "src/RecycleBinModule.h",
+      "sha256": "e9b25ed086e3b821d7e73c57a8d0cac4c8b97ae9a8686e5075a0042663cd73a2"
+    },
+    {
+      "path": "src/settings/main.cpp",
+      "sha256": "faaa0f0c5bee5dd518234a9bcdbdf2e262df7fb2ebc27ec34903b122478baa24"
+    },
+    {
+      "path": "src/SettingsCore.cpp",
+      "sha256": "ae0ee2778a01f48538dc3d8b022d94a6a57136b0ddac555611cee762840e189c"
+    },
+    {
+      "path": "src/SettingsCore.h",
+      "sha256": "e54ac54b9df8dea340b2390219f110cbe11ae71ff47f1495d8b246f2052ec18f"
+    },
+    {
+      "path": "src/SettingsIdentity.h",
+      "sha256": "517c665ce0d86ef0e9f92cd80515aae4160f5e02c83147574683128a1b5b7121"
+    },
+    {
+      "path": "src/SettingsPageModel.h",
+      "sha256": "8d7415864d726348ebbf97b72342122b10c5ff459002ba24000266a305605fbf"
+    },
+    {
+      "path": "src/SettingsSchema.h",
+      "sha256": "11e7a27b1256b5f8f3a9bb59fe89d913c90e9d48562a9c9f218fc75f8482d26b"
+    },
+    {
+      "path": "src/SettingsStore.h",
+      "sha256": "0ffd40cab803f777570441f863b76f614d11da09936f5812aa793e10343a5773"
+    },
+    {
+      "path": "src/ShelfModule.cpp",
+      "sha256": "1ae3f1ec975fae090033b4bf144d33d1db7e0ab003949f9a2814fc6689f229a2"
+    },
+    {
+      "path": "src/ShelfModule.h",
+      "sha256": "364e451b217e0d0401dcbe8c37c73e1dd8d9e2009fbc9fb0570d4501eace93d6"
+    },
+    {
+      "path": "src/ShelfOle.cpp",
+      "sha256": "f5a6453cc5d3bf8e76e07f7fbc84d3af273bbe9f6a82b21c19d94fddadafeb41"
+    },
+    {
+      "path": "src/ShelfOle.h",
+      "sha256": "cd3ea50f0222b163f8ebcc01dc45b411c1ddd7993ab201aff4134e59b1ff7785"
+    },
+    {
+      "path": "src/SlideshowIntegration.cpp",
+      "sha256": "b2b6c7dd1b9dc5eb55a3c11fce9724b263f2045fa3400a6c0f2a15b2d6eb7948"
+    },
+    {
+      "path": "src/SlideshowPlan.h",
+      "sha256": "49246e0dafa6faed83c80e66b3d9f1cfbc4d0f9fef6eb1191f89341208bc15b1"
+    },
+    {
+      "path": "src/SnippetModel.h",
+      "sha256": "fb46349d06b0d0b31f8c5e41d9a596ff5c07e878be7499c2e7a14c1dc0f5c394"
+    },
+    {
+      "path": "src/SnippetsModule.cpp",
+      "sha256": "e4816bcde28886a0a21e8bbb4936e32cc718e6985f928b5d394e06e1a85a5524"
+    },
+    {
+      "path": "src/SnippetsModule.h",
+      "sha256": "14f0e7ba6c10d812281b7fdd9ffc4c7a6833fac27130022894ebe502c19d044c"
+    },
+    {
+      "path": "src/SpeedTest.h",
+      "sha256": "601612a02f515c30ff52a8a7782112e02f7043031f2cbbd4910fd01e3910b26c"
+    },
+    {
+      "path": "src/StatsPage.cpp",
+      "sha256": "0234f3f2a4c831e47f2efb7838e96adbcf86922bcd146477db50c1c880050977"
+    },
+    {
+      "path": "src/SystemActionModel.h",
+      "sha256": "809d0e508479c53c3264994c00c9a5bf501464711ddc49356a4a0b28bfd578ca"
+    },
+    {
+      "path": "src/SystemActionNative.cpp",
+      "sha256": "ecf134da144117595117a545cc2f650eda7525c88d8f03e8232eb0cb2d98e5bf"
+    },
+    {
+      "path": "src/SystemActionNative.h",
+      "sha256": "91f979b7c4abea1a1f9f7702454478dd50d765e95cf427765d9fd795200086ea"
+    },
+    {
+      "path": "src/SystemEffects.cpp",
+      "sha256": "1f9e18eb469747eda003c66bb78818200ce4ba07b784a6fc52a4c1f3bb33d5ab"
+    },
+    {
+      "path": "src/TelemetryModel.h",
+      "sha256": "93df6a89ef1b63c1fef5dd24573de542eabf33b8e5e4e51e52f2c9b91c97f641"
+    },
+    {
+      "path": "src/ThemePalette.h",
+      "sha256": "6589daa9c70e82084aab996b6a8b17a35a49083a6ff1c09c055d044104838df9"
+    },
+    {
+      "path": "src/TodayNetwork.h",
+      "sha256": "6e57587c5869ccea06d89ec0727e7c0a2f41a02d169efa7b1a40ad4a0facf502"
+    },
+    {
+      "path": "src/TodayPage.cpp",
+      "sha256": "313938c1c7880d6f3f16d4a011f3e0e4d32474f0fe2c4a9a87c4e30a8ec483ae"
+    },
+    {
+      "path": "src/UtilityModule.cpp",
+      "sha256": "a3675e92f6991e573551f0b4a7e397c659c1c65b73b82a357c944f5bcf51bddb"
+    },
+    {
+      "path": "src/UtilityModule.h",
+      "sha256": "a0b22a8f94c34526dbe4664931765d63fa71c80b730ab88d7d28a08306375f6a"
+    },
+    {
+      "path": "src/V4Integration.cpp",
+      "sha256": "35935775b1b1194fe5f84df7c775073573186bcedc06002b64d1cf44c6bed141"
+    },
+    {
+      "path": "src/version.rc",
+      "sha256": "1859f0bdc9eead24ea2bdd67dbabb95c150306b87979daf9191491848bff8e20"
+    },
+    {
+      "path": "src/WallpaperModel.h",
+      "sha256": "2fa5a991a7cf7e0a2bafd4d78a954457e7135d2105a194ff3c5acb03ab05dc6e"
+    },
+    {
+      "path": "src/WallpaperPage.cpp",
+      "sha256": "5d1d6b29cb83b8a0b742c085b17d378e4e9647bee2097e3c94a8b5d173390200"
+    },
+    {
+      "path": "src/WallpaperReveal.h",
+      "sha256": "a52d1ad6a472414e3939652c659397e73c3db3206cb9b73ae9c0955cdf5946e6"
+    },
+    {
+      "path": "src/WeatherService.h",
+      "sha256": "b6f93240f19351d12f3fd9ecc1f6f1cd0f4fd5118d9389800138a6bbe9c81e6c"
+    },
+    {
+      "path": "src/WindowList.cpp",
+      "sha256": "2715006a50baed6277f45344cf019f0411d3a72254ff444fa3a49e17b5025702"
+    },
+    {
+      "path": "src/WindowList.h",
+      "sha256": "fd5b5101e1382529bb999df2c62e56c49b68289d18814f721c4b70414253557e"
+    },
+    {
+      "path": "src/WindowsFileSearch.cpp",
+      "sha256": "c630959512cccde2eb72e6df6eb9445c78847868760770c8dbdd5191f5bc19e0"
+    },
+    {
+      "path": "src/WindowsFileSearch.h",
+      "sha256": "f1167d4373bffcb21565a00af284c9cf4e744203e9449bc90d47afa8e45926e4"
+    },
+    {
+      "path": "src/WindowsShortcuts.cpp",
+      "sha256": "9972132944930f3a4c5ee380753512a424c8c27660aaf15870f543a3225653f9"
+    },
+    {
+      "path": "src/WindowsShortcuts.h",
+      "sha256": "16f55123015656fc4e2943fd496802d72781908117c29f4c7531e92234302ccb"
+    },
+    {
+      "path": "tests/ClipboardPasteTests.cpp",
+      "sha256": "459b76ac65738c4188cb1c975f19871b8171aed41f41adc55886a6eefbf2ba14"
+    },
+    {
+      "path": "tests/ClipboardStorageTests.cpp",
+      "sha256": "53d757b41d187893f35e670f6bc598d0402c8a5d2a593f4e386762ad7b2faceb"
+    },
+    {
+      "path": "tests/ClipboardTransferTests.cpp",
+      "sha256": "8663221fb475d52d8506f058f1aef3d83fd623eae556dfeea7ae40aca0c08c72"
+    },
+    {
+      "path": "tests/ClipboardVaultTests.cpp",
+      "sha256": "9e6e4a9c06fb563147f2ceb5ca9097b245f722913b0cdfcd5c6d6e81235cdf79"
+    },
+    {
+      "path": "tests/CommandModelTests.cpp",
+      "sha256": "a645f1d0ba4ec62d4a20b9513121d6667eb7158377cdbdf5c2f0cf2f86fa8d2f"
+    },
+    {
+      "path": "tests/DockMotionTests.cpp",
+      "sha256": "b7d95295f71e4e75df1fca2fe35b818eb0527fd47653fbdf6a8ada862e405ea4"
+    },
+    {
+      "path": "tests/FileSearchTests.cpp",
+      "sha256": "cba224dde4f25dbde5e69249f727dc3729bbe58e8c3c77e9c81ca833d5e84a8d"
+    },
+    {
+      "path": "tests/FoundationTests.cpp",
+      "sha256": "9d7c8d0051598a45ac6e82a6cd9d0486f5f2e4e7294a9324cc2ab2d74f6cf023"
+    },
+    {
+      "path": "tests/FrameClockTests.cpp",
+      "sha256": "b4e10e9066adb07069565fe2b310e2ae11cda7f69acc202ec56bef1c5c9b986f"
+    },
+    {
+      "path": "tests/IslandStateTests.cpp",
+      "sha256": "fd01f404d0b1555970890104faf7355c655980e76462120c866ed2ff53be62bc"
+    },
+    {
+      "path": "tests/IslandTests.cpp",
+      "sha256": "64fb26bbdc64fdd25d74e229e29d0fb68fabdc01c6496b43980ffc14f4a87de8"
+    },
+    {
+      "path": "tests/Milestone32Tests.cpp",
+      "sha256": "6e066f145338d402317b3a39457182256d3efa55088594b957b7e0326b690964"
+    },
+    {
+      "path": "tests/ModuleTests.cpp",
+      "sha256": "d7e8b3fbf767b879923abcf67ac172371618dfed4685e54db143960e70d8c397"
+    },
+    {
+      "path": "tests/NativeAsyncTests.cpp",
+      "sha256": "56fe034798dd22eb5500414d105d858c8ba83ebfd44d40471c640ac1c67f0d41"
+    },
+    {
+      "path": "tests/NativeControlsReadTests.cpp",
+      "sha256": "1b791e1ebd3383fb3cf8bee2606156503e0e69cf1583465a0639e80a5b55c99c"
+    },
+    {
+      "path": "tests/NativeDockTests.cpp",
+      "sha256": "70d5dc0ba6bdf43f544c471f088e3ac566a236197caed012fa82830ada5d81f8"
+    },
+    {
+      "path": "tests/NativeEffectsTests.cpp",
+      "sha256": "798c39858d4a8d5e608e6f3afeb06a6ae4284068576d9402359377d3908b4cd7"
+    },
+    {
+      "path": "tests/NativeKeepAwakeTests.cpp",
+      "sha256": "36bbfbdf76bba727d5714f9856c2dc5239cdae3b01af7f342fad998bb2a59db6"
+    },
+    {
+      "path": "tests/NativeLifecycleTests.cpp",
+      "sha256": "269fa23c40278db3467f28c110fa1ff2c275f5d680f52154225074cda977061b"
+    },
+    {
+      "path": "tests/NativeShellTests.cpp",
+      "sha256": "8177125b3000d6e9e1617d148777611493a22b99fd7551a966970dc87e68cdeb"
+    },
+    {
+      "path": "tests/PrivacyTests.cpp",
+      "sha256": "272760e369c3f738d50a0902c9a473737b6592cf5e5cd3b7c5753e42b2738c7f"
+    },
+    {
+      "path": "tests/SettingsPageTests.cpp",
+      "sha256": "65e41bb05d68a2a98a215beab9eacb98835c6981bb34ad92dbf3d8da3c8ec744"
+    },
+    {
+      "path": "tests/ShelfNativeTests.cpp",
+      "sha256": "6a8688a7846811af506e48d52b81456bcbab06cea5ce14dd19b600610bde6e44"
+    },
+    {
+      "path": "tests/ShelfOleTests.cpp",
+      "sha256": "272e3755086cbb239f313ecc7431124bb871f235b195352fce03d54829182b03"
+    },
+    {
+      "path": "tests/SystemActionTests.cpp",
+      "sha256": "4db2c7f336bcd1d68480ab88306520f5890d4c582ec2586a6d510bb0b6945dd1"
+    },
+    {
+      "path": "tests/V4BehaviorTests.cpp",
+      "sha256": "c6c192c4c7844db7bd5cbaf8bc6e0b4ef7292cbea4366325da50d7b44fa96aef"
+    },
+    {
+      "path": "tests/V4IpcTests.cpp",
+      "sha256": "d0f64bd0f8d457b573d94dfedfddfda0c39de0be6590d894ca69a316bc0939e9"
+    },
+    {
+      "path": "tests/V4SettingsTests.cpp",
+      "sha256": "97b11613d44b526abce31107e49ddb23752bad046d49fc999fc9f413c9210f78"
+    },
+    {
+      "path": "tests/V4SettingsUiTests.cpp",
+      "sha256": "8ae5c136492269903b66c11e13a8809553d61df5ba43d9118f4491256b8920d3"
+    }
+  ],
+  "binaries": [
+    {
+      "name": "Dako.exe",
+      "sha256": "94695ec13209ff20396e193700d735914d71f7b698e08fab0b117fbc50507781",
+      "productVersion": "4.0.0-rc.1",
+      "prerelease": true
+    },
+    {
+      "name": "DakoSettings.exe",
+      "sha256": "2a9be01463ad31ae1fe0ab3edeff2e52b43c6183a963baa9ee3e6bed4959b638",
+      "productVersion": "4.0.0-rc.1",
+      "prerelease": true
+    }
+  ],
+  "gates": [
+    {
+      "name": "build",
+      "command": "scripts/build.ps1",
+      "log": "build.txt",
+      "passed": true
+    },
+    {
+      "name": "v4",
+      "command": "scripts/test-v4.ps1",
+      "log": "v4.txt",
+      "passed": true
+    },
+    {
+      "name": "motion",
+      "command": "scripts/test-motion.ps1",
+      "log": "motion.txt",
+      "passed": true
+    },
+    {
+      "name": "render",
+      "command": "scripts/verify.ps1",
+      "log": "render.txt",
+      "passed": true
+    },
+    {
+      "name": "shell",
+      "command": "scripts/test-shell.ps1",
+      "log": "shell.txt",
+      "passed": true
+    },
+    {
+      "name": "live",
+      "command": "scripts/test-live.ps1 -UseProductionObjects",
+      "log": "live.txt",
+      "passed": true
+    }
+  ]
+}

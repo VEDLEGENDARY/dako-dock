@@ -290,10 +290,7 @@ void Island::Initialize() {
     if (!renderMode && !previewMode && !toggleHotkey)
         note = L"Global shortcut unavailable. Use the tray menu.";
     RebuildLayout();
-    if (!renderMode && !fixtureGeometry && !previewMode && options.Int(L"Slideshow") > 0 && !wallpaperFolder.empty()) {
-        catalog->DiscoverWallpapers(wallpaperFolder);
-        SetTimer(window, 91, static_cast<UINT>(options.Int(L"Slideshow")) * 60000, nullptr);
-    }
+    ConfigureSlideshow();
     PreviewTrace("initialized");
     if (!renderMode && !previewMode && !DockEnabled()) {
         hotZone.Initialize(window);

@@ -1,0 +1,1 @@
+PASS: 1068 fixture PNGs, geometry/identity assertions, catalog replacement, 5 DPI tiers, 4 text tiers and expanded MSAA semantics. Live desktop, screen-reader and hardware validation are separate.

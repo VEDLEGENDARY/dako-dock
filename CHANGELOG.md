@@ -1,6 +1,14 @@
 # Changelog
 
-## 4.0.0 — 2026-10-28
+## 4.0.0-rc.1 — 2026-10-28
+
+- Restrict hover dwell to the Dako launcher and preserve bidirectional wheel scrolling over app icons.
+- Add playing-only Peek, enabled by default, with paused-session support as an option.
+- Give slideshow one owner, its own playlist and cancellable completion-driven deadlines; ignore unrelated settings saves.
+- Add a first-run Offline explanation, consolidate plan/reference documents under docs/v4, and remove duplicate source/tests.
+- Enforce the 120-column C++ limit and add regression/evidence export coverage. Keep the package marked prerelease pending acceptance.
+
+## 4.0.0 development — 2026-10-28
 
 - Merge apps into one mirrored top/bottom island; add event-driven Dock/Peek/Expanded behavior, finite dwell/leave timers and stable media debounce.
 - Default to Midnight, sampled gold and bundled Rubik; restore all seven tabs and restyle Controls, Today, Stats, Clipboard, Wallpaper, Apps and Power.

@@ -304,9 +304,20 @@ void Island::ApplyInteraction() {
     UpdateInteractionTimer();
 }
 
+void Island::UpdateInteractionMedia() {
+    auto sources = v4::Split(options.Text(L"MediaSources"));
+    bool allowed = sources.empty() || std::find(sources.begin(), sources.end(), currentMedia.source) != sources.end();
+    interaction.OnMedia(allowed &&
+                        island::MediaAllowsPeek(currentMedia.available, currentMedia.playing, currentMedia.paused,
+                                                !currentMedia.title.empty(), options.Bool(L"PeekPlayingOnly")));
+    ApplyInteraction();
+}
+
 void Island::InteractionPointer(bool inside) {
     if (renderMode || fixtureGeometry || previewMode)
         return;
+    if (!interaction.NeedsTick())
+        lastInteraction = steady_clock::now();
     interaction.OnPointer(inside);
     InteractionTick();
 }
@@ -322,7 +333,8 @@ void Island::InteractionTick() {
     bool inside = false;
     if (docks) {
         HWND under = GetAncestor(WindowFromPoint(point), GA_ROOT);
-        inside = docks->Contains(under) || docks->Contains(GetWindow(under, GW_OWNER));
+        inside = expanded ? docks->Contains(under) || docks->Contains(GetWindow(under, GW_OWNER))
+                          : docks->DwellContains(point);
     }
     POINT local = point;
     ScreenToClient(window, &local);

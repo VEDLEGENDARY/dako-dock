@@ -78,6 +78,7 @@ void Island::SettingsUpdated(WPARAM preview) {
             LoadV4Settings();
     }
     ApplyV4Values();
+    UpdateInteractionMedia();
     dockOptions.edge = edge;
     accentColor = static_cast<unsigned>(std::stoul(options.Text(L"Accent"), nullptr, 16));
     motionOverride = options.Bool(L"ReducedMotion");
@@ -105,14 +106,7 @@ void Island::SettingsUpdated(WPARAM preview) {
                                                                       : L"clipboard.persist-off",
                                   window, L"", true);
         PostMessageW(window, modules::Changed, 0, 0);
-        KillTimer(window, 91);
-        if (options.Int(L"Slideshow") > 0 && !options.Text(L"WallpaperFolder").empty()) {
-            if (!catalog)
-                catalog = std::make_unique<DesktopCatalog>(window);
-            wallpaperSource = 1;
-            catalog->DiscoverWallpapers(options.Text(L"WallpaperFolder"));
-            SetTimer(window, 91, static_cast<UINT>(options.Int(L"Slideshow")) * 60000, nullptr);
-        }
+        ConfigureSlideshow();
     }
     ReadTextScale();
     ConfigureAppearance();

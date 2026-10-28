@@ -238,10 +238,12 @@ int wmain(int argc, wchar_t **argv) {
         desktop::Shell recovery;
         recovery.Initialize(owner);
         int opened = 0;
+        int expandedByWheel = 0;
         HMONITOR openedMonitor = nullptr;
         std::wstring launched;
         std::pair<size_t, size_t> reordered{99, 99};
         desktop::DockShell::Callbacks callbacks;
+        callbacks.expand = [&](HMONITOR) { ++expandedByWheel; };
         callbacks.open = [&](int action, HMONITOR monitor) {
             opened = action;
             openedMonitor = monitor;
@@ -306,12 +308,36 @@ int wmain(int argc, wchar_t **argv) {
         DeleteObject(nativeRegion);
         SendMessageW(barWindow, desktop::DockCallback, ABN_FULLSCREENAPP, TRUE);
         PumpDock(50);
-        RequireDock(IsWindowVisible(barWindow)!=FALSE,"V4 Always show keeps the island above fullscreen");
-        desktop::DockOptions fullscreenPolicy;fullscreenPolicy.fullscreenPolicy=2;bars.Options(fullscreenPolicy);bars.RefreshFullscreen();
+        RequireDock(IsWindowVisible(barWindow) != FALSE, "V4 Always show keeps the island above fullscreen");
+        desktop::DockOptions fullscreenPolicy;
+        fullscreenPolicy.fullscreenPolicy = 2;
+        bars.Options(fullscreenPolicy);
+        bars.RefreshFullscreen();
         RequireDock(!IsWindowVisible(barWindow), "fullscreen AppBar notification hides the bar");
+        // QUNS also observes the real foreground window. Restore an owned normal window before testing exit,
+        // rather than inheriting an unrelated browser/video window after hiding the maximized fixture.
+        ShowWindow(owner, SW_RESTORE);
+        SetWindowPos(owner, HWND_TOPMOST, strip.left + 100, strip.top - 500, 640, 360, SWP_SHOWWINDOW);
+        SetForegroundWindow(owner);
         SendMessageW(barWindow, desktop::DockCallback, ABN_FULLSCREENAPP, FALSE);
-        PumpDock(50);
-        RequireDock(IsWindowVisible(barWindow) != FALSE, "fullscreen exit restores the bar");
+        bool fullscreenRestored = Until([&] {
+            bars.RefreshFullscreen();
+            return IsWindowVisible(barWindow) != FALSE;
+        });
+        if (!fullscreenRestored) {
+            QUERY_USER_NOTIFICATION_STATE notification = QUNS_NOT_PRESENT;
+            HRESULT notificationResult = SHQueryUserNotificationState(&notification);
+            RECT normal{};
+            GetWindowRect(owner, &normal);
+            std::fprintf(stderr,
+                         "fullscreen exit diagnostic: query=%08lx state=%d owned_foreground=%d "
+                         "owner_visible=%d owner_rect=%ld,%ld,%ld,%ld bar_style=%llx\n",
+                         notificationResult, static_cast<int>(notification), GetForegroundWindow() == owner,
+                         IsWindowVisible(owner), normal.left, normal.top, normal.right, normal.bottom,
+                         static_cast<unsigned long long>(GetWindowLongPtrW(barWindow, GWL_STYLE)));
+        }
+        RequireDock(fullscreenRestored, "fullscreen exit with an owned normal foreground restores the bar");
+        ShowWindow(owner, SW_HIDE);
         bars.Options({});
         std::fprintf(stderr, "stage fullscreen PASS\n");
         Microsoft::WRL::ComPtr<IAccessible> accessible;
@@ -379,6 +405,50 @@ int wmain(int argc, wchar_t **argv) {
                     "keyboard pin reorder follows the same persistence path");
 
         std::fprintf(stderr, "stage pin interactions PASS\n");
+        std::vector<desktop::PinEntry> overflowPins(80);
+        for (size_t i = 0; i < overflowPins.size(); ++i) {
+            overflowPins[i].key = L"fixture:wheel-" + std::to_wstring(i);
+            overflowPins[i].name = L"Wheel pin " + std::to_wstring(i);
+        }
+        bars.SetData(overflowPins, {}, {});
+        for (auto edge : {anchor::Edge::Top, anchor::Edge::Bottom}) {
+            desktop::DockOptions islandOptions;
+            islandOptions.island = true;
+            islandOptions.edge = edge;
+            bars.Options(islandOptions);
+            PumpDock(20);
+            GetWindowRect(barWindow, &pinBounds);
+            auto wheelLayout =
+                desktop::SolveDock((pinBounds.right - pinBounds.left) / barScale,
+                                   desktop::BuildDockGroups(overflowPins, {}, nullptr), {}, islandOptions);
+            auto appHit = std::find_if(wheelLayout.hits.begin(), wheelLayout.hits.end(),
+                                       [](const auto &hit) { return hit.action >= desktop::DockGroupFirst; });
+            auto launcherHit = std::find_if(wheelLayout.hits.begin(), wheelLayout.hits.end(),
+                                            [](const auto &hit) { return hit.action == desktop::DockApps; });
+            RequireDock(appHit != wheelLayout.hits.end() && launcherHit != wheelLayout.hits.end(),
+                        "overflow app and launcher expose native geometry");
+            POINT appPoint{pinBounds.left + static_cast<LONG>(appHit->rect.CenterX() * barScale),
+                           pinBounds.top + static_cast<LONG>(36 * barScale)};
+            POINT launcherPoint{pinBounds.left + static_cast<LONG>(launcherHit->rect.CenterX() * barScale), appPoint.y};
+            RequireDock(!bars.DwellContains(appPoint) && bars.DwellContains(launcherPoint),
+                        "native launcher dwell excludes app icons at both screen edges");
+            VARIANT before{}, after{}, restored{};
+            accessible->accHitTest(appPoint.x, appPoint.y, &before);
+            auto wheelPoint = MAKELPARAM(appPoint.x, appPoint.y);
+            SendMessageW(barWindow, WM_MOUSEWHEEL, MAKEWPARAM(0, static_cast<WORD>(-WHEEL_DELTA)), wheelPoint);
+            accessible->accHitTest(appPoint.x, appPoint.y, &after);
+            SendMessageW(barWindow, WM_MOUSEWHEEL, MAKEWPARAM(0, WHEEL_DELTA), wheelPoint);
+            accessible->accHitTest(appPoint.x, appPoint.y, &restored);
+            RequireDock(before.vt == VT_I4 && after.vt == VT_I4 && restored.vt == VT_I4 && before.lVal != after.lVal &&
+                            before.lVal == restored.lVal && expandedByWheel == 0,
+                        "real wheel messages scroll overflowing apps in both directions without expansion");
+            VariantClear(&before);
+            VariantClear(&after);
+            VariantClear(&restored);
+        }
+        bars.Options({});
+        bars.SetData({first, second}, {}, {});
+        std::fprintf(stderr, "stage launcher dwell and bidirectional overflow wheel PASS\n");
         Child app;
         app.Start(L"--probe");
         RequireDock(Until([&] { return app.Window() != nullptr; }), "foreign app window opens");

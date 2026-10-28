@@ -6,16 +6,18 @@
 
 namespace {
 void Require(bool condition, const char *label) {
-    if (!condition) throw std::runtime_error(label);
+    if (!condition)
+        throw std::runtime_error(label);
 }
 void Raw(const std::filesystem::path &path, const std::string &text) {
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     file << text;
     Require(static_cast<bool>(file), "fixture file write");
 }
-}
+} // namespace
 int wmain(int argc, wchar_t **argv) {
-    if (argc != 2) return 2;
+    if (argc != 2)
+        return 2;
     try {
         auto root = std::filesystem::path(argv[1]) / L"privacy-tests" /
                     (std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64()));
@@ -37,7 +39,8 @@ int wmain(int argc, wchar_t **argv) {
                 "offline Get returns without a network request");
         auto blocked = policy.Read().events.back();
         Require(blocked.result == privacy::Result::Blocked && blocked.target == L"fixture.invalid" &&
-                    blocked.reason == L"calendar-subscription", "network ledger records host and reason only");
+                    blocked.reason == L"calendar-subscription",
+                "network ledger records host and reason only");
         policy.SetOffline(false);
         privacy::Runtime concurrent;
         auto writer = [&] {
@@ -47,7 +50,8 @@ int wmain(int argc, wchar_t **argv) {
             }
         };
         std::thread first(writer), second(writer);
-        first.join(); second.join();
+        first.join();
+        second.join();
         auto history = concurrent.Read();
         Require(history.events.size() == 128 && history.omitted == 272, "bounded concurrent audit history");
         concurrent.Watch(L"test-hook", 1, L"fixture", L"test");
@@ -94,15 +98,20 @@ int wmain(int argc, wchar_t **argv) {
         Raw(corrupt, std::string("\xff\xfe\x01", 3));
         Require(!SettingsStore(corrupt.wstring()).Update(L"Test", {{L"value", L"no"}}),
                 "unreadable document is never replaced by an empty merge");
-        HANDLE busy = CreateFileW(target.Path().c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+        HANDLE busy =
+            CreateFileW(target.Path().c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
         Require(busy != INVALID_HANDLE_VALUE, "sharing conflict fixture");
-        std::thread unlock([busy] { Sleep(20); CloseHandle(busy); });
+        std::thread unlock([busy] {
+            Sleep(20);
+            CloseHandle(busy);
+        });
         bool committed = target.Update(L"Retry", {{L"value", L"retained"}});
         unlock.join();
         Require(committed, "bounded atomic-rename retry handles a transient sharing conflict");
         for (const auto &event : policy.Read().events) {
             Require(event.target.find(L"do-not-log") == std::wstring::npos &&
-                        event.reason.find(L"do-not-log") == std::wstring::npos, "ledger never records setting values");
+                        event.reason.find(L"do-not-log") == std::wstring::npos,
+                    "ledger never records setting values");
         }
         policy.SetOffline(false);
         std::puts("PASS offline epochs/drain, host-only ledger, concurrent bounds, atomic import/export and overrides");

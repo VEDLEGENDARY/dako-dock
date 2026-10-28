@@ -228,14 +228,20 @@ void Island::ClipboardView() {
                 Paragraph(item->text, {preview.left + 16, preview.top + 16, preview.right - 16, preview.bottom - 68});
             auto tick = GetTickCount64() + clipboard::MaxRetentionMs;
             auto age = item->captured && tick >= item->captured ? tick - item->captured : 0;
-            std::wstring kind = item->kind == clipboard::Kind::Image ? L"Image" :
-                                item->kind == clipboard::Kind::Files ? L"Files" : L"Text";
-            std::wstring size = item->kind == clipboard::Kind::Image ? item->text + L" px" :
-                std::to_wstring(item->text.size()) + (item->text.size() == 4096 ? L"+ chars" : L" chars");
+            std::wstring kind = item->kind == clipboard::Kind::Image   ? L"Image"
+                                : item->kind == clipboard::Kind::Files ? L"Files"
+                                                                       : L"Text";
+            std::wstring size =
+                item->kind == clipboard::Kind::Image
+                    ? item->text + L" px"
+                    : std::to_wstring(item->text.size()) + (item->text.size() == 4096 ? L"+ chars" : L" chars");
             Text(L"Type   " + kind + L" · Size   " + size,
-                 {preview.left + 16, preview.bottom - 56, preview.right - 16, preview.bottom - 32}, type::Caption, theme::Muted);
-            Text(L"Copied   " + (age < 60000 ? std::wstring(L"Just now") : std::to_wstring(age / 60000) + L" minutes ago"),
-                 {preview.left + 16, preview.bottom - 32, preview.right - 16, preview.bottom - 8}, type::Caption, theme::Muted);
+                 {preview.left + 16, preview.bottom - 56, preview.right - 16, preview.bottom - 32}, type::Caption,
+                 theme::Muted);
+            Text(L"Copied   " +
+                     (age < 60000 ? std::wstring(L"Just now") : std::to_wstring(age / 60000) + L" minutes ago"),
+                 {preview.left + 16, preview.bottom - 32, preview.right - 16, preview.bottom - 8}, type::Caption,
+                 theme::Muted);
         }
     }
     if (clipboardRecords.empty())

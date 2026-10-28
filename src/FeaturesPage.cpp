@@ -205,6 +205,13 @@ void Island::Features() {
         TextButton(2901 + i, {x, y, x + half, y + 34}, String(pages[i]), featuresPage == i);
     }
     float y = b.top + 92;
+    if (moduleRegistry.FirstRun() && privacy::Policy().Offline()) {
+        paragraph(L"Offline is on. Weather needs a city and Online. Speed testing also needs Allow speed test, "
+                  L"then an explicit Run. Open Settings > Privacy when you want these features.",
+                  {b.left, y, b.right, y + 84});
+        TextButton(2990, {b.left, y + 88, b.right, y + 120}, L"Open Dako settings");
+        y += 136;
+    }
     if (featuresPage == 0) {
         paragraph(String(IDS_FEATURES_INTRO), {b.left, y, b.right, y + 70});
         y += 82;

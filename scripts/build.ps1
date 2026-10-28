@@ -1,7 +1,7 @@
-param([ValidatePattern('^\d+\.\d+$')][string]$Version='4.0',[switch]$Debug)
+param([ValidatePattern('^\d+\.\d+\.\d+(-rc\.\d+)?$')][string]$Version='4.0.0-rc.1',[switch]$Debug)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$resourceVersion = Select-String -LiteralPath (Join-Path $projectRoot 'src\version.rc') -Pattern '"ProductVersion", "([0-9]+\.[0-9]+)"'
+$resourceVersion = Select-String -LiteralPath (Join-Path $projectRoot 'src\version.rc') -Pattern '"ProductVersion", "([^"]+)"'
 if (!$resourceVersion -or $resourceVersion.Matches[0].Groups[1].Value -ne $Version) {
     throw 'Build version must match src/version.rc. Implement and review each milestone before building its version.'
 }

@@ -1,4 +1,4 @@
-param([string]$OutputDirectory,[switch]$Quick,[switch]$RecordOnly,[switch]$ReuseObjects)
+param([string]$OutputDirectory,[switch]$Quick,[switch]$RecordOnly,[switch]$ReuseObjects,[switch]$UseProductionObjects)
 $ErrorActionPreference = 'Stop'
 if ($Quick -and $RecordOnly) { throw 'Choose Quick or RecordOnly, not both.' }
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -27,7 +27,24 @@ try {
     $allSources = @((Join-Path $projectRoot 'tests\NativeLifecycleTests.cpp')) + $sources
     $headers = Get-ChildItem -LiteralPath (Join-Path $projectRoot 'src') -Recurse -File -Filter '*.h'
     $headerTime = ($headers | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1).LastWriteTimeUtc
-    $changed = @($allSources | Where-Object {
+    $compileSources = $allSources
+    if ($UseProductionObjects) {
+        $productionDir = Join-Path $projectRoot 'build\obj'
+        if ((Get-Content -LiteralPath (Join-Path $productionDir 'compile-options.txt') -Raw) -ne '/O2 /MT /Zi /Gy /Gw') {
+            throw 'Production-object verification requires the current release build.'
+        }
+        foreach ($source in $sources) {
+            $object = Join-Path $productionDir ([IO.Path]::GetFileNameWithoutExtension($source) + '.obj')
+            if (!(Test-Path -LiteralPath $object) -or
+                (Get-Item -LiteralPath $object).LastWriteTimeUtc -lt (Get-Item -LiteralPath $source).LastWriteTimeUtc -or
+                (Get-Item -LiteralPath $object).LastWriteTimeUtc -lt $headerTime) {
+                throw "Missing or stale production object: $object. Run build.ps1 first."
+            }
+        }
+        $compileSources = @((Join-Path $projectRoot 'tests\NativeLifecycleTests.cpp'))
+        Write-Output 'Native lifecycle links the timestamp-validated production release objects.'
+    }
+    $changed = @($compileSources | Where-Object {
         $object = Join-Path (Get-Location) ([IO.Path]::GetFileNameWithoutExtension($_) + '.obj')
         !$ReuseObjects -or !(Test-Path -LiteralPath $object) -or
             (Get-Item -LiteralPath $object).LastWriteTimeUtc -lt (Get-Item -LiteralPath $_).LastWriteTimeUtc -or
@@ -38,7 +55,11 @@ try {
         & cl.exe /nologo /c /std:c++20 /EHsc /W4 /WX /permissive- /utf-8 /DUNICODE /D_UNICODE /DWIN32_LEAN_AND_MEAN /DNOMINMAX /O2 /MT /MP2 @changed
         if ($LASTEXITCODE -ne 0) { throw 'Native lifecycle compilation failed.' }
     }
-    $objects = @($allSources | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) + '.obj' })
+    $objects = if ($UseProductionObjects) {
+        @('NativeLifecycleTests.obj') + @($sources | ForEach-Object {
+            Join-Path $productionDir ([IO.Path]::GetFileNameWithoutExtension($_) + '.obj')
+        })
+    } else { @($allSources | ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_) + '.obj' }) }
     & link.exe /nologo /OUT:NativeLifecycleTests.exe @objects Dako.modules.res @nativeLibraries onecoreuap.lib shlwapi.lib uuid.lib crypt32.lib d3d11.lib dcomp.lib user32.lib gdi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib d2d1.lib dwrite.lib dwmapi.lib wlanapi.lib bthprops.lib psapi.lib windowsapp.lib windowscodecs.lib oleacc.lib powrprof.lib advapi32.lib iphlpapi.lib shcore.lib pdh.lib dxgi.lib winhttp.lib comctl32.lib dxva2.lib wbemuuid.lib wtsapi32.lib
     if ($LASTEXITCODE -ne 0) { throw 'Native lifecycle test compilation failed.' }
 } finally { Pop-Location }

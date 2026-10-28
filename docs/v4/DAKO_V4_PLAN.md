@@ -34,6 +34,14 @@ reduced motion, hover delay, leave delay, scroll direction, hotkey, fullscreen p
 Hide over fullscreen), per-app hide list, tab order/visibility, media sources, clipboard size/retention/ignore-apps,
 wallpaper folders/slideshow, weather city, speed-test opt-in, Offline, start with Windows, replace taskbar, reset/import/export.
 
+## 0.6 Review refinements — 2026-10-28
+
+The owner's later code review refines the locked interaction: only the Dako launcher starts hover dwell;
+wheel input over app icons scrolls either direction, while the launcher retains edge-relative expansion.
+Playing-only Peek defaults on, with a setting to include paused sessions. Slideshow uses a separate playlist
+and completion-driven one-shot deadlines; unrelated settings must not reset it. The build remains
+4.0.0-rc.1 pending acceptance, with reproducible text evidence checked in under docs/verification.
+
 ## 1. What the code already has (so we don't rebuild it)
 
 | Your ask | What exists today | Where |

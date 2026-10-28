@@ -11,6 +11,7 @@ int wmain(int argc, wchar_t **argv) {
     assert(store.Migrate());
     assert(store.Get(L"Schema")[L"Version"] == L"4");
     v4::Values values;
+    assert(values.Bool(L"PeekPlayingOnly"));
     values.data[L"Radius"] = L"28";
     values.data[L"Theme"] = L"Paper";
     assert(v4::SaveValues(values, path));

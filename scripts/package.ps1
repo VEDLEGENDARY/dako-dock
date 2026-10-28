@@ -1,11 +1,17 @@
-param([ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version='4.0.0')
+param([ValidatePattern('^\d+\.\d+\.\d+(-rc\.\d+)?$')][string]$Version='4.0.0-rc.1')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 
 $executable = Join-Path $projectRoot 'build\Dako.exe'
 if (!(Test-Path -LiteralPath $executable)) { throw 'Build the release executable with scripts\build.ps1 first.' }
-$actualVersion = (Get-Item -LiteralPath $executable).VersionInfo.FileVersion
-if ($actualVersion -ne "$Version.0") { throw "Executable version $actualVersion does not match package $Version." }
+$actualVersion = (Get-Item -LiteralPath $executable).VersionInfo.ProductVersion
+if ($actualVersion -ne $Version) { throw "Executable version $actualVersion does not match package $Version." }
+foreach ($name in @('Dako.exe', 'DakoSettings.exe')) {
+    $metadata = (Get-Item -LiteralPath (Join-Path $projectRoot "build\$name")).VersionInfo
+    if ($metadata.ProductVersion -ne $Version -or ($Version -match '-rc\.' -and !$metadata.IsPreRelease)) {
+        throw "$name does not match the requested version/prerelease status."
+    }
+}
 $dist = Join-Path $projectRoot 'dist'
 New-Item -ItemType Directory -Path $dist -Force | Out-Null
 $stage = Join-Path $dist ("package-" + [guid]::NewGuid().ToString('N'))
@@ -34,10 +40,10 @@ foreach ($document in @('ARCHITECTURE.md', 'SETTINGS.md', 'PRIVACY.md', 'VERIFIC
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\wallpapers\README.md') -Destination (Join-Path $documentation 'wallpapers\README.md')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\archive') -Destination (Join-Path $documentation 'archive') -Recurse
 Copy-Item -LiteralPath (Join-Path $projectRoot 'CHANGELOG.md') -Destination (Join-Path $stage 'CHANGELOG.md')
-$foundation = Join-Path $stage 'dako-v4-foundation'
-New-Item -ItemType Directory -Path $foundation -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $projectRoot 'dako-v4-foundation\DAKO_V4_PLAN.md') -Destination $foundation
-Copy-Item -LiteralPath (Join-Path $projectRoot 'dako-v4-foundation\references') -Destination (Join-Path $foundation 'references') -Recurse
+Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\v4') -Destination (Join-Path $documentation 'v4') -Recurse
+if (Test-Path -LiteralPath (Join-Path $projectRoot 'docs\verification')) {
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\verification') -Destination (Join-Path $documentation 'verification') -Recurse
+}
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\wallpapers\README.md') -Destination (Join-Path $assetStage 'SOURCES.md')
 $archive = Join-Path $dist "Dako-$Version-windows-x64.zip"
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive -Force

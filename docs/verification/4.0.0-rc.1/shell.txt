@@ -1,0 +1,18 @@
+NativeEffectsTests.cpp
+PASS: first-value journal, fail-closed writes, partial retry, idempotence, normal and forced-kill guard restoration; mock files only.
+NativeShellTests.cpp
+PASS: taskbar suppression, full work area, browser notch-only cutout and restoration, maximize/manual resize, normal exit and foreign-window recovery after abrupt exit.
+NativeDockTests.cpp
+WindowList.cpp
+DockShell.cpp
+AccessibilityGuids.cpp
+Generating Code...
+maximized visible=0,0,2560,1510 outer=-9,-9,2569,1519 client=0,29,2560,1510 bar=0,1510,2560,1600
+stage fullscreen PASS
+stage MSAA PASS
+stage pin interactions PASS
+stage launcher dwell and bidirectional overflow wheel PASS
+stage window events PASS
+stage thumbnail PASS
+win_number_registrations=0/9
+PASS: per-monitor AppBars, maximized-window clearance, fullscreen callbacks, MSAA, window events, real DWM previews, Explorer restart path, no double reservation, 50 preview cycles and forced-kill recovery.

@@ -59,6 +59,8 @@ inline constexpr Setting Schema[]{
      L"Semicolon-separated tab names; keep at least one.", Kind::Text, 0, 1, L"", true},
     {L"MediaSources", L"Media sources", L"Content", L"",
      L"Allowed source app IDs separated by semicolons; empty allows all.", Kind::Text},
+    {L"PeekPlayingOnly", L"Peek only while playing", L"Content", L"1",
+     L"Paused sessions open the full island on hover; turn off to include paused media in Peek.", Kind::Boolean},
     {L"ClipboardSize", L"Clipboard history size", L"Clipboard", L"25",
      L"Bounded optional history, enabled separately in Features.", Kind::Integer, 1, 25},
     {L"ClipboardRetention", L"Clipboard retention (minutes)", L"Clipboard", L"10",

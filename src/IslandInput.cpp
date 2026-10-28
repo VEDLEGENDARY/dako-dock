@@ -23,7 +23,8 @@ int Island::IndexForChild(LONG child) const {
 
 std::wstring Island::StableKey(int id) const {
     if (id >= 2040 && id < 2044 && tab == Tab::Stats) {
-        const auto &ranked = statsMemory && !hardwareState.memoryTop.empty() ? hardwareState.memoryTop : hardwareState.top;
+        const auto &ranked =
+            statsMemory && !hardwareState.memoryTop.empty() ? hardwareState.memoryTop : hardwareState.top;
         if (static_cast<size_t>(id - 2040) < ranked.size())
             return L"process:" + std::to_wstring(ranked[static_cast<size_t>(id - 2040)].identity);
     }
@@ -1352,15 +1353,17 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
                 app->Transition();
             }
             return 0;
+        case SlideshowDue:
+            app->RunSlideshow(wparam);
+            return 0;
+        case SlideshowCatalogChanged:
+            if (wparam == 2)
+                app->SlideshowReady(lparam);
+            return 0;
+        case SlideshowApplied:
+            app->SlideshowFinished(wparam, lparam);
+            return 0;
         case WM_TIMER:
-            if (wparam == 91) {
-                if (!app->previewMode && !app->renderMode && !app->fixtureGeometry &&
-                    app->options.Int(L"Slideshow") > 0 && !app->wallpapers.empty()) {
-                    app->selectedWallpaper = (app->selectedWallpaper + 1) % app->wallpapers.size();
-                    app->WallpaperAction(WallpaperApply);
-                }
-                return 0;
-            }
             if (wparam == desktop::ShellTimer)
                 app->shell.Reconcile();
             else if (wparam == TransitionTimer)
@@ -1462,13 +1465,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
             if (app->expanded)
                 app->ArmMotion();
             if (!app->fixtureGeometry && !app->renderMode) {
-                app->interaction.OnMedia(
-                    app->currentMedia.available && (app->currentMedia.playing || app->currentMedia.paused) &&
-                    !app->currentMedia.title.empty() && (app->options.Text(L"MediaSources").empty() || [&] {
-                        auto sources = v4::Split(app->options.Text(L"MediaSources"));
-                        return std::find(sources.begin(), sources.end(), app->currentMedia.source) != sources.end();
-                    }()));
-                app->ApplyInteraction();
+                app->UpdateInteractionMedia();
             }
             app->UpdateDocks();
             app->UpdateTimers();
@@ -1900,7 +1897,8 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
         case WM_DESTROY:
             app->speedTest.reset();
             app->settingsWatch.reset();
-            KillTimer(window, 91);
+            app->slideshowDeadline.reset();
+            app->slideshowCatalog.reset();
             privacy::Policy().Observe(nullptr);
             app->moduleRegistry.Stop();
             app->clipboardReadTask.Stop();

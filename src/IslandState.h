@@ -4,6 +4,9 @@
 // Pure hover/scroll state machine. No Win32, no timers: the caller feeds events and elapsed seconds,
 // and runs a frame tick only while NeedsTick() is true, so an idle island wakes up zero times.
 namespace island {
+inline bool MediaAllowsPeek(bool available, bool playing, bool paused, bool metadata, bool playingOnly) {
+    return available && metadata && (playing || (paused && !playingOnly));
+}
 enum class Mode { Dock, Peek, Expanded };
 
 struct Timing {

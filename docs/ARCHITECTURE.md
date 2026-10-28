@@ -1,6 +1,6 @@
 # Architecture
 
-The [V4 plan](../dako-v4-foundation/DAKO_V4_PLAN.md) and its locked decisions govern the current runtime.
+The [V4 plan](v4/DAKO_V4_PLAN.md) and its locked decisions govern the current runtime.
 The island uses native windows and DirectComposition, with no browser engine or script runtime.
 
 ## Runtime boundaries
@@ -35,7 +35,8 @@ legacy diagnostics/CLI migration remain for compatibility, with historical decis
 edge-relative direction and clamp to monitor bounds. A narrow edge affordance remains when auto-hide is on.
 The default strip is an ordinary overlay; AppBar work-area ownership starts only with taskbar consent.
 
-The pure state machine receives pointer, media, wheel, click, hotkey and dismiss events. Hover dwell and media
+The pure state machine receives pointer, media, wheel, click, hotkey and dismiss events. App-icon wheel input
+scrolls before expansion routing, so both directions remain reachable. Playing-only Peek defaults on. Launcher-only hover dwell and media
 changes debounce; leave grace includes owned previews/flyouts. A finite 16 ms interaction timer exists only
 while a deadline is pending. The old 100 ms proximity polling timer is gone. Shape springs move together at
 23 Hz, scaled by animation preference, and stop at rest. Reduced motion snaps transitions.
@@ -72,3 +73,9 @@ observation remain unavailable. Notification subscription failed with `0x8007049
 package identity/MSIX notifications remain later work. V4 ships as an unsigned portable ZIP. Per-app hiding and
 redacted diagnostics are the selected section-10 additions; phone sync, capture, plugins and other platforms
 remain roadmap ideas. See [privacy](PRIVACY.md) and [verification](VERIFICATION.md).
+
+
+Slideshow configuration is owned by `SlideshowIntegration.cpp`, with pure transition guards in
+`SlideshowPlan.h` and a cancellable, zero-period thread-pool timer in `OneShotDeadline.h`. A separate bounded
+catalog/playlist preserves page browsing. Configuration equality avoids rescans and deadline resets on
+unrelated saves. Catalog and apply messages carry generations so stale work cannot rearm a new schedule.

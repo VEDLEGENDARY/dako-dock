@@ -263,6 +263,27 @@ inline DockLayout SolveDock(float width, const std::vector<DockGroup> &groups, c
     std::sort(out.hits.begin(), out.hits.end(), [](const auto &a, const auto &b) { return a.rect.left < b.rect.left; });
     return out;
 }
+// The Dako launcher is the deliberate hover/expand target. App icons keep their own pointer actions.
+inline bool DockDwellContains(const DockLayout &layout, float x, float y) {
+    for (const auto &hit : layout.hits)
+        if (hit.action == DockApps)
+            return hit.rect.Contains(x, y);
+    return false;
+}
+enum class DockWheel { None, Expand, PreviousApps, NextApps };
+inline DockWheel ResolveDockWheel(const DockLayout &layout, const DockOptions &options, float x, float y, int delta,
+                                  bool horizontal = false) {
+    if (!delta)
+        return DockWheel::None;
+    if (layout.apps.Contains(x, y)) {
+        bool previous = horizontal ? delta < 0 : delta > 0;
+        return previous ? DockWheel::PreviousApps : DockWheel::NextApps;
+    }
+    return !horizontal && DockDwellContains(layout, x, y) &&
+                   (anchor::WheelExpands(options.edge, delta) != options.reversedScroll)
+               ? DockWheel::Expand
+               : DockWheel::None;
+}
 class DockShell {
     struct Impl;
     std::unique_ptr<Impl> impl_;
@@ -300,6 +321,7 @@ class DockShell {
     HMONITOR ActiveMonitor() const;
     size_t Count() const;
     bool Contains(HWND window) const;
+    bool DwellContains(POINT screen) const;
     bool PreviewAvailable() const;
     static bool RenderFixture(const std::wstring &path, UINT dpi, float textScale, int variant = 0);
 };

@@ -18,6 +18,8 @@ layout::Result Island::Layout() const {
     }
     if (flyout == Flyout::Features && featuresPage == 3)
         result.contentHeight = 512 + static_cast<float>(moduleRegistry.Descriptors().size()) * 256;
+    if (flyout == Flyout::Features && moduleRegistry.FirstRun() && privacy::Policy().Offline())
+        result.contentHeight += 136;
     if (flyout == Flyout::Palette || flyout == Flyout::Recent || flyout == Flyout::Module)
         result.contentHeight = result.body.Height();
     if (flyout == Flyout::Module && modulePanel.image)

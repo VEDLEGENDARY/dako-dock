@@ -38,7 +38,9 @@ int main() {
         SettingsStore store(path);
         RequireFoundation(store.Get(L"Dako")[L"Appearance"] == L"2" && !fs::exists(path),
                           "legacy read is side-effect free");
-        RequireFoundation(store.Migrate() && store.Get(L"Schema")[L"Version"] == std::to_wstring(SettingsStore::Version), "versioned migration commits");
+        RequireFoundation(store.Migrate() &&
+                              store.Get(L"Schema")[L"Version"] == std::to_wstring(SettingsStore::Version),
+                          "versioned migration commits");
         RequireFoundation(store.Get(L"Favorites")[L"0"] == L"fixture:star" &&
                               store.Get(L"Recent")[L"0"] == L"fixture:recent",
                           "favorites and recents migrate");
@@ -104,9 +106,10 @@ int main() {
                                 L"RRULE:FREQ=DAILY;UNTIL=20261025T000000Z");
         RequireFoundation(zonedUntil.events.size() == 3, "TZID recurrence compares UNTIL in UTC correctly");
 
-        auto weather = WeatherService::ParseForecast(
-            LR"({"current":{"temperature_2m":18.5,"weather_code":2},"daily":{"temperature_2m_max":[21],"temperature_2m_min":[12]}})",
-            L"Offline fixture city");
+        auto weather =
+            WeatherService::ParseForecast(LR"({"current":{"temperature_2m":18.5,"weather_code":2},)"
+                                          LR"("daily":{"temperature_2m_max":[21],"temperature_2m_min":[12]}})",
+                                          L"Offline fixture city");
         RequireFoundation(weather.available && weather.temperature == 18.5 && weather.high == 21 && weather.low == 12 &&
                               WeatherService::Condition(weather.code) == L"Cloudy",
                           "Open-Meteo fixture parses without network");
@@ -160,15 +163,18 @@ int main() {
         RequireFoundation(groups.size() == 3 && groups[0].pinned && groups[0].active && groups[0].windows.size() == 1 &&
                               groups[1].windows.size() == 1 && !groups[2].pinned,
                           "pins group by AUMID/path with monitor filtering");
-        auto alias=pin;alias.key=L"second alias";alias.appId=windows[0].appId;
-        auto dedup=desktop::BuildDockGroups({pin,alias,editor},windows,firstMonitor);
-        RequireFoundation(dedup.size()==3&&dedup[0].pinKeys.size()==2&&dedup[1].pinIndex==2,
-            "duplicate pinned AUMIDs merge without losing reorder indices");
-        RequireFoundation(desktop::NormalizeLayout(L"bar")==L"dock"&&desktop::NormalizeLayout(L"notch")==L"notch",
-            "old bar preference migrates to dock");
-        layout::Rect capsule{100,8,500,64};
-        RequireFoundation(desktop::CapsuleContains(capsule,300,36)&&!desktop::CapsuleContains(capsule,100,8)&&
-            !desktop::CapsuleContains(capsule,99,36),"pill excludes rounded corners and full-width margins");
+        auto alias = pin;
+        alias.key = L"second alias";
+        alias.appId = windows[0].appId;
+        auto dedup = desktop::BuildDockGroups({pin, alias, editor}, windows, firstMonitor);
+        RequireFoundation(dedup.size() == 3 && dedup[0].pinKeys.size() == 2 && dedup[1].pinIndex == 2,
+                          "duplicate pinned AUMIDs merge without losing reorder indices");
+        RequireFoundation(desktop::NormalizeLayout(L"bar") == L"dock" && desktop::NormalizeLayout(L"notch") == L"notch",
+                          "old bar preference migrates to dock");
+        layout::Rect capsule{100, 8, 500, 64};
+        RequireFoundation(desktop::CapsuleContains(capsule, 300, 36) && !desktop::CapsuleContains(capsule, 100, 8) &&
+                              !desktop::CapsuleContains(capsule, 99, 36),
+                          "pill excludes rounded corners and full-width margins");
         auto secondary = desktop::BuildDockGroups({pin, editor}, windows, secondMonitor);
         RequireFoundation(secondary.size() == 2 && secondary[0].windows.size() == 1 && secondary[1].windows.empty(),
                           "each monitor retains pins and only its own running windows");
