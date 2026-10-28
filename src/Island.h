@@ -5,6 +5,7 @@
 #include <windowsx.h>
 #include <d2d1.h>
 #include <dwrite.h>
+#include <shcore.h>
 #include <dwmapi.h>
 #include <wrl/client.h>
 #include <mmdeviceapi.h>
@@ -21,6 +22,7 @@
 #include <netioapi.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Media.Control.h>
+#include <winrt/Windows.Storage.Streams.h>
 #include <atomic>
 #include <algorithm>
 #include <array>
@@ -35,12 +37,19 @@
 #include <thread>
 #include <vector>
 #include "DockMotion.h"
+#include "Anchor.h"
+#include "IslandState.h"
+#include "SettingsSchema.h"
+#include "SettingsCore.h"
+#include "BundledFont.h"
+#include "SpeedTest.h"
 #include "LayoutEngine.h"
 #include "MotionController.h"
 #include "CompositionSurface.h"
 #include "FrameClock.h"
 #include "AsyncWait.h"
 #include <map>
+#include <set>
 #include <cstdint>
 #include "DesktopShell.h"
 #include "DockShell.h"
@@ -56,7 +65,7 @@ constexpr UINT FocusControl = WM_APP + 3;
 constexpr UINT AudioDeviceChanged = WM_APP + 5;
 constexpr UINT RevealDock = WM_APP + 7;
 constexpr UINT MotionFrame = WM_APP + 31;
-constexpr UINT_PTR TransitionTimer = 1, StatsTimer = 2, MediaTimer = 3, ProximityTimer = 4, FocusTimer = 5,
+constexpr UINT_PTR TransitionTimer = 1, StatsTimer = 2, MediaTimer = 3, InteractionTimer = 4, FocusTimer = 5,
                    ConnectivityTimer = 6;
 constexpr wchar_t WindowClass[] = L"Dako.Native.Island";
 
@@ -93,7 +102,6 @@ inline std::wstring Wide(const char *value, int length) {
 #include "NotchHotZone.h"
 #include "PromptText.h"
 #include "DesktopCatalog.h"
-#include "WallpaperReveal.h"
 #include "HardwareStats.h"
 #include "ControlsService.h"
 #include "Connectivity.h"
@@ -108,7 +116,8 @@ enum Role { Caption, Secondary, Body, Section, Metric, Display, Icon, Control, E
 }
 
 enum class Tab { Controls, Today, Stats, Clipboard, Apps, Wallpaper, Power };
-inline constexpr std::array PrimaryTabs{Tab::Controls, Tab::Today, Tab::Apps, Tab::Stats, Tab::Wallpaper};
+inline constexpr std::array PrimaryTabs{Tab::Controls, Tab::Today,     Tab::Stats, Tab::Clipboard,
+                                        Tab::Apps,     Tab::Wallpaper, Tab::Power};
 enum class Flyout { None, Wifi, Bluetooth, Audio, Palette, DockStatus, Recent, Features, Module };
 enum Action {
     Expand = 1,
@@ -192,9 +201,7 @@ struct Hit {
     D2D1_RECT_F clip{};
     HWND input = nullptr;
 };
-inline bool ReadingControl(int id) {
-    return id == 1800 || (id >= 2000 && id < 2300) || (id >= 6000 && id < 8000);
-}
+inline bool ReadingControl(int id) { return id == 1800 || (id >= 2000 && id < 2300) || (id >= 6000 && id < 8000); }
 struct Task {
     std::wstring title;
     bool done = false;
@@ -381,10 +388,24 @@ class Island {
     Flyout flyout = Flyout::None;
     dock::Spring dockReveal{0}, dockWidth{theme::DockWidth}, dockHeight{theme::DockHeight}, paneBlend{1};
     dock::Spring wallpaperFocus{0};
-    dock::Proximity proximity;
+    island::Machine interaction;
+    bool applyingInteraction = false, interactionTicking = false;
+    v4::Values options;
+    anchor::Edge edge = anchor::Edge::Bottom;
+    unsigned accentColor = 0xCFAE60;
+    std::vector<Tab> visibleTabs;
+    std::unique_ptr<v4::SettingsWatch> settingsWatch;
+    std::unique_ptr<SpeedTest> speedTest;
+    void SettingsUpdated(WPARAM preview);
+    void OpenSettings();
+    void LoadV4Settings();
+    void ApplyV4Values();
+    void ApplyInteraction();
+    void InteractionPointer(bool inside);
+    void UpdateInteractionTimer();
     std::map<int, dock::Spring> hoverMotion, tileState;
     dock::Spring composerFocus{0};
-    steady_clock::time_point lastMotion = steady_clock::now(), lastProximity = steady_clock::now();
+    steady_clock::time_point lastMotion = steady_clock::now(), lastInteraction = steady_clock::now();
     float envelopeHeight = theme::EnvelopeHeight;
     ComPtr<ID2D1Bitmap> previousPane;
     float previousPaneWidth = 0, previousPaneHeight = 0;
@@ -416,6 +437,7 @@ class Island {
     MediaState currentMedia;
     ComPtr<ID2D1Factory> factory;
     ComPtr<IDWriteFactory> textFactory;
+    std::unique_ptr<BundledFont> bundledFont;
     ComPtr<ID2D1RenderTarget> target;
     ComPtr<ID2D1HwndRenderTarget> hostTarget;
     CompositionSurface composition;
@@ -438,7 +460,6 @@ class Island {
     bool browserContext = false, fullscreenContext = false;
     bool YieldResting() const;
     bool wallpaperApplying = false, miniMode = false;
-    WallpaperReveal wallpaperReveal;
     std::unique_ptr<HardwareStats> hardware;
     HardwareSnapshot hardwareState;
     AppPreferences appPreferences;
@@ -486,7 +507,7 @@ class Island {
     void ArmMotion();
     void SetExpanded(bool value, bool deliberate = true);
     void Transition();
-    void ProximityTick();
+    void InteractionTick();
     void UpdateTimers();
     void SetTab(Tab value);
     D2D1_COLOR_F Color(unsigned rgb, float alpha = 1);
@@ -510,6 +531,7 @@ class Island {
     void CompactHeader(bool wireless = false);
     std::wstring TabTitle() const;
     void Tabs();
+    const std::vector<Tab> &EnabledTabs();
     D2D1_RECT_F VolumeRect() const;
     bool HasAudio() const;
     void Controls();
@@ -524,6 +546,13 @@ class Island {
     D2D1_RECT_F ClipboardRect() const;
     void EnsureClipboardEdit();
     void ClipboardView();
+    void ClipboardAction(int id);
+    std::wstring clipboardQuery;
+    int clipboardFilter = 0;
+    uint64_t clipboardSelected = 0;
+    HWND clipboardPasteTarget = nullptr;
+    std::vector<clipboard::Item> clipboardRecords;
+    std::set<uint64_t> clipboardSelection;
 
     void RetargetLayout();
     void FilterApps(bool reset = true);
@@ -572,5 +601,6 @@ class Island {
     void RenderSuite(const std::wstring &directory);
 };
 
+IAccessible *CreateIslandAccessible(HWND window);
 void VerifyAccessibility(Island &app);
 LRESULT CALLBACK WindowProcedure(HWND, UINT, WPARAM, LPARAM);

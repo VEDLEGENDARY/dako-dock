@@ -1,5 +1,5 @@
-#pragma once
-// Included by Island.cpp after the Island declaration.
+#include "Island.h"
+
 void Island::RefreshControls() {
     if (renderMode || fixtureGeometry || !expanded || tab != Tab::Controls)
         return;
@@ -69,7 +69,7 @@ void Island::ControlAction(int id) {
 }
 D2D1_RECT_F Island::BrightnessRect() const {
     auto b = Body();
-    float y = b.top + (Layout().narrow ? 368.0f : 240.0f);
+    float y = b.top + (Layout().narrow ? 364.0f : 300.0f);
     return {b.left, y, b.right, y + 36};
 }
 void Island::OutputDevices() {

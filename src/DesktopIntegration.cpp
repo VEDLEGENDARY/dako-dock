@@ -1,8 +1,6 @@
-#pragma once
-// Included by Island.cpp after the Island declaration.
-bool Island::DockEnabled() const {
-    return dockMode && (previewMode || desktopRequested) && !renderMode && !fixtureGeometry;
-}
+#include "Island.h"
+
+bool Island::DockEnabled() const { return dockMode && !renderMode && !fixtureGeometry; }
 
 void Island::StopDesktop() {
     for (size_t i = 0; i < numberHotkeys.size(); ++i) {
@@ -45,9 +43,25 @@ void Island::StartDesktop() {
             SetForegroundWindow(window);
         };
         callbacks.recent = [this](const std::wstring &appId, HMONITOR monitor) { OpenRecent(appId, monitor); };
+        callbacks.pointer = [this](bool inside, HMONITOR monitor) {
+            if (inside && !expanded) {
+                panelMonitor = monitor;
+                dockAnchor = docks->Anchor(monitor, desktop::DockApps);
+                RefreshGeometry();
+            }
+            InteractionPointer(inside);
+        };
+        callbacks.expand = [this](HMONITOR monitor) {
+            panelMonitor = monitor;
+            dockAnchor = docks->Anchor(monitor, desktop::DockApps);
+            miniMode = false;
+            interaction.OnExpand();
+            ApplyInteraction();
+        };
         callbacks.context = [this] { ContextMenu(); };
         docks = std::make_unique<desktop::DockShell>();
-        if (!docks->Start(window, &shell, previewMode, textScale, std::move(callbacks))) {
+        docks->Options(dockOptions);
+        if (!docks->Start(window, &shell, previewMode, textScale, std::move(callbacks), desktopRequested)) {
             docks.reset();
             shell.Stop();
             dockMode = false;
@@ -73,6 +87,7 @@ void Island::StartDesktop() {
                                               '1' + static_cast<UINT>(i)) != FALSE;
     }
     if (docks) {
+        docks->PanelVisible(expanded);
         if (!connectivity)
             connectivity = std::make_unique<Connectivity>(window);
         connectivity->RefreshWifi(false);
@@ -83,7 +98,7 @@ void Island::StartDesktop() {
             appsLoading = true;
             catalog->DiscoverApps();
         }
-        panelMonitor = MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY);
+        panelMonitor = docks->ActiveMonitor();
         UpdateDocks();
     }
     RefreshGeometry();
