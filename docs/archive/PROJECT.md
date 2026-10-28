@@ -1,3 +1,5 @@
+> Historical record. The V4 foundation plan supersedes conflicting product instructions.
+
 # Dako 3.12 development — dock, module foundation and S1 tools
 
 Dako is a C++20/Win32/Direct2D/DirectWrite/DirectComposition dock with a shared island. One current build and portable package are retained. The original V3 supported features and ongoing

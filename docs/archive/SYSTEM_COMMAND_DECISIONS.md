@@ -1,3 +1,5 @@
+> Historical record. The V4 foundation plan supersedes conflicting product instructions.
+
 # S1 system-command decisions
 
 ## Current routes (3.9)

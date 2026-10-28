@@ -1,3 +1,5 @@
+> Historical record. The V4 foundation plan supersedes conflicting product instructions.
+
 # Dock reconciliation audit
 
 The supplied brief is preserved verbatim in [DOCK_REQUIREMENTS.md](DOCK_REQUIREMENTS.md). The current requirement-by-

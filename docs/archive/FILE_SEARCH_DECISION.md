@@ -1,3 +1,5 @@
+> Historical record. The V4 foundation plan supersedes conflicting product instructions.
+
 # Indexed filenames (3.7 development)
 
 The optional `files` module uses Windows Search's documented native query interfaces. It does not walk a

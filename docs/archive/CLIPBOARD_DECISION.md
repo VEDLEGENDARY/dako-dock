@@ -1,3 +1,5 @@
+> Historical record. The V4 foundation plan supersedes conflicting product instructions.
+
 # Clipboard implementation decision — 2026-10-26
 
 The S1 clipboard implementation uses documented Win32 clipboard, session and suspend APIs. It adds no

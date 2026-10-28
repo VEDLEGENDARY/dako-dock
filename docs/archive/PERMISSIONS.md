@@ -1,3 +1,5 @@
+> Historical record. The V4 foundation plan supersedes conflicting product instructions.
+
 # Permissions and capabilities
 
 Windows does not display a permission popup for every native API. Dako therefore declares optional module

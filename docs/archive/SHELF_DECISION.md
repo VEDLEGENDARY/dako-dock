@@ -1,3 +1,5 @@
+> Historical record. The V4 foundation plan supersedes conflicting product instructions.
+
 # Memory-only shelf (3.8 development)
 
 The optional shelf lives in the existing island, with no additional bar or floating window. Open it from

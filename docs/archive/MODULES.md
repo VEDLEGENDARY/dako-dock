@@ -1,3 +1,5 @@
+> Historical record. The V4 foundation plan supersedes conflicting product instructions.
+
 # Module foundation and S1 tools (3.12 development)
 
 S0 and S1 work from V3_1.md lives here. The complete suite is not finished.

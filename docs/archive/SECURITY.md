@@ -1,3 +1,5 @@
+> Historical record. The V4 foundation plan supersedes conflicting product instructions.
+
 # Security
 
 Dako is native C++20/Win32 code with no embedded web engine, script runtime, server or external binary plugin

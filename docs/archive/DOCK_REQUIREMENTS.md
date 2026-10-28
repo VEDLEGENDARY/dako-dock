@@ -1,3 +1,5 @@
+> Historical record. The V4 foundation plan supersedes conflicting product instructions.
+
 Reconcile task: turn Dako's taskbar-style bar into a dock. Read this whole message before editing.
 
 Context

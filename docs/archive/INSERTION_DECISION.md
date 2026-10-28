@@ -1,3 +1,5 @@
+> Historical record. The V4 foundation plan supersedes conflicting product instructions.
+
 # Clipboard/snippet insertion decision — 2026-10-27
 
 Status: direct insertion and automatic trigger expansion are deferred. Explicit clipboard copying and the

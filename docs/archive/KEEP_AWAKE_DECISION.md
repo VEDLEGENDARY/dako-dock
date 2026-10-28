@@ -1,3 +1,5 @@
+> Historical record. The V4 foundation plan supersedes conflicting product instructions.
+
 # Keep-awake rules — 3.11 development
 
 Status: implemented for explicit-session monitoring; physical AC/display/lock acceptance remains manual.

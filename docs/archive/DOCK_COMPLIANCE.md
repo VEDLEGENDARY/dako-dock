@@ -1,3 +1,5 @@
+> Historical record. The V4 foundation plan supersedes conflicting product instructions.
+
 # Dock brief compliance — current 3.12 development build
 
 Updated October 27, 2026 against the [verbatim attachment](DOCK_REQUIREMENTS.md), current source and matching
@@ -42,5 +44,5 @@ and the stated evidence, not certification of every physical display, driver or 
 - Physical mixed-DPI/hotplug, browser/game/elevated-window behavior, real setting restoration, recent-document launches,
   the Explorer comparison/restart and a screen-reader journey remain acceptance work.
 
-See [VERIFICATION.md](VERIFICATION.md) for measured results and limitations. The portable package includes this
+See [VERIFICATION.md](../VERIFICATION.md) for measured results and limitations. The portable package includes this
 checklist and the original brief. V3_1.md remains an unfinished roadmap.
