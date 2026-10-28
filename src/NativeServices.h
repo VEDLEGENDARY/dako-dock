@@ -1,6 +1,8 @@
 #pragma once
 struct MediaState {
-    bool available = false, playing = false, canPrevious = false, canPlay = false, canNext = false;
+    bool available = false, playing = false, paused = false, canPrevious = false, canPlay = false, canNext = false;
+    std::wstring source;
+    std::shared_ptr<std::vector<BYTE>> artwork;
     std::wstring transportError;
     std::wstring title = L"Nothing playing", artist = L"Play music in a supported app";
     double position = 0, duration = 0;
@@ -67,17 +69,47 @@ class MediaService {
         }
         try {
             if (session_) {
+                next.source = session_.SourceAppUserModelId();
                 if (readProperties) {
                     auto metadata = Await(session_.TryGetMediaPropertiesAsync());
                     next.title = metadata.Title().empty() ? L"Untitled media" : std::wstring(metadata.Title());
                     next.artist = metadata.Artist().empty() ? std::wstring(session_.SourceAppUserModelId())
                                                             : std::wstring(metadata.Artist());
+                    next.artwork.reset();
+                    if (metadata.Thumbnail()) {
+                        auto stream = Await(metadata.Thumbnail().OpenReadAsync());
+                        ComPtr<IStream> input;
+                        ComPtr<IWICImagingFactory> images;
+                        ComPtr<IWICBitmapDecoder> decoder;
+                        ComPtr<IWICBitmapFrameDecode> frame;
+                        ComPtr<IWICBitmapScaler> scaler;
+                        ComPtr<IWICFormatConverter> converter;
+                        if (SUCCEEDED(
+                                CreateStreamOverRandomAccessStream(winrt::get_unknown(stream), IID_PPV_ARGS(&input))) &&
+                            SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+                                                       IID_PPV_ARGS(&images))) &&
+                            SUCCEEDED(images->CreateDecoderFromStream(input.Get(), nullptr,
+                                                                      WICDecodeMetadataCacheOnLoad, &decoder)) &&
+                            SUCCEEDED(decoder->GetFrame(0, &frame)) && SUCCEEDED(images->CreateBitmapScaler(&scaler)) &&
+                            SUCCEEDED(scaler->Initialize(frame.Get(), 64, 64, WICBitmapInterpolationModeFant)) &&
+                            SUCCEEDED(images->CreateFormatConverter(&converter)) &&
+                            SUCCEEDED(converter->Initialize(scaler.Get(), GUID_WICPixelFormat32bppPBGRA,
+                                                            WICBitmapDitherTypeNone, nullptr, 0,
+                                                            WICBitmapPaletteTypeCustom))) {
+                            auto pixels = std::make_shared<std::vector<BYTE>>(64 * 64 * 4);
+                            if (SUCCEEDED(converter->CopyPixels(nullptr, 64 * 4, static_cast<UINT>(pixels->size()),
+                                                                pixels->data())))
+                                next.artwork = std::move(pixels);
+                        }
+                    }
                 }
                 auto playback = session_.GetPlaybackInfo();
                 auto timeline = session_.GetTimelineProperties();
                 next.available = true;
                 next.playing =
                     playback.PlaybackStatus() == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
+                next.paused =
+                    playback.PlaybackStatus() == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Paused;
                 auto controls = playback.Controls();
                 next.canPrevious = controls.IsPreviousEnabled();
                 next.canNext = controls.IsNextEnabled();
@@ -105,12 +137,12 @@ class MediaService {
             auto shared = callbacks_;
             propertiesToken_ = session_.MediaPropertiesChanged([shared](auto &&, auto &&) {
                 std::scoped_lock lock(shared->mutex);
-                if (auto *owner = shared->owner; owner && owner->visible_)
+                if (auto *owner = shared->owner; owner)
                     owner->RequestRefresh(true);
             });
             playbackToken_ = session_.PlaybackInfoChanged([shared](auto &&, auto &&) {
                 std::scoped_lock lock(shared->mutex);
-                if (auto *owner = shared->owner; owner && owner->visible_)
+                if (auto *owner = shared->owner; owner)
                     owner->RequestRefresh(false);
             });
             timelineToken_ = session_.TimelinePropertiesChanged([shared](auto &&, auto &&) {
@@ -119,8 +151,7 @@ class MediaService {
                     owner->RequestRefresh(false);
             });
         }
-        if (visible_)
-            Refresh();
+        Refresh();
     }
     void Run() {
         winrt::init_apartment(winrt::apartment_type::multi_threaded);
@@ -199,6 +230,15 @@ class MediaService {
         bool previous = visible_.exchange(value);
         if (value && !previous)
             Queue([this] { Refresh(); });
+    }
+    void Seek(double seconds) {
+        Queue([this, seconds] {
+            try {
+                if (session_ && session_.GetPlaybackInfo().Controls().IsPlaybackPositionEnabled())
+                    Await(session_.TryChangePlaybackPositionAsync(static_cast<int64_t>(seconds * 10000000)));
+            } catch (const winrt::hresult_error &) {
+            }
+        });
     }
     void Transport(int action) {
         Queue([this, action] {
