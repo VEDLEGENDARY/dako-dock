@@ -11,6 +11,15 @@ namespace dock {
 struct Point {
     float x, y;
 };
+namespace motion {
+struct Spec {
+    float frequency, ratio, duration;
+};
+inline constexpr Spec Settle{24, 1, .30f}, Snappy{34, .92f, .14f}, Soft{18, 1, .50f}, Lively{26, .65f, .40f};
+inline constexpr Spec Height{24, .9f, .30f}, Width{24 * .92f, 1, .26f}, TabTrail{26, 1, .22f};
+inline constexpr Spec Press{34, .92f, .10f}, Fade{34, 1, .20f}, Focus{34, 1, .10f}, Collapse{34, 1, .12f};
+inline constexpr Spec Carousel{24, .9f, .50f}, Task{34, .92f, .16f};
+} // namespace motion
 // Flared shoulders attach to the top edge; the lower center is narrower.
 template <int Segments = 16>
 inline std::array<Point, 2 * (Segments + 1) + 1> Notch(float left, float top, float width, float height) {
@@ -19,9 +28,9 @@ inline std::array<Point, 2 * (Segments + 1) + 1> Notch(float left, float top, fl
         float t = i / static_cast<float>(Segments), u = 1 - t;
         points[i] = {left + width * (3 * u * u * t * 0.11f + 3 * u * t * t * 0.11f + t * t * t * 0.22f),
                      top + height * (u * u * u + 3 * u * u * t)};
-        points[Segments + 1 + i] = {left +
-                              width * (0.78f * u * u * u + 3 * u * u * t * 0.89f + 3 * u * t * t * 0.89f + t * t * t),
-                          top + height * (3 * u * t * t + t * t * t)};
+        points[Segments + 1 + i] = {
+            left + width * (0.78f * u * u * u + 3 * u * u * t * 0.89f + 3 * u * t * t * 0.89f + t * t * t),
+            top + height * (3 * u * t * t + t * t * t)};
     }
     points.back() = points[0];
     for (auto &point : points)
@@ -51,7 +60,7 @@ inline bool BrowserExecutable(std::wstring_view path) {
 inline float PanelTop(bool browser) { return browser ? 112.0f : 0.0f; }
 template <int Segments = 16>
 inline std::array<Point, 4 * (Segments + 1) + 1> Attached(float left, float top, float width, float height,
-                                                       float corner = layout::Metrics::PanelRadius) {
+                                                          float corner = layout::Metrics::PanelRadius) {
     std::array<Point, 4 * (Segments + 1) + 1> out{};
     float r = std::min(corner, height / 2), shoulder = 24;
     auto curve = [&](int offset, Point a, Point b, Point c, Point d) {
@@ -64,30 +73,59 @@ inline std::array<Point, 4 * (Segments + 1) + 1> Attached(float left, float top,
     curve(0, {left - shoulder, top}, {left - 3, top}, {left, top + 3}, {left, top + r});
     curve(Segments + 1, {left, top + height - r}, {left, top + height}, {left, top + height}, {left + r, top + height});
     curve(2 * (Segments + 1), {left + width - r, top + height}, {left + width, top + height},
-          {left + width, top + height},
-          {left + width, top + height - r});
+          {left + width, top + height}, {left + width, top + height - r});
     curve(3 * (Segments + 1), {left + width, top + r}, {left + width, top + 3}, {left + width + 3, top},
           {left + width + shoulder, top});
     out.back() = out[0];
     return out;
 }
-// Exact critically damped spring integration: reversal preserves velocity and never snaps.
+// Exact damped integration. Retargeting preserves velocity; finite guards release the scheduler.
 struct Spring {
     float value = 0, velocity = 0, goal = 0;
-    explicit Spring(float initial = 0) : value(initial), goal(initial) {}
+    float age = 0, trackedGoal = 0;
+    explicit Spring(float initial = 0) : value(initial), goal(initial), trackedGoal(initial) {}
     void Snap(float next) {
         value = goal = next;
         velocity = 0;
+        age = 0;
+        trackedGoal = next;
     }
     bool Moving() const { return std::abs(goal - value) > 0.025f || std::abs(velocity) > 0.025f; }
-    void Step(float seconds, float frequency = 23.0f) {
+    void Step(float seconds, float frequency = motion::Settle.frequency, float ratio = 1) {
         if (!Moving())
             return;
+        if (trackedGoal != goal) {
+            trackedGoal = goal;
+            age = 0;
+        }
+        if (seconds > .5f) {
+            Snap(goal);
+            return;
+        }
         seconds = std::clamp(seconds, 0.0f, 0.05f);
-        float displacement = value - goal, c = velocity + frequency * displacement, e = std::exp(-frequency * seconds);
-        value = goal + (displacement + c * seconds) * e;
-        velocity = (velocity - frequency * c * seconds) * e;
-        if (!Moving())
+        age += seconds;
+        frequency = std::max(1.0f, frequency);
+        float displacement = value - goal;
+        if (ratio < .999f) {
+            ratio = std::clamp(ratio, .1f, .999f);
+            float damped = frequency * std::sqrt(1 - ratio * ratio);
+            float b = (velocity + ratio * frequency * displacement) / damped;
+            float e = std::exp(-ratio * frequency * seconds), c = std::cos(damped * seconds);
+            float s = std::sin(damped * seconds);
+            value = goal + e * (displacement * c + b * s);
+            velocity = e * ((b * damped - ratio * frequency * displacement) * c -
+                            (displacement * damped + ratio * frequency * b) * s);
+        } else {
+            float c = velocity + frequency * displacement, e = std::exp(-frequency * seconds);
+            value = goal + (displacement + c * seconds) * e;
+            velocity = (velocity - frequency * c * seconds) * e;
+        }
+        if (!Moving() || age >= .599f)
+            Snap(goal);
+    }
+    void Step(float seconds, motion::Spec spec, float speed = 1) {
+        Step(seconds, spec.frequency * speed, spec.ratio);
+        if (Moving() && age >= spec.duration / std::max(.5f, speed) - .0001f)
             Snap(goal);
     }
 };

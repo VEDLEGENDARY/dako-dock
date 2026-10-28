@@ -6,8 +6,8 @@ std::vector<POINT> Island::NotchPixels(float scale) const {
         curve = anchor::ForEdge(edge, curve, HandleY(), theme::DockHeight);
         std::vector<POINT> points;
         for (auto p : curve)
-            points.push_back({static_cast<LONG>(std::lround(p.x * scale)),
-                              static_cast<LONG>(std::lround(p.y * scale))});
+            points.push_back(
+                {static_cast<LONG>(std::lround(p.x * scale)), static_cast<LONG>(std::lround(p.y * scale))});
         return points;
     };
     return dpi > 144 ? convert(dock::Notch<24>(x, HandleY(), theme::DockWidth, theme::DockHeight))
@@ -18,8 +18,8 @@ void Island::PaintNotch(HDC dc) {
     if (YieldResting())
         return;
     auto points = NotchPixels(dpi / 96);
-    HBRUSH fill = CreateSolidBrush(RGB((theme::Surface >> 16) & 255, (theme::Surface >> 8) & 255,
-                                     theme::Surface & 255));
+    HBRUSH fill =
+        CreateSolidBrush(RGB((theme::Surface >> 16) & 255, (theme::Surface >> 8) & 255, theme::Surface & 255));
     auto oldBrush = SelectObject(dc, fill);
     auto oldPen = SelectObject(dc, GetStockObject(NULL_PEN));
     Polygon(dc, points.data(), static_cast<int>(points.size()));
@@ -30,8 +30,7 @@ void Island::PaintNotch(HDC dc) {
 
 void Island::DrawNotch() {
     float x = renderMode ? 0 : (envelopeWidth - theme::DockWidth) / 2;
-    auto *path = geometryCache.Surface(factory.Get(), true, x, HandleY(), theme::DockWidth, theme::DockHeight,
-                                       0, edge);
+    auto *path = geometryCache.Surface(factory.Get(), true, x, HandleY(), theme::DockWidth, theme::DockHeight, 0, edge);
     if (path) {
         brush->SetColor(Color(theme::Surface));
         target->FillGeometry(path, brush.Get());
@@ -44,8 +43,8 @@ std::vector<POINT> Island::AttachedPixels(float scale) const {
         curve = anchor::ForEdge(edge, curve, PanelY(), height);
         std::vector<POINT> points;
         for (auto p : curve)
-            points.push_back({static_cast<LONG>(std::lround(p.x * scale)),
-                              static_cast<LONG>(std::lround(p.y * scale))});
+            points.push_back(
+                {static_cast<LONG>(std::lround(p.x * scale)), static_cast<LONG>(std::lround(p.y * scale))});
         return points;
     };
     return dpi > 144 ? convert(dock::Attached<24>(x, PanelY(), width, height, theme::Radius))
@@ -65,8 +64,8 @@ void Island::IslandSurface() {
     target->FillGeometry(path, brush.Get());
     target->SetTransform(D2D1::Matrix3x2F::Scale((width - pixel) / width, (height - pixel) / height) *
                          D2D1::Matrix3x2F::Translation(x + pixel / 2, y + pixel / 2) * saved);
-    brush->SetColor(Color(highContrast ? theme::Border : theme::Edge,
-                          highContrast ? 1.0f : palette::Tokens::HairlineOuter));
+    brush->SetColor(
+        Color(highContrast ? theme::Border : theme::Edge, highContrast ? 1.0f : palette::Tokens::HairlineOuter));
     target->DrawGeometry(path, brush.Get(), highContrast ? 2.0f : pixel);
     target->SetTransform(saved);
     if (!highContrast) {
@@ -86,16 +85,16 @@ void Island::PositionShadow() {
     float scale = dpi / 96, w = SurfaceWidth(), h = SurfaceHeight();
     float top = edge == anchor::Edge::Bottom ? PanelY() + height - h : PanelY();
     RECT panel{host.left + static_cast<LONG>(std::lround((envelopeWidth - w) / 2 * scale)),
-                host.top + static_cast<LONG>(std::lround(top * scale)),
-                host.left + static_cast<LONG>(std::lround((envelopeWidth + w) / 2 * scale)),
-                host.top + static_cast<LONG>(std::lround((top + h) * scale))};
+               host.top + static_cast<LONG>(std::lround(top * scale)),
+               host.left + static_cast<LONG>(std::lround((envelopeWidth + w) / 2 * scale)),
+               host.top + static_cast<LONG>(std::lround((top + h) * scale))};
     MONITORINFO monitor{sizeof(monitor)};
     bool fits = GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST), &monitor) &&
                 monitor.rcMonitor.right - monitor.rcMonitor.left >= (w + 96) * scale &&
                 monitor.rcMonitor.bottom - monitor.rcMonitor.top >= (h + 96) * scale;
     shadow.Position(backdropWindow && IsWindowVisible(backdropWindow) ? backdropWindow : window, panel, dpi,
-                     theme::Radius, edge, dockReveal.value,
-                     fits && !highContrast && !opaqueMaterial && !fullscreenContext && dockReveal.value > 0);
+                    theme::Radius, edge, dockReveal.value,
+                    fits && !highContrast && !opaqueMaterial && !fullscreenContext && dockReveal.value > 0);
 }
 
 LRESULT CALLBACK Island::BackdropProcedure(HWND handle, UINT message, WPARAM wparam, LPARAM lparam) {
@@ -209,6 +208,52 @@ void Island::Graphics() {
 
 D2D1_COLOR_F Island::Color(unsigned rgb, float alpha) { return D2D1::ColorF(rgb, alpha); }
 
+Island::PaintGroup::PaintGroup(Island &island, int index) : app(island) {
+    if (app.layoutOnly || app.renderMode || app.reducedMotion || app.highContrast || app.paneClock >= .37f)
+        return;
+    float delay = std::min(.15f, index * .028f);
+    float amount = std::clamp((app.paneClock - delay) / .22f, 0.0f, 1.0f);
+    amount = amount * amount * (3 - 2 * amount);
+    app.target->GetTransform(&saved);
+    auto layer = D2D1::LayerParameters();
+    layer.opacity = amount;
+    app.target->PushLayer(layer, nullptr);
+    app.target->SetTransform(D2D1::Matrix3x2F::Translation(0, -anchor::Grow(app.edge) * 8 * (1 - amount)) * saved);
+    active = true;
+}
+Island::PaintGroup::~PaintGroup() {
+    if (active) {
+        app.target->SetTransform(saved);
+        app.target->PopLayer();
+    }
+}
+
+bool Island::VisibleLoading() const {
+    return expanded && !miniMode && flyout == Flyout::None &&
+           ((tab == Tab::Wallpaper && wallpaperLoading) || (tab == Tab::Apps && appsLoading) ||
+            (tab == Tab::Stats && speedTest && speedTest->Snapshot().busy));
+}
+
+void Island::Shimmer(D2D1_RECT_F rect) {
+    if (layoutOnly || highContrast || reducedMotion || renderMode || !VisibleLoading())
+        return;
+    if (!shimmerBrush) {
+        D2D1_GRADIENT_STOP stops[]{{0, Color(palette::Tokens::White, 0)},
+                                   {.5f, Color(palette::Tokens::White, .3f)},
+                                   {1, Color(palette::Tokens::White, 0)}};
+        ComPtr<ID2D1GradientStopCollection> collection;
+        if (FAILED(target->CreateGradientStopCollection(stops, 3, &collection)) ||
+            FAILED(target->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties({0, 0}, {100, 0}),
+                                                     collection.Get(), &shimmerBrush)))
+            return;
+    }
+    float x = rect.left - 64 + (rect.right - rect.left + 128) * loadingClock / 1.2f;
+    shimmerBrush->SetStartPoint({x - 64, rect.top});
+    shimmerBrush->SetEndPoint({x + 64, rect.top});
+    target->FillRoundedRectangle(D2D1::RoundedRect(rect, layout::CardRadius, layout::CardRadius), shimmerBrush.Get());
+    ArmMotion();
+}
+
 void Island::Fill(D2D1_RECT_F rect, unsigned color, float radius) {
     if (layoutOnly)
         return;
@@ -220,15 +265,16 @@ void Island::Fill(D2D1_RECT_F rect, unsigned color, float radius) {
     }
 }
 
-void Island::Card(D2D1_RECT_F rect, int level) {
-    Fill(rect, level == 1 ? theme::Card : theme::CardHover, layout::Metrics::CardRadius);
+void Island::Card(D2D1_RECT_F rect, int level, float hover) {
+    Fill(rect, level == 1 ? dock::Mix(theme::Card, theme::CardHover, hover) : theme::CardHover,
+         layout::Metrics::CardRadius);
     if (layoutOnly || highContrast)
         return;
     float pixel = 96 / dpi / textScale;
     float y = (std::floor(rect.top / pixel) + .5f) * pixel;
     brush->SetColor(Color(theme::Edge, level == 1 ? palette::Tokens::HairlineInner : palette::Tokens::HairlineOuter));
-    target->DrawLine({rect.left + layout::Metrics::CardRadius, y},
-                     {rect.right - layout::Metrics::CardRadius, y}, brush.Get(), pixel);
+    target->DrawLine({rect.left + layout::Metrics::CardRadius, y}, {rect.right - layout::Metrics::CardRadius, y},
+                     brush.Get(), pixel);
 }
 
 void Island::Text(const std::wstring &text, D2D1_RECT_F rect, int format, unsigned color, DWRITE_TEXT_ALIGNMENT align) {
@@ -241,8 +287,8 @@ void Island::Text(const std::wstring &text, D2D1_RECT_F rect, int format, unsign
     });
     if (found == textLayouts.end()) {
         TextEntry entry{text, w, h, format, align, nullptr};
-        if (FAILED(textFactory->CreateTextLayout(text.c_str(), static_cast<UINT32>(text.size()),
-                                                 formats[format].Get(), w, h, &entry.layout)))
+        if (FAILED(textFactory->CreateTextLayout(text.c_str(), static_cast<UINT32>(text.size()), formats[format].Get(),
+                                                 w, h, &entry.layout)))
             return;
         entry.layout->SetTextAlignment(align);
         bool glyph = format == type::Icon || format >= type::LargeIcon;
@@ -252,7 +298,7 @@ void Island::Text(const std::wstring &text, D2D1_RECT_F rect, int format, unsign
             ComPtr<IDWriteTextLayout1> modern;
             if (SUCCEEDED(entry.layout.As(&modern)))
                 modern->SetCharacterSpacing(type::Sizes[format] * type::Tracking, 0, 0,
-                                             {0, static_cast<UINT32>(text.size())});
+                                            {0, static_cast<UINT32>(text.size())});
         }
         if (textLayouts.size() >= 96)
             textLayouts.pop_front();
@@ -274,8 +320,8 @@ void Island::TwoLine(D2D1_RECT_F rect, const std::wstring &title, const std::wst
     float top = (rect.top + rect.bottom - titleHeight - captionHeight) / 2;
     Text(title, {rect.left, top, rect.right, top + titleHeight}, type::Title, color);
     if (!subtitle.empty())
-        Text(subtitle, {rect.left, top + titleHeight, rect.right, top + titleHeight + captionHeight},
-             type::Caption, theme::Muted);
+        Text(subtitle, {rect.left, top + titleHeight, rect.right, top + titleHeight + captionHeight}, type::Caption,
+             theme::Muted);
 }
 
 void Island::Line(float x1, float y1, float x2, float y2, unsigned color, float thickness) {
@@ -301,7 +347,7 @@ void Island::AddHit(int id, D2D1_RECT_F rect, std::wstring name, bool enabled) {
     auto [it, inserted] = childIds.try_emplace(key, nextChild);
     if (inserted)
         ++nextChild;
-    Hit hit{id, rect, std::move(name), enabled, key, it->second, 0, 10, clip, nullptr};
+    Hit hit{id, rect, std::move(name), enabled, key, it->second, 0, layout::ControlRadius, clip, nullptr};
     if (id == 400 || id == 401 || id == 402 || id == 403) {
         hit.input = id == 400 ? taskEdit : id == 401 ? appSearch : id == 402 ? wifiPassword : clipboardEdit;
     }
@@ -313,7 +359,14 @@ void Island::FocusRing(int id, D2D1_RECT_F rect, float radius) {
     if (layoutOnly)
         return;
     if (focusedKey == StableKey(id)) {
-        brush->SetColor(Color(theme::Focus));
+        if (paintedFocus != focusedKey) {
+            paintedFocus = focusedKey;
+            focusBlend.Snap(reducedMotion || renderMode || highContrast ? 1.0f : 0.0f);
+            focusBlend.goal = 1;
+        }
+        if (!reducedMotion && !renderMode && focusBlend.Moving())
+            ArmMotion();
+        brush->SetColor(Color(theme::Focus, highContrast ? 1 : focusBlend.value));
         target->DrawRoundedRectangle(D2D1::RoundedRect(rect, radius, radius), brush.Get(), highContrast ? 3.0f : 1.5f);
         if (highContrast) {
             brush->SetColor(Color(theme::Surface));
@@ -353,12 +406,20 @@ void Island::SetHover(int next) {
 }
 
 D2D1_RECT_F Island::Tactile(int id, D2D1_RECT_F rect) {
-    float amount = pressedKey == StableKey(id) ? 1.0f : 0.0f;
-    auto found = feedback.find(StableKey(id));
+    auto key = StableKey(id);
+    auto &press = pressMotion[key];
+    press.goal = pressedKey == key ? 1.0f : 0.0f;
+    if (reducedMotion || renderMode || highContrast)
+        press.Snap(press.goal);
+    else if (!layoutOnly && press.Moving())
+        ArmMotion();
+    float amount = press.value;
+    auto found = feedback.find(key);
     if (found != feedback.end())
         amount += found->second.value;
-    float inset = std::clamp(amount, -0.3f, 1.0f) * 1.5f;
-    return {rect.left + inset, rect.top + inset, rect.right - inset, rect.bottom - inset};
+    float scale = std::clamp(amount, -.3f, 1.0f) * .015f;
+    float x = (rect.right - rect.left) * scale, y = (rect.bottom - rect.top) * scale;
+    return {rect.left + x, rect.top + y, rect.right - x, rect.bottom - y};
 }
 
 void Island::Button(int id, D2D1_RECT_F rect, const std::wstring &title, const std::wstring &subtitle,
@@ -380,8 +441,8 @@ void Island::Button(int id, D2D1_RECT_F rect, const std::wstring &title, const s
              active ? theme::Accent : theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
         Text(title, {visual.left + 4, visual.top + 44, visual.right - 4, visual.top + 64}, type::Label,
              enabled ? theme::Text : theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
-        Text(subtitle, {visual.left + 4, visual.top + 64, visual.right - 4, visual.bottom - 4},
-             type::Caption, theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
+        Text(subtitle, {visual.left + 4, visual.top + 64, visual.right - 4, visual.bottom - 4}, type::Caption,
+             theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
         FocusRing(id, rect);
         return;
     }
@@ -390,7 +451,7 @@ void Island::Button(int id, D2D1_RECT_F rect, const std::wstring &title, const s
     Text(icon, circle, type::TileIcon,
          active ? theme::AccentInk : dock::Mix(theme::Muted, theme::Text, HoverAmount(id)),
          DWRITE_TEXT_ALIGNMENT_CENTER);
-    TwoLine({visual.left + 64, visual.top + 8, visual.right - 12, visual.top + 56}, title, subtitle,
+    TwoLine({visual.left + 60, visual.top + 8, visual.right - 8, visual.top + 56}, title, subtitle,
             enabled ? theme::Text : theme::Muted);
     if (id == Wifi || id == Bluetooth || id == Audio)
         Text(L"\xE76C", {visual.right - 28, visual.bottom - 28, visual.right - 12, visual.bottom - 12},
@@ -400,8 +461,9 @@ void Island::Button(int id, D2D1_RECT_F rect, const std::wstring &title, const s
         Fill(toggle, dock::Mix(theme::Inset, theme::Accent, state->second.value), 8);
         if (!layoutOnly) {
             brush->SetColor(Color(active ? theme::AccentInk : theme::Muted));
-            target->FillEllipse(D2D1::Ellipse({toggle.left + 8 + 12 * state->second.value,
-                                               (toggle.top + toggle.bottom) / 2}, 6, 6), brush.Get());
+            target->FillEllipse(
+                D2D1::Ellipse({toggle.left + 8 + 12 * state->second.value, (toggle.top + toggle.bottom) / 2}, 6, 6),
+                brush.Get());
         }
     }
     FocusRing(id, rect);
@@ -449,20 +511,37 @@ std::wstring Island::TabTitle() const {
 }
 
 void Island::Tabs() {
-    if (Layout().emergency) {
+    auto l = Layout();
+    if (l.emergency) {
         CompactHeader();
         return;
+    }
+    D2D1_RECT_F container{l.header.left, l.header.top + 2, l.header.right, l.header.bottom - 2};
+    Fill(container, theme::Inset, (container.bottom - container.top) / 2);
+    auto selected = TabRect(static_cast<int>(tab));
+    if (!tabMotionReady || reducedMotion || renderMode || highContrast) {
+        tabLeft.Snap(selected.left);
+        tabRight.Snap(selected.right);
+        tabMotionReady = true;
+    }
+    tabLeft.goal = selected.left;
+    tabRight.goal = selected.right;
+    D2D1_RECT_F indicator{tabLeft.value, selected.top, tabRight.value, selected.bottom};
+    Fill(indicator, theme::CardHover, (indicator.bottom - indicator.top) / 2);
+    if (!layoutOnly && !highContrast) {
+        brush->SetColor(Color(theme::Edge, palette::Tokens::HairlineInner));
+        float pixel = 96 / dpi / textScale;
+        target->DrawLine({indicator.left + 16, indicator.top + pixel / 2},
+                         {indicator.right - 16, indicator.top + pixel / 2}, brush.Get(), pixel);
     }
     constexpr const wchar_t *labels[]{L"Controls", L"Today", L"Stats", L"Clipboard", L"Apps", L"Wallpaper", L"Power"};
     for (Tab primary : EnabledTabs()) {
         int index = static_cast<int>(primary);
         auto rect = TabRect(index);
-        if (primary == tab)
-            Fill(rect, theme::AccentSoft, 14);
         AddHit(100 + index, rect, labels[index]);
-        Text(labels[index], rect, type::Caption, primary == tab ? theme::Accent : theme::Muted,
+        Text(labels[index], rect, type::Label, primary == tab ? theme::Text : theme::Muted,
              DWRITE_TEXT_ALIGNMENT_CENTER);
-        FocusRing(100 + index, rect, 14);
+        FocusRing(100 + index, rect, (rect.bottom - rect.top) / 2);
     }
     AddHit(2002, {0, 0, 1, 1}, L"Battery status is available through Today", false);
 }
@@ -500,22 +579,24 @@ void Island::TextButton(int id, D2D1_RECT_F rect, const std::wstring &text, bool
     Fill(Tactile(id, rect),
          dock::Mix(primary && enabled ? theme::Accent : theme::Inset,
                    primary && enabled ? theme::AccentHover : theme::CardHover, HoverAmount(id)),
-         8);
+         layout::ControlRadius);
     Text(text, rect, type::Control,
          !enabled  ? theme::Muted
          : primary ? theme::AccentInk
                    : theme::Text,
          DWRITE_TEXT_ALIGNMENT_CENTER);
-    FocusRing(id, rect, 8);
+    FocusRing(id, rect, layout::ControlRadius);
 }
 
 void Island::SmallButton(int id, D2D1_RECT_F rect, const wchar_t *icon, const std::wstring &label, bool enabled) {
     AddHit(id, rect, label, enabled);
-    Fill(Tactile(id, rect), id == AddTask && enabled ? theme::Accent : Hover(id) ? theme::CardHover : theme::Card, 10);
+    bool primary = (id == AddTask || id == FocusStart) && enabled;
+    Fill(Tactile(id, rect), primary ? theme::Accent : dock::Mix(theme::Card, theme::CardHover, HoverAmount(id)),
+         layout::ControlRadius);
     Text(icon, rect, type::Icon,
-         id == AddTask && enabled ? theme::AccentInk
-         : enabled                ? theme::SelectedText
-                                  : theme::Muted,
+         primary   ? theme::AccentInk
+         : enabled ? dock::Mix(theme::Muted, theme::Text, HoverAmount(id))
+                   : theme::Muted,
          DWRITE_TEXT_ALIGNMENT_CENTER);
     FocusRing(id, rect, 10);
 }
@@ -523,7 +604,7 @@ void Island::SmallButton(int id, D2D1_RECT_F rect, const wchar_t *icon, const st
 void Island::PageContent(bool header) {
     hits.clear();
     buildingBody = false;
-    if (!expanded) {
+    if (!expanded && !paintClosing) {
         AddHit(Expand, {0, 0, theme::DockWidth, theme::DockHeight}, L"Reveal dock");
         return;
     }
@@ -653,7 +734,7 @@ void Island::DrawToast() {
     rect.right = std::min(rect.right, rect.left + 520);
     for (const auto &hit : hits)
         if (hit.input && layout::Intersects({rect.left, rect.top, rect.right, rect.bottom},
-                                           {hit.rect.left, hit.rect.top, hit.rect.right, hit.rect.bottom})) {
+                                            {hit.rect.left, hit.rect.top, hit.rect.right, hit.rect.bottom})) {
             rect.top = body.top;
             rect.bottom = rect.top + std::min(32.0f, body.bottom - body.top);
             break;
@@ -666,8 +747,9 @@ void Island::DrawToast() {
     target->PushLayer(layer, nullptr);
     D2D1::Matrix3x2F saved;
     target->GetTransform(&saved);
-    float offset = renderMode || highContrast || reducedMotion ? 0 :
-                   -anchor::Grow(edge) * 8 * (1 - std::clamp(toastBlend.value, 0.0f, 1.0f));
+    float offset = renderMode || highContrast || reducedMotion
+                       ? 0
+                       : -anchor::Grow(edge) * 8 * (1 - std::clamp(toastBlend.value, 0.0f, 1.0f));
     target->SetTransform(D2D1::Matrix3x2F::Translation(0, offset) * saved);
     Card(rect, 2);
     Text(note, {rect.left + 12, rect.top, rect.right - 12, rect.bottom}, type::Label, theme::Text);
@@ -704,9 +786,25 @@ void Island::Draw() {
             float left = (envelopeWidth - width) / 2;
             target->PushAxisAlignedClip({left, PanelY(), left + width, PanelY() + height},
                                         D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-            target->SetTransform(D2D1::Matrix3x2F::Scale(textScale, textScale) *
-                                 D2D1::Matrix3x2F::Translation(PanelX(), PanelY()));
-            PanelContent();
+            if ((dockReveal.value > .6f || collapsePending) && contentBlend.value > .001f) {
+                float blend = std::clamp(contentBlend.value, 0.0f, 1.0f);
+                float scale = .98f + .02f * blend;
+                auto layer = D2D1::LayerParameters();
+                layer.opacity = blend;
+                target->PushLayer(layer, nullptr);
+                auto origin = D2D1::Point2F(LayoutWidth() / 2, edge == anchor::Edge::Bottom ? LayoutHeight() : 0);
+                target->SetTransform(D2D1::Matrix3x2F::Scale(scale, scale, origin) *
+                                     D2D1::Matrix3x2F::Translation(0, -anchor::Grow(edge) * 8 * (1 - blend)) *
+                                     D2D1::Matrix3x2F::Scale(textScale, textScale) *
+                                     D2D1::Matrix3x2F::Translation(PanelX(), PanelY()));
+                paintClosing = !expanded;
+                PanelContent();
+                paintClosing = false;
+                target->PopLayer();
+                if (!expanded)
+                    RebuildLayout();
+            } else
+                RebuildLayout();
             target->PopAxisAlignedClip();
         } else if (expanded) {
             RebuildLayout();

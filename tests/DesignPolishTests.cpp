@@ -3,6 +3,7 @@
 #include "../src/GeometryCache.h"
 #include "../src/AmbientShadow.h"
 #include "../src/LayoutEngine.h"
+#include "../src/WallpaperModel.h"
 #include <cstdio>
 #include <cstdlib>
 
@@ -47,5 +48,33 @@ int main() {
     auto layout = layout::Solve({800, 760, layout::View::Controls});
     RequireDesign(layout.panel.Height() == 400 && layout.body.Height() == 272 && layout.footer.Height() == 36,
                   "standard layout uses the shared 400/272/36 geometry");
+    for (auto spec : {dock::motion::Settle, dock::motion::Snappy, dock::motion::Soft, dock::motion::Lively,
+                      dock::motion::Press, dock::motion::TabTrail}) {
+        dock::Spring spring;
+        spring.goal = 800;
+        float elapsed = 0;
+        while (spring.Moving() && elapsed < .6f) {
+            spring.Step(1.0f / 240, spec);
+            elapsed += 1.0f / 240;
+        }
+        RequireDesign(!spring.Moving() && elapsed <= spec.duration + .005f,
+                      "named spring settles within its interaction duration and releases motion by 600 ms");
+    }
+    dock::Spring reveal, panelWidth(216), panelHeight(18);
+    reveal.goal = 1;
+    panelWidth.goal = 800;
+    panelHeight.goal = 400;
+    for (int frame = 0; frame < 76; ++frame) {
+        reveal.Step(1.0f / 240, dock::motion::Settle);
+        panelHeight.Step(1.0f / 240, dock::motion::Height);
+        if (frame >= 10)
+            panelWidth.Step(1.0f / 240, dock::motion::Width);
+    }
+    RequireDesign(!reveal.Moving() && !panelWidth.Moving() && !panelHeight.Moving(),
+                  "height-led reveal including the width delay settles before 320 ms");
+    auto center = wallpaper::Pose(0, 340), left = wallpaper::Pose(-.5f, 340), right = wallpaper::Pose(.5f, 340);
+    RequireDesign(center.scale == 1 && center.opacity == 1 && left.x == -right.x && left.skew == -right.skew &&
+                      left.scale == right.scale && left.scale < 1 && left.opacity < 1,
+                  "fractional carousel poses are continuous, mirrored and attenuated");
     std::puts("PASS: Bezier bounds, half-DIP reuse, bounded geometry LRU, continuous ring arcs and DPI sampling.");
 }

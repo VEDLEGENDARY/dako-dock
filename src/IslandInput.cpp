@@ -115,8 +115,8 @@ int Island::HitAt(float x, float y, bool accessibleHit) {
         const auto &h = hits[i];
         auto r = h.rect, c = h.clip;
         if ((h.enabled || accessibleHit) && x >= c.left && x <= c.right && y >= c.top && y <= c.bottom &&
-            layout::SkewContains({r.left, r.top, r.right, r.bottom}, h.skew, std::min(10.0f, (r.bottom - r.top) / 2), x,
-                                 y))
+            layout::SkewContains({r.left, r.top, r.right, r.bottom}, h.skew, std::min(h.radius, (r.bottom - r.top) / 2),
+                                 x, y))
             return i;
     }
     return -1;
@@ -371,6 +371,12 @@ void Island::Invoke(int id) {
         tasks[id - 200].done = !tasks[id - 200].done;
         if (!SaveTasks())
             tasks[id - 200].done = !tasks[id - 200].done;
+        auto &task = tasks[id - 200];
+        auto [completion, inserted] = taskMotion.try_emplace(task.identity, task.done ? 0.0f : 1.0f);
+        (void)inserted;
+        completion->second.goal = task.done ? 1.0f : 0.0f;
+        if (reducedMotion || renderMode || highContrast)
+            completion->second.Snap(completion->second.goal);
     } else if (id >= 300 && id < 400 && AppIndex(id - 300) < apps.size())
         OpenApp(apps[AppIndex(id - 300)]);
     else if (id >= 500 && id < 500 + static_cast<int>(DesktopCatalog::MaxWallpapers) &&
@@ -767,11 +773,15 @@ void Island::Key(WPARAM key) {
     }
     if (tab == Tab::Wallpaper && flyout == Flyout::None && focused >= 0 && hits[focused].id >= 500 &&
         hits[focused].id < 564 && (key == VK_LEFT || key == VK_RIGHT || key == VK_UP || key == VK_DOWN)) {
-        int columns = Body().right - Body().left >= 600 ? 3 : Body().right - Body().left >= 380 ? 2 : 1;
-        int delta = key == VK_LEFT ? -1 : key == VK_RIGHT ? 1 : key == VK_UP ? -columns : columns;
+        int delta = key == VK_LEFT || key == VK_UP ? -1 : 1;
         if (!wallpapers.empty())
             selectedWallpaper = static_cast<size_t>(
                 std::clamp(static_cast<int>(selectedWallpaper) + delta, 0, static_cast<int>(wallpapers.size()) - 1));
+        wallpaperFocus.goal = static_cast<float>(selectedWallpaper);
+        if (reducedMotion || renderMode || highContrast)
+            wallpaperFocus.Snap(wallpaperFocus.goal);
+        else
+            ArmMotion();
         RebuildLayout();
         FocusAt(IndexForKey(StableKey(500 + static_cast<int>(selectedWallpaper))));
         InvalidateRect(window, nullptr, FALSE);
@@ -1718,7 +1728,8 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
             }
             int hit = app->HitAt(GET_X_LPARAM(lparam) * 96.0f / app->dpi, GET_Y_LPARAM(lparam) * 96.0f / app->dpi);
             app->SetHover(hit);
-            if (app->tab == Tab::Wallpaper && app->flyout == Flyout::None && !app->reducedMotion) {
+            if (app->tab == Tab::Wallpaper && app->flyout == Flyout::None && !app->reducedMotion &&
+                !app->highContrast) {
                 auto stage = app->Layout().stage;
                 float px = (GET_X_LPARAM(lparam) * 96.0f / app->dpi - app->PanelX()) / app->textScale;
                 app->wallpaperParallax.goal =
@@ -1815,8 +1826,12 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
             ReleaseCapture();
             if (hit >= 0 && app->hits[hit].key == pressed && app->hits[hit].id == app->pressedId) {
                 auto &pulse = app->feedback[pressed];
-                pulse.value = 1;
+                auto &press = app->pressMotion[pressed];
+                pulse.value = press.value;
+                pulse.velocity = press.velocity;
+                pulse.age = 0;
                 pulse.goal = 0;
+                press.Snap(0);
                 app->Invoke(app->hits[hit].id);
             }
             app->pressedId = 0;
@@ -1838,6 +1853,19 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
                     app->miniMode = false;
                     app->SetExpanded(true);
                 }
+                return 0;
+            }
+            if (app->tab == Tab::Wallpaper && app->flyout == Flyout::None && !app->wallpapers.empty()) {
+                int delta = GET_WHEEL_DELTA_WPARAM(wparam) > 0 ? -1 : 1;
+                app->selectedWallpaper = static_cast<size_t>(std::clamp(
+                    static_cast<int>(app->selectedWallpaper) + delta, 0, static_cast<int>(app->wallpapers.size()) - 1));
+                app->wallpaperFocus.goal = static_cast<float>(app->selectedWallpaper);
+                if (app->reducedMotion || app->highContrast)
+                    app->wallpaperFocus.Snap(app->wallpaperFocus.goal);
+                else
+                    app->ArmMotion();
+                app->RebuildLayout();
+                InvalidateRect(window, nullptr, FALSE);
                 return 0;
             }
             if (app->tab == Tab::Today && app->flyout == Flyout::None) {

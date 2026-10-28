@@ -213,7 +213,16 @@ void Island::Apps() {
         SmallButton(star, {b.right - 36, y + 2, b.right, y + 38}, Favorite(entry) ? L"\xE735" : L"\xE734",
                     (Favorite(entry) ? L"Unpin " : L"Pin ") + entry.name);
     }
-    if (filteredApps.empty())
+    if (filteredApps.empty() && appsLoading) {
+        for (int i = 0; i < 3; ++i) {
+            float y = nextY + i * 48.0f;
+            if (y + 40 > b.bottom)
+                break;
+            D2D1_RECT_F placeholder{b.left, y, b.right, y + 40};
+            Card(placeholder);
+            Shimmer(placeholder);
+        }
+    } else if (filteredApps.empty())
         Paragraph(apps.empty() ? (appsLoading ? L"Loading installed apps…"
                                               : L"No installed applications available. Reopen Apps to retry.")
                                : L"No matching apps. Change the search text.",

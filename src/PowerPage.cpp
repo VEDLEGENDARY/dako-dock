@@ -7,17 +7,18 @@ void Island::Power() {
     const wchar_t *icons[]{L"\xE72E", L"\xE708", L"\xE777", L"\xE7E8"};
     auto rows = layout::Rows(layout::Canvas(Layout()), {1, 1});
     for (int i = 0; i < 4; ++i) {
+        PaintGroup reveal(*this, i);
         auto r = layout::Columns(rows[i / 2], {1, 1})[i % 2];
         auto rect = Tactile(actions[i], R(r));
         AddHit(actions[i], R(r), std::wstring(labels[i]) + L". " + hints[i]);
-        Card(rect, HoverAmount(actions[i]) > .1f ? 2 : 1);
+        Card(rect, 1, HoverAmount(actions[i]));
         unsigned color = i >= 2 ? dock::Mix(theme::Text, theme::Danger, HoverAmount(actions[i])) : theme::Text;
         Text(icons[i], {rect.left, rect.top + 16, rect.right, rect.top + 56}, type::LargeIcon, color,
              DWRITE_TEXT_ALIGNMENT_CENTER);
         Text(labels[i], {rect.left + 12, rect.top + 64, rect.right - 12, rect.top + 88}, type::Title, color,
              DWRITE_TEXT_ALIGNMENT_CENTER);
-        Text(hints[i], {rect.left + 12, rect.top + 92, rect.right - 12, rect.bottom - 12}, type::Caption,
-             theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
+        Text(hints[i], {rect.left + 12, rect.top + 92, rect.right - 12, rect.bottom - 12}, type::Caption, theme::Muted,
+             DWRITE_TEXT_ALIGNMENT_CENTER);
         FocusRing(actions[i], R(r), layout::CardRadius);
     }
 }

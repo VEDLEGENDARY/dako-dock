@@ -224,12 +224,15 @@ int wmain(int argc, wchar_t **argv) {
         app.SetTab(Tab::Wallpaper);
         app.wallpaperFocus.Snap(2.5f);
         app.RebuildLayout();
-        for (const auto &a : app.hits)
-            for (const auto &b : app.hits)
-                if (a.id >= 500 && a.id < 564 && b.id > a.id && b.id < 564)
-                    RequireLive(!layout::Intersects({a.rect.left, a.rect.top, a.rect.right, a.rect.bottom},
-                                                    {b.rect.left, b.rect.top, b.rect.right, b.rect.bottom}),
-                                "wallpaper grid cards retain non-overlapping hit bounds");
+        auto frontCard = std::find_if(app.hits.rbegin(), app.hits.rend(),
+                                      [](const Hit &hit) { return hit.id >= 500 && hit.id < 564; });
+        RequireLive(frontCard != app.hits.rend(), "fractional carousel exposes its front card");
+        int frontId = frontCard->id;
+        auto frontRect = frontCard->rect;
+        int frontHit = app.HitAt(app.PanelX() + (frontRect.left + frontRect.right) / 2 * app.textScale,
+                                 app.PanelY() + (frontRect.top + frontRect.bottom) / 2 * app.textScale);
+        RequireLive(frontHit >= 0 && app.hits[frontHit].id == frontId,
+                    "overlapping carousel cards dispatch to the painted front card");
         app.wallpaperFocus.Snap(0);
         app.SetTab(Tab::Controls);
         Settle(app);
@@ -267,8 +270,14 @@ int wmain(int argc, wchar_t **argv) {
         app.SetExpanded(true);
         Settle(app);
         app.reducedMotion = true;
+        size_t reducedFrames = app.paintTimes.size();
         app.SetExpanded(false);
         RequireLive(!app.target && !app.composition.Active(), "reduced-motion collapse releases GPU targets");
+        app.SetExpanded(true);
+        RequireLive(!app.scheduler.active && !app.frameClock.Active() && app.dockReveal.value == 1 &&
+                        app.paintTimes.size() == reducedFrames,
+                    "reduced motion produces no intermediate frames or frame worker");
+        app.SetExpanded(false);
         app.reducedMotion = false;
         app.SetExpanded(true);
         Settle(app);

@@ -163,7 +163,8 @@ void Island::ApplyAccent(unsigned rgb) {
     theme::Accent = rgb;
     theme::AccentHover = dock::Mix(rgb, lightAppearance ? theme::Ink : theme::Paper, 0.10f);
     theme::AccentInk = Contrast(rgb, palette::Tokens::Black) > Contrast(rgb, palette::Tokens::White)
-                           ? palette::Tokens::Black : palette::Tokens::White;
+                           ? palette::Tokens::Black
+                           : palette::Tokens::White;
     theme::AccentSoft = dock::Mix(theme::Card, rgb, palette::Tokens::AccentSoft);
     unsigned readable = rgb;
     for (int i = 0; i < 32 && Contrast(readable, theme::AccentSoft) < 4.5; ++i)
@@ -292,6 +293,7 @@ void Island::ReleaseGraphics() {
     imageBrushes.clear();
     mediaBitmap.Reset();
     mediaPixels.reset();
+    shimmerBrush.Reset();
     brush.Reset();
     target.Reset();
     hostTarget.Reset();

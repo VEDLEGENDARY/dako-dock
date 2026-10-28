@@ -6,11 +6,11 @@ layout::Result Island::Layout() const {
     input.availableHeight = (envelopeHeight - 24) / textScale;
     input.view = miniMode ? layout::View::Media : static_cast<layout::View>(tab);
     if (flyout != Flyout::None)
-        input.view = flyout == Flyout::Features ? layout::View::Features
-                     : flyout == Flyout::DockStatus ? layout::View::Status
-                     : flyout == Flyout::Module ? layout::View::Module
+        input.view = flyout == Flyout::Features                              ? layout::View::Features
+                     : flyout == Flyout::DockStatus                          ? layout::View::Status
+                     : flyout == Flyout::Module                              ? layout::View::Module
                      : flyout == Flyout::Palette || flyout == Flyout::Recent ? layout::View::Palette
-                                                                            : layout::View::Wireless;
+                                                                             : layout::View::Wireless;
     input.items = moduleRegistry.Descriptors().size();
     input.active = privacySnapshot.active.size();
     input.events = std::min(size_t{8}, privacySnapshot.events.size());
@@ -73,6 +73,18 @@ void Island::RebuildLayout() {
             else
                 ++it;
     }
+    if (pressMotion.size() > 256) {
+        for (auto it = pressMotion.begin(); it != pressMotion.end();)
+            if (IndexForKey(it->first) < 0)
+                it = pressMotion.erase(it);
+            else
+                ++it;
+    }
+    for (auto it = taskMotion.begin(); it != taskMotion.end();)
+        if (std::none_of(tasks.begin(), tasks.end(), [&](const Task &task) { return task.identity == it->first; }))
+            it = taskMotion.erase(it);
+        else
+            ++it;
     if (childIds.size() > 8192) {
         for (auto it = childIds.begin(); it != childIds.end();)
             if (IndexForKey(it->first) < 0)
@@ -221,7 +233,7 @@ void Island::Place() {
 void Island::PositionInputs() {
     if (layoutOnly)
         return;
-    bool visible = expanded && !capturingPane;
+    bool visible = expanded && !capturingPane && (reducedMotion || renderMode || contentBlend.value > .98f);
     float scale = dpi / 96;
     auto position = [&](HWND input, int id) {
         if (!input)

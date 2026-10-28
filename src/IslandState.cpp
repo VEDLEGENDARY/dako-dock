@@ -2,9 +2,17 @@
 #include "ClipboardPaste.h"
 
 void Island::SnapMotion() {
+    if (!expanded) {
+        dockReveal.goal = contentBlend.goal = 0;
+        dockWidth.goal = theme::DockWidth;
+        dockHeight.goal = theme::DockHeight;
+    } else
+        contentBlend.goal = 1;
+    collapsePending = false;
+    revealClock = paneClock = 1;
     for (auto *v : {&dockReveal, &dockWidth, &dockHeight, &paneBlend, &wallpaperFocus, &tabLeft, &tabRight,
                     &railPointer, &railStrength, &paletteBlend, &contentBlend, &togglePosition, &wallpaperParallax,
-                    &volumeMotion, &composerFocus, &toastBlend})
+                    &volumeMotion, &composerFocus, &toastBlend, &focusBlend})
         v->Snap(v->goal);
     for (auto &v : rings)
         v.Snap(v.goal);
@@ -13,6 +21,14 @@ void Island::SnapMotion() {
         v.Snap(v.goal);
     }
     for (auto &[key, v] : tileState) {
+        (void)key;
+        v.Snap(v.goal);
+    }
+    for (auto &[key, v] : pressMotion) {
+        (void)key;
+        v.Snap(v.goal);
+    }
+    for (auto &[key, v] : taskMotion) {
         (void)key;
         v.Snap(v.goal);
     }
@@ -124,6 +140,18 @@ void Island::SetExpanded(bool value, bool deliberate) {
         else
             interaction.OnDismiss(deliberate);
     }
+    bool opening = value && !expanded, closing = !value && expanded;
+    if (opening) {
+        revealClock = 0;
+        contentBlend.Snap(0);
+    }
+    if (closing) {
+        collapseClock = 0;
+        collapsePending = !reducedMotion && !renderMode;
+        contentBlend.goal = 0;
+    }
+    if (value)
+        collapsePending = false;
     expanded = value;
     if (docks)
         docks->PanelVisible(value);
@@ -176,9 +204,11 @@ void Island::SetExpanded(bool value, bool deliberate) {
         if (connectivity)
             connectivity->CancelDiscovery();
     }
-    dockReveal.goal = value ? 1.0f : 0.0f;
-    dockWidth.goal = value ? SurfaceWidth() : theme::DockWidth;
-    dockHeight.goal = value ? SurfaceHeight() : theme::DockHeight;
+    dockReveal.goal = value || collapsePending ? 1.0f : 0.0f;
+    dockWidth.goal = value || collapsePending ? SurfaceWidth() : theme::DockWidth;
+    dockHeight.goal = value || collapsePending ? SurfaceHeight() : theme::DockHeight;
+    if (value && (reducedMotion || renderMode || !opening))
+        contentBlend.goal = 1;
     transitioning = !reducedMotion && !renderMode;
     if (transitioning)
         ArmMotion();
@@ -186,6 +216,7 @@ void Island::SetExpanded(bool value, bool deliberate) {
         dockReveal.Snap(dockReveal.goal);
         dockWidth.Snap(dockWidth.goal);
         dockHeight.Snap(dockHeight.goal);
+        contentBlend.Snap(value ? 1.0f : 0.0f);
         width = dockWidth.value;
         height = dockHeight.value;
         Place();
@@ -211,49 +242,93 @@ void Island::Transition() {
         InvalidateRect(window, nullptr, FALSE);
         return;
     }
-    // Analytic springs consume elapsed time in bounded steps without stretching a stall.
     bool moving = false;
-    auto advance = [&](dock::Spring &v, float frequency = 23.0f) {
-        float remaining = dt;
-        while (remaining > 0) {
-            float step = std::min(remaining, 0.05f);
-            v.Step(step, frequency);
-            remaining -= step;
+    float speed = options.Int(L"Animation") / 100.0f;
+    auto advance = [&](dock::Spring &spring, dock::motion::Spec spec, float elapsed) {
+        while (elapsed > 0) {
+            float step = std::min(elapsed, .05f);
+            spring.Step(step, spec, speed);
+            elapsed -= step;
         }
-        moving |= v.Moving();
+        moving |= spring.Moving();
     };
-    for (auto *v : {&dockReveal, &dockWidth, &dockHeight})
-        advance(*v, 23 * options.Int(L"Animation") / 100.0f);
-    for (auto *v : {&paneBlend, &wallpaperFocus, &tabLeft, &tabRight, &railPointer, &railStrength, &paletteBlend,
-                    &contentBlend, &togglePosition, &wallpaperParallax, &volumeMotion, &composerFocus, &toastBlend})
-        advance(*v, 34);
-    for (auto &v : rings)
-        advance(v, 20);
-    for (auto &[id, v] : hoverMotion) {
+    float previousReveal = revealClock;
+    if (expanded)
+        revealClock += dt;
+    if (collapsePending) {
+        collapseClock += dt;
+        advance(contentBlend, dock::motion::Collapse, dt);
+        if (collapseClock >= .12f / speed || contentBlend.value <= .001f) {
+            collapsePending = false;
+            dockReveal.goal = 0;
+            dockWidth.goal = theme::DockWidth;
+            dockHeight.goal = theme::DockHeight;
+        }
+        moving |= collapsePending;
+    }
+    advance(dockReveal, dock::motion::Settle, dt);
+    advance(dockHeight, highContrast ? dock::motion::Settle : dock::motion::Height, dt);
+    float widthElapsed =
+        expanded ? std::max(0.0f, revealClock - .04f / speed) - std::max(0.0f, previousReveal - .04f / speed) : dt;
+    advance(dockWidth, dock::motion::Width, widthElapsed);
+    if (expanded && dockReveal.value > .6f)
+        contentBlend.goal = 1;
+    if (!collapsePending)
+        advance(contentBlend, dock::motion::Fade, dt);
+    advance(paneBlend, dock::motion::Settle, dt);
+    advance(wallpaperFocus, dock::motion::Carousel, dt);
+    advance(tabLeft, bodyDirection > 0 ? dock::motion::TabTrail : dock::motion::Snappy, dt);
+    advance(tabRight, bodyDirection > 0 ? dock::motion::Snappy : dock::motion::TabTrail, dt);
+    for (auto *spring : {&railPointer, &railStrength, &togglePosition, &composerFocus})
+        advance(*spring, dock::motion::Snappy, dt);
+    for (auto *spring : {&paletteBlend, &wallpaperParallax, &volumeMotion})
+        advance(*spring, dock::motion::Soft, dt);
+    advance(toastBlend, dock::motion::Fade, dt);
+    advance(focusBlend, dock::motion::Focus, dt);
+    for (auto &spring : rings)
+        advance(spring, dock::motion::Soft, dt);
+    for (auto &[id, spring] : hoverMotion) {
         (void)id;
-        advance(v, 30);
+        advance(spring, dock::motion::Snappy, dt);
     }
-    for (auto &[id, v] : tileState) {
+    for (auto &[id, spring] : tileState) {
         (void)id;
-        advance(v, 24);
+        advance(spring, dock::motion::Snappy, dt);
     }
-    for (auto &[key, v] : feedback) {
+    for (auto &[key, spring] : pressMotion) {
         (void)key;
-        v.Step(dt);
-        moving |= v.Moving();
+        advance(spring, dock::motion::Press, dt);
     }
-    for (auto &[key, v] : rowPositions) {
+    for (auto &[key, spring] : taskMotion) {
         (void)key;
-        advance(v, 24);
+        advance(spring, dock::motion::Task, dt);
     }
+    for (auto &[key, spring] : feedback) {
+        (void)key;
+        spring.Step(dt, speed);
+        moving |= spring.Moving();
+    }
+    for (auto &[key, spring] : rowPositions) {
+        (void)key;
+        advance(spring, dock::motion::Settle, dt);
+    }
+    if (paneClock < .37f && !highContrast) {
+        paneClock = std::min(.37f, paneClock + dt * speed);
+        moving |= paneClock < .37f;
+    }
+    if (VisibleLoading() && !highContrast) {
+        loadingClock = std::fmod(loadingClock + dt, 1.2f);
+        moving = true;
+    } else
+        loadingClock = 0;
     for (auto it = feedback.begin(); it != feedback.end();)
         if (!it->second.Moving())
             it = feedback.erase(it);
         else
             ++it;
-    width = dockWidth.value;
-    height = dockHeight.value;
-    transitioning = dockReveal.Moving() || dockWidth.Moving() || dockHeight.Moving();
+    width = std::clamp(dockWidth.value, 1.0f, envelopeWidth);
+    height = std::clamp(dockHeight.value, 1.0f, envelopeHeight);
+    transitioning = collapsePending || dockReveal.Moving() || dockWidth.Moving() || dockHeight.Moving();
     ApplyAccent(dock::Mix(previousAccent, targetAccent, paletteBlend.value));
     if (paneBlend.value == 1)
         previousPane.Reset();
@@ -387,12 +462,26 @@ void Island::SetTab(Tab value) {
     moduleQuery.clear();
     miniMode = false;
     previousPane.Reset();
-    paneBlend.Snap(1);
+    paneBlend.Snap(reducedMotion || renderMode || highContrast ? 1.0f : 0.0f);
+    paneBlend.goal = 1;
+    paneClock = reducedMotion || renderMode || highContrast ? 1.0f : 0.0f;
     if (connectivity)
         connectivity->CancelDiscovery();
     flyout = Flyout::None;
     bodyDirection = static_cast<int>(value) >= static_cast<int>(tab) ? 1.0f : -1.0f;
+    if (!tabMotionReady) {
+        auto previous = TabRect(static_cast<int>(tab));
+        tabLeft.Snap(previous.left);
+        tabRight.Snap(previous.right);
+        tabMotionReady = true;
+    }
     tab = value;
+    auto selected = TabRect(static_cast<int>(tab));
+    tabLeft.goal = selected.left;
+    tabRight.goal = selected.right;
+    if (tab == Tab::Stats)
+        for (auto &ring : rings)
+            ring.Snap(0);
     note.clear();
     scroll = 0;
     focusedKey.clear();

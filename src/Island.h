@@ -198,7 +198,7 @@ struct Hit {
     bool enabled = true;
     std::wstring key;
     LONG child = 0;
-    float skew = 0, radius = 10;
+    float skew = 0, radius = layout::ControlRadius;
     D2D1_RECT_F clip{};
     HWND input = nullptr;
 };
@@ -343,6 +343,24 @@ class Island {
     bool frameTickReady = false;
     UINT motionInterval = 16;
     dock::Spring wallpaperParallax{0}, volumeMotion{0};
+    dock::Spring focusBlend{1};
+    std::wstring paintedFocus;
+    std::map<std::wstring, dock::Spring> pressMotion;
+    std::map<unsigned, dock::Spring> taskMotion;
+    float revealClock = 1, paneClock = 1, collapseClock = 0, loadingClock = 0;
+    bool collapsePending = false, paintClosing = false, tabMotionReady = false;
+    bool VisibleLoading() const;
+    void Shimmer(D2D1_RECT_F rect);
+    ComPtr<ID2D1LinearGradientBrush> shimmerBrush;
+    struct PaintGroup {
+        Island &app;
+        D2D1::Matrix3x2F saved;
+        bool active = false;
+        PaintGroup(Island &island, int index);
+        ~PaintGroup();
+    };
+    std::array<int, 3> percentValues{-1, -1, -1};
+    std::array<std::wstring, 3> percentText;
     std::wstring diagnosticsPath;
     std::vector<double> frameIntervals, paintTimes;
     std::function<void()> beforePresent;
@@ -536,7 +554,7 @@ class Island {
     void SetTab(Tab value);
     D2D1_COLOR_F Color(unsigned rgb, float alpha = 1);
     void Fill(D2D1_RECT_F rect, unsigned color, float radius = layout::Metrics::ControlRadius);
-    void Card(D2D1_RECT_F rect, int level = 1);
+    void Card(D2D1_RECT_F rect, int level = 1, float hover = 0);
     void Text(const std::wstring &text, D2D1_RECT_F rect, int format = type::Body, unsigned color = theme::Text,
               DWRITE_TEXT_ALIGNMENT align = DWRITE_TEXT_ALIGNMENT_LEADING);
     void TwoLine(D2D1_RECT_F rect, const std::wstring &title, const std::wstring &subtitle,
