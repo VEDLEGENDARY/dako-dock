@@ -138,7 +138,7 @@ void Island::ConnectionView() {
                       {b.left + 12, detail + 8, b.right - 12, detail + 52});
         bool can = network.connected || !needs || (wifiPassword && GetWindowTextLengthW(wifiPassword) > 0);
         TextButton(network.connected ? FlyoutDisconnect : FlyoutConnect,
-                   {b.right - 164, detail + 64, b.right - 12, detail + 104}, L"Wi-Fi settings ↗", !network.connected,
+                   {b.right - 164, detail + 64, b.right - 12, detail + 104}, L"Wi-Fi settings", !network.connected,
                    can && !connections.wifiConnecting && !busy);
     }
     if (!wifi && selectedBluetooth >= 0 && selectedBluetooth < static_cast<int>(connections.devices.size())) {
@@ -148,7 +148,7 @@ void Island::ConnectionView() {
         TextButton(device.connected ? FlyoutDisconnect
                    : device.paired  ? FlyoutConnect
                                     : FlyoutPair,
-                   {b.right - 160, detail + 60, b.right - 12, detail + 100}, L"Bluetooth settings ↗", !device.connected,
+                   {b.right - 160, detail + 60, b.right - 12, detail + 100}, L"Bluetooth settings", !device.connected,
                    !busy);
     }
     buildingBody = false;
@@ -159,7 +159,7 @@ void Island::ConnectionView() {
     }
     if (!l.emergency) {
         auto f = Footer();
-        TextButton(FlyoutSettings, {f.left, f.top, f.right - 104, f.bottom}, L"More settings ↗");
+        TextButton(FlyoutSettings, {f.left, f.top, f.right - 104, f.bottom}, L"More settings");
         SmallButton(FlyoutPrevious, {f.right - 92, f.top, f.right - 52, f.bottom}, L"\xE76B", L"Previous devices",
                     connectionPage > 0);
         SmallButton(FlyoutNext, {f.right - 40, f.top, f.right, f.bottom}, L"\xE76C", L"Next devices",

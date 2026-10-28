@@ -916,14 +916,14 @@ void Island::OpenCompactMenu(bool views) {
                 (wifi ? connections.networks.size() : connections.devices.size()));
         if (wifi && selectedWifi >= 0) {
             const auto &network = connections.networks[selectedWifi];
-            add(network.connected ? FlyoutDisconnect : FlyoutConnect, L"Wi-Fi settings ↗", !busy);
+            add(network.connected ? FlyoutDisconnect : FlyoutConnect, L"Wi-Fi settings", !busy);
         }
         if (!wifi && selectedBluetooth >= 0) {
             const auto &device = connections.devices[selectedBluetooth];
             add(device.connected ? FlyoutDisconnect
                 : device.paired  ? FlyoutConnect
                                  : FlyoutPair,
-                L"Bluetooth settings ↗", !busy);
+                L"Bluetooth settings", !busy);
         }
     } else
         switch (tab) {

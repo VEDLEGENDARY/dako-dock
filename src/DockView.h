@@ -1,5 +1,6 @@
 #pragma once
 #include "DockShell.h"
+#include "UiTypography.h"
 #include <d2d1.h>
 #include <dwrite.h>
 #include <wincodec.h>
@@ -10,21 +11,16 @@ namespace dockview {
 using Microsoft::WRL::ComPtr;
 inline D2D1_RECT_F Rect(layout::Rect rect) { return {rect.left, rect.top, rect.right, rect.bottom}; }
 struct Resources {
+    std::shared_ptr<type::Library> typography;
     ComPtr<IDWriteTextFormat> text, icon;
     ComPtr<IWICImagingFactory> images;
     std::map<std::wstring, ComPtr<ID2D1Bitmap>> icons;
     bool Initialize(IDWriteFactory *factory) {
         if (text && icon)
             return true;
-        HRESULT result =
-            factory->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD, DWRITE_FONT_STYLE_NORMAL,
-                                      DWRITE_FONT_STRETCH_NORMAL, 12, L"", &text);
-        if (FAILED(result))
-            return false;
-        result = factory->CreateTextFormat(L"Segoe MDL2 Assets", nullptr, DWRITE_FONT_WEIGHT_NORMAL,
-                                           DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 22, L"", &icon);
-        if (FAILED(result))
-            return false;
+        typography = type::Acquire(factory);
+        text = typography->formats[type::Label];
+        icon = typography->formats[type::Icon];
         for (auto *format : {text.Get(), icon.Get()}) {
             format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
             format->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);

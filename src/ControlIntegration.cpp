@@ -106,7 +106,7 @@ void Island::OutputDevices() {
     if (Layout().emergency)
         return;
     auto footer = Footer();
-    TextButton(OutputSettings, {footer.left, footer.top, footer.right - 96, footer.bottom}, L"Open sound settings ↗");
+    TextButton(OutputSettings, {footer.left, footer.top, footer.right - 96, footer.bottom}, L"Open sound settings");
     SmallButton(OutputPrevious, {footer.right - 84, footer.top, footer.right - 48, footer.bottom}, L"\xE76B",
                 L"Previous outputs", outputPage > 0);
     SmallButton(OutputNext, {footer.right - 36, footer.top, footer.right, footer.bottom}, L"\xE76C", L"Next outputs",

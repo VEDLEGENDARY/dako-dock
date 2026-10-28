@@ -90,7 +90,7 @@ void Island::Controls() {
     auto b = Body();
     bool narrow = Layout().narrow;
     const int ids[]{Wifi, Bluetooth, Audio, Night, Dark};
-    const wchar_t *names[]{L"Wi-Fi", L"Bluetooth", L"Audio", L"Night Light ↗", L"Dark mode"};
+    const wchar_t *names[]{L"Wi-Fi", L"Bluetooth", L"Audio", L"Night Light", L"Dark mode"};
     const wchar_t *icons[]{L"\xE701", L"\xE702", L"\xE767", L"\xE708", L"\xE790"};
     std::wstring details[]{system.wifi, system.bluetooth, system.audioName, L"Windows Settings",
                            controlState.dark ? L"On" : L"Off"};

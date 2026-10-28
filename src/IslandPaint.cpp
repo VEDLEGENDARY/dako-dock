@@ -198,10 +198,48 @@ void Island::Card(D2D1_RECT_F rect, int level) {
 void Island::Text(const std::wstring &text, D2D1_RECT_F rect, int format, unsigned color, DWRITE_TEXT_ALIGNMENT align) {
     if (layoutOnly || rect.right <= rect.left || rect.bottom <= rect.top)
         return;
+    float w = rect.right - rect.left, h = rect.bottom - rect.top;
+    auto found = std::find_if(textLayouts.begin(), textLayouts.end(), [&](const TextEntry &entry) {
+        return entry.text == text && entry.width == w && entry.height == h && entry.role == format &&
+               entry.align == align;
+    });
+    if (found == textLayouts.end()) {
+        TextEntry entry{text, w, h, format, align, nullptr};
+        if (FAILED(textFactory->CreateTextLayout(text.c_str(), static_cast<UINT32>(text.size()),
+                                                 formats[format].Get(), w, h, &entry.layout)))
+            return;
+        entry.layout->SetTextAlignment(align);
+        bool glyph = format == type::Icon || format >= type::LargeIcon;
+        if (typography && typography->numbers && !glyph)
+            entry.layout->SetTypography(typography->numbers.Get(), {0, static_cast<UINT32>(text.size())});
+        if (format == type::Overline) {
+            ComPtr<IDWriteTextLayout1> modern;
+            if (SUCCEEDED(entry.layout.As(&modern)))
+                modern->SetCharacterSpacing(type::Sizes[format] * type::Tracking, 0, 0,
+                                             {0, static_cast<UINT32>(text.size())});
+        }
+        if (textLayouts.size() >= 96)
+            textLayouts.pop_front();
+        textLayouts.push_back(std::move(entry));
+        found = std::prev(textLayouts.end());
+    } else if (std::next(found) != textLayouts.end()) {
+        TextEntry entry = std::move(*found);
+        textLayouts.erase(found);
+        textLayouts.push_back(std::move(entry));
+        found = std::prev(textLayouts.end());
+    }
     brush->SetColor(Color(color));
-    formats[format]->SetTextAlignment(align);
-    target->DrawTextW(text.c_str(), static_cast<UINT32>(text.size()), formats[format].Get(), rect, brush.Get(),
-                      D2D1_DRAW_TEXT_OPTIONS_CLIP);
+    target->DrawTextLayout({rect.left, rect.top}, found->layout.Get(), brush.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
+}
+
+void Island::TwoLine(D2D1_RECT_F rect, const std::wstring &title, const std::wstring &subtitle, unsigned color) {
+    float titleHeight = type::Sizes[type::Title] * type::Leading;
+    float captionHeight = subtitle.empty() ? 0 : type::Sizes[type::Caption] * type::Leading;
+    float top = (rect.top + rect.bottom - titleHeight - captionHeight) / 2;
+    Text(title, {rect.left, top, rect.right, top + titleHeight}, type::Title, color);
+    if (!subtitle.empty())
+        Text(subtitle, {rect.left, top + titleHeight, rect.right, top + titleHeight + captionHeight},
+             type::Caption, theme::Muted);
 }
 
 void Island::Line(float x1, float y1, float x2, float y2, unsigned color, float thickness) {
@@ -303,12 +341,8 @@ void Island::Button(int id, D2D1_RECT_F rect, const std::wstring &title, const s
          layout::CardRadius);
     Text(icon, {rect.left + 12, rect.top + 12, rect.left + 40, rect.bottom - 12}, type::Icon,
          active ? theme::AccentInk : theme::Text, DWRITE_TEXT_ALIGNMENT_CENTER);
-    Text(title, {rect.left + 50, rect.top + 7, rect.right - 26, rect.top + 30}, type::Control,
-         active    ? theme::AccentInk
-         : enabled ? theme::Text
-                   : theme::Muted);
-    Text(subtitle, {rect.left + 50, rect.top + 30, rect.right - 26, rect.bottom - 6}, type::Secondary,
-         active ? theme::AccentInk : theme::Muted);
+    TwoLine({rect.left + 50, rect.top, rect.right - 26, rect.bottom}, title, subtitle,
+            active ? theme::AccentInk : enabled ? theme::Text : theme::Muted);
     Text(L"\xE76C", {rect.right - 24, rect.top + 15, rect.right - 8, rect.bottom - 15}, type::Icon,
          active ? theme::AccentInk : theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
     FocusRing(id, rect);
@@ -514,7 +548,8 @@ void Island::PanelContent(bool header) {
     }
     if (!Layout().emergency) {
         auto f = Footer();
-        TextButton(1901, {f.left, f.top, f.left + 86, f.bottom}, L"Menu ▾");
+        TextButton(1901, {f.left, f.top, f.left + 86, f.bottom}, L"Menu");
+        Text(L"\xE70D", {f.left + 62, f.top, f.left + 78, f.bottom}, type::InlineIcon, theme::Muted);
     }
     if (!Layout().emergency && tab == Tab::Apps) {
         auto f = Footer();

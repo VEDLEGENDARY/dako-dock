@@ -82,7 +82,7 @@ void Island::Stats() {
     float x = wide ? leftRight + 12 : b.left, y = wide ? b.top : b.top + 260;
     Card({x, y, b.right, y + 150});
     Text(L"Top apps · RAM", {x + 12, y + 4, b.right - 64, y + 32}, type::Caption);
-    TextButton(StatsSort, {b.right - 62, y + 6, b.right - 10, y + 30}, statsMemory ? L"RAM ⇄" : L"CPU ⇄");
+    TextButton(StatsSort, {b.right - 62, y + 6, b.right - 10, y + 30}, statsMemory ? L"RAM" : L"CPU");
     const auto &ranked = statsMemory && !hardwareState.memoryTop.empty() ? hardwareState.memoryTop : hardwareState.top;
     for (size_t i = 0; i < std::min(size_t{4}, ranked.size()); ++i) {
         auto &entry = ranked[i];
@@ -102,7 +102,7 @@ void Island::Stats() {
     auto speed = speedTest ? speedTest->Snapshot() : SpeedTest::Result{};
     Text(speed.valid ? Number(speed.down) + L" ↓  " + Number(speed.up) + L" ↑ Mbps" : L"No test yet",
          {x + 12, sy + 30, b.right - 12, sy + 60}, type::Control);
-    TextButton(2980, {x + 12, sy + 70, b.right - 12, sy + 102}, speed.busy ? L"Testing…" : L"▶ Run speed test", true,
+    TextButton(2980, {x + 12, sy + 70, b.right - 12, sy + 102}, speed.busy ? L"Testing…" : L"Run speed test", true,
                !speed.busy);
     if (!speed.message.empty())
         AddHit(2051, {x, sy, b.right, sy + 112}, speed.message, false);

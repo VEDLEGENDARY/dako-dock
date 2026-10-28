@@ -42,6 +42,7 @@
 #include "SettingsSchema.h"
 #include "SettingsCore.h"
 #include "BundledFont.h"
+#include "UiTypography.h"
 #include "SpeedTest.h"
 #include "LayoutEngine.h"
 #include "MotionController.h"
@@ -112,10 +113,6 @@ inline std::wstring Wide(const char *value, int length) {
 #include "ClipboardTask.h"
 #include "CommandCatalog.h"
 #include "ModuleStrings.h"
-
-namespace type {
-enum Role { Caption, Secondary, Body, Section, Metric, Display, Icon, Control, Editorial, Mono };
-}
 
 enum class Tab { Controls, Today, Stats, Clipboard, Apps, Wallpaper, Power };
 inline constexpr std::array PrimaryTabs{Tab::Controls, Tab::Today,     Tab::Stats, Tab::Clipboard,
@@ -449,12 +446,20 @@ class Island {
     MediaState currentMedia;
     ComPtr<ID2D1Factory> factory;
     ComPtr<IDWriteFactory> textFactory;
-    std::unique_ptr<BundledFont> bundledFont;
+    std::shared_ptr<type::Library> typography;
     ComPtr<ID2D1RenderTarget> target;
     ComPtr<ID2D1HwndRenderTarget> hostTarget;
     CompositionSurface composition;
     ComPtr<ID2D1SolidColorBrush> brush;
-    std::array<ComPtr<IDWriteTextFormat>, 10> formats;
+    std::array<ComPtr<IDWriteTextFormat>, type::Count> formats;
+    struct TextEntry {
+        std::wstring text;
+        float width = 0, height = 0;
+        int role = 0;
+        DWRITE_TEXT_ALIGNMENT align = DWRITE_TEXT_ALIGNMENT_LEADING;
+        ComPtr<IDWriteTextLayout> layout;
+    };
+    std::deque<TextEntry> textLayouts;
     float startWidth = 300, startHeight = 100, endWidth = 300, endHeight = 100;
     steady_clock::time_point transitionStart;
     bool toggleHotkey = false, quitHotkey = false;
@@ -527,6 +532,8 @@ class Island {
     void Card(D2D1_RECT_F rect, int level = 1);
     void Text(const std::wstring &text, D2D1_RECT_F rect, int format = type::Body, unsigned color = theme::Text,
               DWRITE_TEXT_ALIGNMENT align = DWRITE_TEXT_ALIGNMENT_LEADING);
+    void TwoLine(D2D1_RECT_F rect, const std::wstring &title, const std::wstring &subtitle,
+                 unsigned color = theme::Text);
     void Line(float x1, float y1, float x2, float y2, unsigned color, float thickness = 1);
     void AddHit(int id, D2D1_RECT_F rect, std::wstring name, bool enabled = true);
     void FocusRing(int id, D2D1_RECT_F rect, float radius = 12);

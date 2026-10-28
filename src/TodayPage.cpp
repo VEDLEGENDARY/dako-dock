@@ -103,7 +103,7 @@ void Island::TodayMenu() {
          {std::pair{WeatherCity, L"Weather city / turn off…"}, std::pair{CalendarFeed, L"Calendar subscription…"},
           std::pair{CalendarAdd, L"Add local event…"}, std::pair{CalendarClear, L"Clear local events…"},
           std::pair{FocusShort, L"Focus: 5 minutes"}, std::pair{FocusMedium, L"Focus: 15 minutes"},
-          std::pair{FocusTwenty, L"Focus: 20 minutes"}, std::pair{TodayClocks, L"World clocks / stopwatch ↗"}})
+          std::pair{FocusTwenty, L"Focus: 20 minutes"}, std::pair{TodayClocks, L"World clocks / stopwatch"}})
         AppendMenuW(menu, MF_STRING, entry.first, entry.second);
     POINT point{};
     GetCursorPos(&point);
@@ -273,8 +273,7 @@ void Island::Today() {
     GetDateFormatEx(LOCALE_NAME_USER_DEFAULT, 0, &now, L"ddd d", date, 64, nullptr);
     Text(hours, {left.left, left.top + 8, left.right, left.top + 66}, type::Display, theme::Text,
          DWRITE_TEXT_ALIGNMENT_CENTER);
-    Text(L"• • •", {left.left, left.top + 64, left.right, left.top + 88}, type::Caption, theme::Accent,
-         DWRITE_TEXT_ALIGNMENT_CENTER);
+    Line(left.left + 36, left.top + 76, left.right - 36, left.top + 76, theme::Border);
     Text(minutes, {left.left, left.top + 82, left.right, left.top + 140}, type::Display, theme::Text,
          DWRITE_TEXT_ALIGNMENT_CENTER);
     Text(std::wstring(now.wHour < 12 ? L"AM · " : L"PM · ") + date,
@@ -284,7 +283,8 @@ void Island::Today() {
     SmallButton(TodayOptions, {left.right - 28, left.top + 4, left.right - 4, left.top + 28}, L"\xE713",
                 L"Today settings");
     auto weatherText = weather.available ? Number(weather.temperature) + L"°C" : L"—";
-    Text(weather.available ? L"☀" : L"☁", {left.left, left.top + 190, left.right, left.top + 225}, type::Metric,
+    Text(weather.available ? L"\xE706" : L"\xE753", {left.left, left.top + 190, left.right, left.top + 225},
+         type::TileIcon,
          theme::Accent, DWRITE_TEXT_ALIGNMENT_CENTER);
     Text(weatherText, {left.left, left.top + 220, left.right, left.top + 258}, type::Metric, theme::Text,
          DWRITE_TEXT_ALIGNMENT_CENTER);
@@ -361,7 +361,14 @@ void Island::Today() {
             {hits.back().clip.left, hits.back().clip.top, hits.back().clip.right, hits.back().clip.bottom},
             {list.left, list.top - scroll, list.right, list.bottom - scroll}));
         Fill(row, theme::Inset, layout::ControlRadius);
-        Text(tasks[i].done ? L"✓" : L"○", {row.left + 4, y, row.left + 28, y + 36}, type::Body, theme::Secondary);
+        if (!layoutOnly) {
+            brush->SetColor(Color(tasks[i].done ? theme::Accent : theme::Muted));
+            target->DrawEllipse(D2D1::Ellipse({row.left + 16, y + 18}, 8, 8), brush.Get(), 1.5f);
+            if (tasks[i].done) {
+                target->DrawLine({row.left + 12, y + 18}, {row.left + 15, y + 21}, brush.Get(), 1.5f);
+                target->DrawLine({row.left + 15, y + 21}, {row.left + 21, y + 14}, brush.Get(), 1.5f);
+            }
+        }
         Text(tasks[i].title, {row.left + 32, y, row.right - 6, y + 36}, type::Body,
              tasks[i].done ? theme::Muted : theme::Text);
         FocusRing(id, row);

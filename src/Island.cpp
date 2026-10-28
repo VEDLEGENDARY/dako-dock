@@ -239,32 +239,8 @@ void Island::Initialize() {
     Check(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, factory.GetAddressOf()));
     Check(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
                               reinterpret_cast<IUnknown **>(textFactory.GetAddressOf())));
-    bundledFont = std::make_unique<BundledFont>(textFactory.Get());
-    const float sizes[]{12, 12, 14, 16, 28, 38, 18, 13, 32, 11};
-    ComPtr<IDWriteFontCollection> fontCollection;
-    UINT32 iconFamily = 0;
-    BOOL hasFluent = FALSE;
-    if (SUCCEEDED(textFactory->GetSystemFontCollection(&fontCollection)))
-        fontCollection->FindFamilyName(L"Segoe Fluent Icons", &iconFamily, &hasFluent);
-    const wchar_t *iconFont = hasFluent ? L"Segoe Fluent Icons" : L"Segoe MDL2 Assets";
-    wchar_t locale[LOCALE_NAME_MAX_LENGTH]{};
-    GetUserDefaultLocaleName(locale, LOCALE_NAME_MAX_LENGTH);
-    for (size_t i = 0; i < formats.size(); ++i) {
-        const wchar_t *family = i == type::Icon                                                   ? iconFont
-                                : i == type::Editorial || i == type::Display || i == type::Metric ? L"Rubik"
-                                : i == type::Mono                                                 ? L"Consolas"
-                                                                                                  : L"Rubik";
-        Check(textFactory->CreateTextFormat(
-            family, i == type::Icon || i == type::Mono ? nullptr : bundledFont->Collection(),
-            i == 3 || i == 7 ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
-            DWRITE_FONT_STRETCH_NORMAL, sizes[i], locale, &formats[i]));
-        formats[i]->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
-        formats[i]->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
-        DWRITE_TRIMMING trim{DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0};
-        ComPtr<IDWriteInlineObject> ellipsis;
-        textFactory->CreateEllipsisTrimmingSign(formats[i].Get(), &ellipsis);
-        formats[i]->SetTrimming(&trim, ellipsis.Get());
-    }
+    typography = type::Acquire(textFactory.Get());
+    formats = typography->formats;
     int corner = 1;
     DwmSetWindowAttribute(window, DWMWA_WINDOW_CORNER_PREFERENCE, &corner, sizeof(corner));
     PreviewTrace("native-services");
