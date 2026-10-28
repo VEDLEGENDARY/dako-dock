@@ -1,4 +1,4 @@
-param([ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version='3.12.0')
+param([ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version='4.0.0')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 
@@ -11,6 +11,9 @@ New-Item -ItemType Directory -Path $dist -Force | Out-Null
 $stage = Join-Path $dist ("package-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $stage | Out-Null
 Copy-Item -LiteralPath $executable -Destination (Join-Path $stage 'Dako.exe')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'build\DakoSettings.exe') -Destination (Join-Path $stage 'DakoSettings.exe')
+New-Item -ItemType Directory -Path (Join-Path $stage 'assets') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $projectRoot 'build\assets\fonts') -Destination (Join-Path $stage 'assets\fonts') -Recurse
 Set-Content -LiteralPath (Join-Path $stage 'Review.cmd') -Value "@echo off`r`nstart `"`" `"%~dp0Dako.exe`" --preview --layout=dock`r`n" -Encoding ascii
 Set-Content -LiteralPath (Join-Path $stage 'Features.cmd') -Value "@echo off`r`nstart `"`" `"%~dp0Dako.exe`" --preview --layout=dock --features`r`n" -Encoding ascii
 $wallpapers = Join-Path $projectRoot 'build\assets\wallpapers'
@@ -25,10 +28,16 @@ foreach ($name in (@('catalog.json') + @($catalog.photos | ForEach-Object { $_.f
 Copy-Item -LiteralPath (Join-Path $projectRoot 'README.md') -Destination (Join-Path $stage 'README.md')
 $documentation = Join-Path $stage 'docs'
 New-Item -ItemType Directory -Path (Join-Path $documentation 'wallpapers') -Force | Out-Null
-foreach ($document in @('PROJECT.md', 'MODULES.md', 'CLIPBOARD_DECISION.md', 'INSERTION_DECISION.md', 'FILE_SEARCH_DECISION.md', 'SHELF_DECISION.md', 'SYSTEM_COMMAND_DECISIONS.md', 'KEEP_AWAKE_DECISION.md', 'PRIVACY.md', 'PERMISSIONS.md', 'TROUBLESHOOTING.md', 'SECURITY.md', 'VERIFICATION.md', 'DOCK_RECONCILE.md', 'DOCK_REQUIREMENTS.md', 'DOCK_COMPLIANCE.md')) {
+foreach ($document in @('ARCHITECTURE.md', 'SETTINGS.md', 'PRIVACY.md', 'VERIFICATION.md')) {
     Copy-Item -LiteralPath (Join-Path $projectRoot "docs\$document") -Destination (Join-Path $documentation $document)
 }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\wallpapers\README.md') -Destination (Join-Path $documentation 'wallpapers\README.md')
+Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\archive') -Destination (Join-Path $documentation 'archive') -Recurse
+Copy-Item -LiteralPath (Join-Path $projectRoot 'CHANGELOG.md') -Destination (Join-Path $stage 'CHANGELOG.md')
+$foundation = Join-Path $stage 'dako-v4-foundation'
+New-Item -ItemType Directory -Path $foundation -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $projectRoot 'dako-v4-foundation\DAKO_V4_PLAN.md') -Destination $foundation
+Copy-Item -LiteralPath (Join-Path $projectRoot 'dako-v4-foundation\references') -Destination (Join-Path $foundation 'references') -Recurse
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs\wallpapers\README.md') -Destination (Join-Path $assetStage 'SOURCES.md')
 $archive = Join-Path $dist "Dako-$Version-windows-x64.zip"
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive -Force

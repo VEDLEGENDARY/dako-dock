@@ -1,96 +1,96 @@
-# Dako 3.12 development verification
+# Verification — Dako 4.0.0
 
-Updated October 27, 2026. This is the current verification record; cumulative milestone copies and old generated
-builds were removed at the owner's request. V3_1 remains unfinished. No paid feature, dependency or service was added.
+Updated 2026-10-28. Results below describe this Windows 11 x64 host. Synthetic fixtures do not establish
+physical hardware, every editor, every game or a complete screen-reader journey.
+
+## Automated gates
+
+| Gate | Evidence |
+|---|---|
+| MSVC C++20 `/W4 /WX /permissive-`, both executables and shared core | `build/v4-release-build.log` |
+| Supplied 14 anchor/state tests and expanded event/state matrix | `build/v4-final-motion.log`, `build/v4-final-native-settings.log` |
+| Settings defaults, bounds, atomic invalid-value rejection, export/reset/import, corrupt backup | `build/v4-final-native-settings.log` |
+| User-scoped preview pipe/event, rollback, forced settings-client exit, clean shutdown | `build/v4-final-native-settings.log` |
+| Independent GUI controls, MSAA names, Apply, slider release and isolated settings | `build/v4-final-native-settings.log` |
+| Targeted paste identity and standard/protected/read-only/disabled/stale control checks | `build/v4-final-native-settings.log` |
+| Pure motion/layout, privacy/Offline, modules, frame-clock/async cancellation, settings/ICS, telemetry | `build/v4-final-motion.log` |
+| Clipboard helper IPC/quota/timeout/cancellation, DPAPI expiry/tamper/atomic storage | `build/v4-final-clipboard-transfer.log`, `build/v4-final-clipboard-vault.log` |
+| Synthetic encrypted history restart/lock/removal, failed erasure and restrictive persistence | `build/v4-final-clipboard-storage.log` |
+| Native shell recovery, actual temporary AppBars, maximize clearance, click-through, forced exit | `build/v4-final-shell.log` |
+| Full native composition/lifecycle: FAILED at Stats PID geometry after 50 cycles; final fix not rerun at user request | `build/v4-final-live.log` |
+| 1,068 PNG fixtures, geometry/state/MSAA assertions, all V4 pages and top/bottom at 100/125/150/200% | `build/v4-final-render.log`, `build/tests/render/verification.txt` |
+
+The storage integration was rerun outside the restricted sandbox after its locked-file scenario
+returned access denied. The approved run passed. The MSVC parallel debug-information build also required
+access to the compiler database manager outside the execution sandbox. No test changed user clipboard data.
+
+Shell tests used owned test windows, real temporary reservations and DWM previews, then restored work areas.
+Explorer-restart callbacks were simulated; Explorer was not terminated. Win+number registered 0/9 on this host;
+that shortcut is not certified. Default Always show and explicit Hide over fullscreen callbacks were tested.
+The top/bottom polygon tests reflect the same points and include native regions; PNG DPI matrices are synthetic.
+
+## Performance and visual evidence
+
+The old 100 ms proximity timer is removed. State tests assert no pending interaction tick at settled idle,
+with and without stable media. This proves finite timer ownership, not zero operating-system wakeups.
+The full lifecycle run reached 50 cycles, then failed the Stats PID geometry assertion before its 60-second rest stage. PID-based row tracking and accessible identity were restored afterward; this fix was build-checked but not test-rerun at the owner's request. A separate resting-preview measurement is recorded below. It uses
+synthetic content plus production composition and read-only services; it is not a fullscreen game benchmark.
+
+<!-- measured:start -->
+
+- Isolated resting preview with real read-only services: **60.02 s**, **0.0532% normalized CPU**, **703.12 ms CPU**,
+  **53 MiB private**, **96.98 MiB working set**, 533 handles, 18 threads. The host's media session state was not recorded.
+  This was not a controlled playing/no-session comparison or a zero-wakeup measurement.
+- Full synthetic native run reached 50 composition cycles. Cycle 50: 283 handles, 10 GDI objects, 13 USER objects,
+  62.9961 MiB private, 96.1172 MiB working set. It stopped at the subsequent Stats PID assertion; later assertions,
+  rest sampling and final native read-only checks did not execute in that run.
+- Final release compiles at `/W4 /WX`; the last PID bookkeeping fix and final clipboard metadata changes were not
+  rerun through the full suite. The last successful render matrix covered 1,068 fixtures before those final changes.
+- Complete pure/motion, settings GUI/IPC, shell recovery and clipboard helper/vault/storage suites passed earlier
+  in this implementation. Test runs were stopped when the owner requested it; no complete V4 acceptance is claimed.
+
+<!-- measured:end -->
+
+The supplied references are retained under `dako-v4-foundation/references`. `build/tests/render/v4-*.png`
+contains each V4 page and Peek with controlled content. Colors, navigation, rounded cards, ring gauges,
+week/focus layout, clipboard split view and skewed wallpaper carousel were reviewed at 1×. Dynamic text,
+real provider data and supported control styling differ from the references. The exact sampled accent is
+`#CFAE60`; Rubik loads privately from the bundled font without installation. High contrast uses system colors.
+
+## Physical acceptance still open
+
+- Actual mixed-DPI dual-monitor hotplug, sleep/resume, auto-hidden Windows taskbar and real Explorer restart.
+- Chrome F11, fullscreen video, borderless/exclusive games and PresentMon 4K60/game comparisons. Higher Windows
+  bands, secure desktop and exclusive presentation retain platform limits; V4 does not ship uiAccess.
+- Separate 60-second production measurements with real active media and no session. Current state/fixture
+  evidence does not substitute for both real-world cases.
+- Real audio, brightness, radio, theme and wallpaper changes/restoration on each relevant device, including
+  disconnect/crash recovery. Journals remain for failed restores.
+- A complete screen-reader journey and clipboard interoperability in supported third-party editors. Targeted
+  WM_PASTE is limited to standard Edit/RichEdit fields; custom/elevated/secure fields use Copy/manual paste.
+- Explicit Online weather and Cloudflare tests on the user's network. Automated verification keeps requests
+  blocked and does not consume the opted-in transfer sample.
+
+Notification subscription previously failed with `0x80070490` on the unpackaged host. Portable unsigned ZIP
+is the V4 packaging decision; MSIX/notifications, installer, signing and uiAccess remain later work. Section 10's
+other ideas are a roadmap; per-app hiding and redacted diagnostics were selected for this release.
 
 ## Reproduce
 
 ```powershell
 .\scripts\build.ps1
+.\scripts\test-v4.ps1
 .\scripts\test-motion.ps1
-.\scripts\test-settings-pages.ps1
-.\scripts\test-command-models.ps1
+.\scripts\verify.ps1
+.\scripts\test-live.ps1
+.\scripts\test-shell.ps1
 .\scripts\test-clipboard-transfer.ps1
 .\scripts\test-clipboard-vault.ps1
 .\scripts\test-clipboard-storage.ps1
-.\scripts\test-file-search.ps1
-.\scripts\test-shelf.ps1
-.\scripts\test-system-actions.ps1
-.\scripts\verify.ps1
-.\scripts\test-live.ps1 -Quick
 .\scripts\package.ps1
 ```
 
-The single executable is `build/Dako.exe`, with bundled wallpapers and review launchers beside it. Compiler
-outputs use `build/obj`; test suites use separate `build/tests` directories. Packaging creates one unsigned
-portable ZIP and its SHA-256 checksum in `dist`. Generated objects, tests and captures can be deleted after validation.
-`test-live.ps1` without `-Quick` runs the full 50-cycle/60-second lifecycle measurement. `test-shell.ps1` exercises
-real temporary AppBar/work-area ownership and recovery; run it during a deliberate desktop acceptance session.
-`test-keep-awake.ps1` exercises temporary execution requests and requires an unlocked desktop session.
-
-## Consolidated build
-
-The fresh single-directory release build passed compilation and 1,052 fixtures before the owner requested no
-further testing. Completed regression runs also passed motion/frame/async/foundation, module/privacy, Settings,
-command models, clipboard transfer/vault/storage, indexed files, OLE shelf and system-action models. The already
-running native quick lifecycle/read-only-controls check completed successfully. No additional test runs were started.
-Temporary compiler/test outputs and captures were removed after recording these results.
-
-## Current 3.12 results before consolidation
-
-- C++20 release compilation passes `/W4 /WX`. The source and binary version are 3.12.0.0.
-- All 1,052 PNG/geometry/identity/MSAA fixtures pass, including Settings app/device context captures at five DPI
-  and four text-size tiers. Normal and extreme DPI/text views were inspected. Full target names remain accessible.
-- Settings tests cover strict UTF-8/percent decoding, canonical/idempotent encoding, supported parameter routes,
-  malformed/unsupported queries, NUL/control rejection, bounds and SDK package-family validation. They launch no
-  Settings page. Module tests check canonical confirmation metadata, stale IDs and non-learning transient actions.
-- Native quick verification passes complete input beyond 120 characters, oversized-paste rejection without
-  truncation into a valid target, canonical matching and shared-edit accessibility names. Windows preferences and
-  work areas remain unchanged. Handler-to-paint p95/max was 2.725/2.815 ms. No valid presentation-statistics sample
-  was available, so this does not establish on-screen latency; its 0.110-second rest is not a full CPU measurement.
-- Nine modules and the diagnostic pass 50 unload cycles. Production handles/GDI/USER return to baseline
-  (203/0/1), with no named module worker remaining. The bounded helper returns parent handles to 161, accesses no
-  clipboard in its synthetic check and uses approximately 2.45 MiB private commit within its 64 MiB ceiling.
-- Motion, frame readiness/backpressure, async cancellation, foundation, inert baseline views, privacy/settings,
-  calculator/catalog, encrypted storage, file/query/IPC and OLE shelf regressions pass with synthetic data.
-- The 60-second module budget check reports zero attributed idle CPU/hook work. Explicitly owned idle bytes are
-  Windows 70, utilities 1,570, clipboard 2,010, snippets 1,464, keep-awake 3,898, files 1,230, shelf 1,444,
-  Recycle Bin 1,186 and drives 1,388. These figures exclude shared/allocator/OS overhead.
-
-## Prior native measurements and decisions
-
-The full 3.11 native run passed 50 composition/lifecycle cycles and preserved Windows preferences/work areas.
-Its 60-second warm rest measured 0.016572% normalized CPU, 26.33 MiB private memory and 58.77 MiB working set.
-Handler-to-paint p95/max was 8.444/8.967 ms; on this 120 Hz host frame interval p95/p99 was 8.333/16.667 ms.
-These are historical single-host measurements, not a new 3.12 whole-app benchmark.
-
-Keep-awake native checks passed 50 warmed registration/unload cycles, real synthetic-child start/exit observation
-and 51 manual execution-request/restore cycles. Handles returned to 152 and USER objects stayed at 2; observed
-maximum callback work was 158.9 microseconds against a 1,000-microsecond limit. No power preferences changed.
-A restricted sandbox denied the unlocked-session query; the approved outside run passed.
-
-Native dock tests verified rounded-margin click-through to a foreign-process HWND, actual AppBar clearance for
-a maximized native test window, DWM thumbnail registration, fullscreen callbacks and normal/forced-parent guard
-restoration. Explorer-restart handlers were simulated; Explorer was not killed. Win+number registered 0/9 on
-this host, so that shortcut is not certified. Keyboard navigation within the dock remains available.
-
-Notification access reported Allowed but event subscription failed with 0x80070490. No permission request or
-notification-content read occurred; notifications remain deferred. Public recent/frequent documents are supported;
-third-party custom Jump List tasks and badge/progress observation remain unavailable.
-
-The public icon-visibility setter experiment failed functional acceptance, with original visibility restored and
-independently verified. A UI Automation experiment recognized owned standard plain/password EDIT controls but
-did not establish safe generic insertion. Both features remain deferred; unused one-off probe sources were removed.
-See SYSTEM_COMMAND_DECISIONS.md and INSERTION_DECISION.md for rationale and API references.
-
-## Manual acceptance still open
-
-- Actual Explorer screenshot comparison, maximized browser content/clicks and a complete screen-reader journey.
-- Physical mixed-DPI/multi-monitor hotplug, fullscreen games, elevated app activation and actual Explorer restart.
-- Real theme, endpoint volume/mute, laptop/external brightness, radio and wallpaper changes and restoration,
-  including crash/reconnection. Failed restores retain their recovery journal; provider latency is driver-dependent.
-- Actual recent-document launches, Settings device/page availability, power/display/lock behavior, real Recycle Bin
-  deletion and removable-device interoperability. Automated fixtures do not delete user data or eject real devices.
-
-Optional auto-hide, OS location, wallpaper schedules, remaining S0/S1 acceptance and S2–S8 are not completed.
-License, signing and private security-contact decisions remain open; this is an unsigned development package.
+Native tests and captures stay in `build/tests`. `test-live.ps1 -Quick` is a short development run;
+`test-live.ps1` without flags is the 50-cycle/60-second gate. Packaging copies both executables, fonts/OFL,
+18 wallpapers, the consolidated docs, archived decisions, V4 plan and references into one portable ZIP.
+`dist/SHA256SUMS.txt` records the SHA-256. Packaging does not sign the binaries.

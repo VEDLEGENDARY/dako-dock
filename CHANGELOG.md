@@ -1,5 +1,27 @@
 # Changelog
 
+## 4.0.0 — 2026-10-28
+
+- Merge apps into one mirrored top/bottom island; add event-driven Dock/Peek/Expanded behavior, finite dwell/leave timers and stable media debounce.
+- Default to Midnight, sampled gold and bundled Rubik; restore all seven tabs and restyle Controls, Today, Stats, Clipboard, Wallpaper, Apps and Power.
+- Add configurable fullscreen/per-app policy, auto-hide, monitor selection, opacity, icon presentation and reduced motion; work-area reservation requires replacement consent.
+- Add independent DakoSettings.exe and dako_core, a single validated schema, search/reset/import/export, atomic schema-4 migration, local live previews and sender-crash rollback.
+- Add opt-in Cloudflare speed testing behind Offline, real SMTC artwork/progress/seeking and configurable bounded clipboard retention/ignore lists.
+- Add clipboard image previews, filters, selection and explicit targeted paste for supported Windows edit fields; unsupported editors use Copy/manual paste.
+- Add redacted diagnostics, expanded native settings/IPC/state tests, mirrored DPI fixtures and portable packaging with fonts/licenses.
+- Keep notification packaging, uiAccess and the plan's larger optional ideas on the roadmap. Record physical acceptance limits in docs/VERIFICATION.md.
+
+
+## V4 M0 cleanup — 2026-10-27
+
+- Make the foundation plan's locked V4 decisions the current design authority and save its eight reference images.
+- Split the island into input, layout, state, paint, accessibility, fixtures and ordinary page translation units.
+- Share source discovery between the application and native lifecycle build; emit a linker map with dead-code removal.
+- Centralize layout dimensions/spacing in `LayoutMetrics.h`, remove the unused rail solver and empty wallpaper overlay member.
+- Consolidate active documentation and archive historical briefs without losing provider/privacy decisions.
+- Add the supplied island/anchor headers and an MSVC `/W4 /WX` test runner. Runtime integration remains M1/M2 work.
+- Preserve runtime behavior and the 3.12 development version during this gate; see `docs/VERIFICATION.md` for measured checks.
+
 ## Repository consolidation — 2026-10-27
 
 - Retain one current `build/Dako.exe` and one portable archive in `dist`, with SHA-256 verification.
