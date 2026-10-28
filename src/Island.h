@@ -523,7 +523,8 @@ class Island {
     void UpdateTimers();
     void SetTab(Tab value);
     D2D1_COLOR_F Color(unsigned rgb, float alpha = 1);
-    void Fill(D2D1_RECT_F rect, unsigned color, float radius = 12);
+    void Fill(D2D1_RECT_F rect, unsigned color, float radius = layout::Metrics::ControlRadius);
+    void Card(D2D1_RECT_F rect, int level = 1);
     void Text(const std::wstring &text, D2D1_RECT_F rect, int format = type::Body, unsigned color = theme::Text,
               DWRITE_TEXT_ALIGNMENT align = DWRITE_TEXT_ALIGNMENT_LEADING);
     void Line(float x1, float y1, float x2, float y2, unsigned color, float thickness = 1);

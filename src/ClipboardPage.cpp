@@ -126,7 +126,7 @@ void Island::ClipboardAction(int id) {
 }
 void Island::ClipboardView() {
     auto b = Body();
-    Fill({b.left, b.top, b.right, b.top + 38}, theme::Card, 14);
+    Card({b.left, b.top, b.right, b.top + 38});
     auto search = ClipboardRect();
     AddHit(403, search, L"Search clipboard history");
     if (renderMode)
@@ -189,7 +189,7 @@ void Island::ClipboardView() {
         }
         D2D1_RECT_F row{b.left, y, split - 12, y + 32};
         if (item.id == clipboardSelected || clipboardSelection.contains(item.id))
-            Fill(row, theme::AccentSoft, 9);
+            Fill(row, theme::AccentSoft, layout::ControlRadius);
         AddHit(8600 + static_cast<int>(i), row, (item.pinned ? L"Pinned. " : L"") + item.text);
         Text(item.kind == clipboard::Kind::Image ? L"▧"
              : item.pinned                       ? L"⌖"
@@ -201,14 +201,14 @@ void Island::ClipboardView() {
              : age < 3600000 ? std::to_wstring(age / 60000) + L"m"
                              : std::to_wstring(age / 3600000) + L"h",
              {row.right - 44, y, row.right - 6, y + 32}, type::Caption, theme::Muted, DWRITE_TEXT_ALIGNMENT_TRAILING);
-        FocusRing(8600 + static_cast<int>(i), row, 9);
+        FocusRing(8600 + static_cast<int>(i), row, layout::ControlRadius);
         y += 38;
     }
     auto item = std::find_if(clipboardRecords.begin(), clipboardRecords.end(),
                              [&](const auto &entry) { return entry.id == clipboardSelected; });
     if (wide) {
         D2D1_RECT_F preview{split, b.top + 48, b.right, b.bottom - 40};
-        Fill(preview, theme::Card, 16);
+        Card(preview);
         if (item != clipboardRecords.end()) {
             auto panel = item->kind == clipboard::Kind::Image ? moduleRegistry.View(L"clipboard", L"") : std::nullopt;
             if (panel && panel->image && !layoutOnly) {

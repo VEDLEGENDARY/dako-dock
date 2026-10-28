@@ -15,7 +15,8 @@ void Island::PaintNotch(HDC dc) {
     if (YieldResting())
         return;
     auto points = NotchPixels(dpi / 96);
-    HBRUSH fill = CreateSolidBrush(RGB(13, 13, 15));
+    HBRUSH fill = CreateSolidBrush(RGB((theme::Surface >> 16) & 255, (theme::Surface >> 8) & 255,
+                                     theme::Surface & 255));
     auto oldBrush = SelectObject(dc, fill);
     auto oldPen = SelectObject(dc, GetStockObject(NULL_PEN));
     Polygon(dc, points.data(), static_cast<int>(points.size()));
@@ -175,15 +176,23 @@ D2D1_COLOR_F Island::Color(unsigned rgb, float alpha) { return D2D1::ColorF(rgb,
 void Island::Fill(D2D1_RECT_F rect, unsigned color, float radius) {
     if (layoutOnly)
         return;
-    if (rect.bottom - rect.top >= 48 && rect.right - rect.left >= 60)
-        radius = std::min(radius, 10.0f);
     brush->SetColor(Color(color));
     target->FillRoundedRectangle(D2D1::RoundedRect(rect, radius, radius), brush.Get());
-    if (radius >= 10 && rect.bottom - rect.top >= 32 && rect.right - rect.left >= 60) {
-        brush->SetColor(Color(theme::Border, highContrast ? 1.0f : 0.65f));
-        D2D1_RECT_F outlineEdge{rect.left + 0.5f, rect.top + 0.5f, rect.right - 0.5f, rect.bottom - 0.5f};
-        target->DrawRoundedRectangle(D2D1::RoundedRect(outlineEdge, radius, radius), brush.Get(), 1);
+    if (highContrast && rect.bottom - rect.top >= layout::Metrics::MinHit) {
+        brush->SetColor(Color(theme::Border));
+        target->DrawRoundedRectangle(D2D1::RoundedRect(rect, radius, radius), brush.Get(), 2);
     }
+}
+
+void Island::Card(D2D1_RECT_F rect, int level) {
+    Fill(rect, level == 1 ? theme::Card : theme::CardHover, layout::Metrics::CardRadius);
+    if (layoutOnly || highContrast)
+        return;
+    float pixel = 96 / dpi / textScale;
+    float y = (std::floor(rect.top / pixel) + .5f) * pixel;
+    brush->SetColor(Color(theme::Edge, level == 1 ? palette::Tokens::HairlineInner : palette::Tokens::HairlineOuter));
+    target->DrawLine({rect.left + layout::Metrics::CardRadius, y},
+                     {rect.right - layout::Metrics::CardRadius, y}, brush.Get(), pixel);
 }
 
 void Island::Text(const std::wstring &text, D2D1_RECT_F rect, int format, unsigned color, DWRITE_TEXT_ALIGNMENT align) {

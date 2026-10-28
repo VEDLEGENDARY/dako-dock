@@ -62,7 +62,7 @@ void Island::ConnectionView() {
             brush->SetColor(Color(enabled ? theme::AccentInk : theme::Muted));
             target->FillEllipse(D2D1::Ellipse({w - 56 + 24 * togglePosition.value, 26}, 8, 8), brush.Get());
         }
-        FocusRing(FlyoutToggle, toggle, 12);
+        FocusRing(FlyoutToggle, toggle, layout::ControlRadius);
     }
     auto b = Body();
     D2D1::Matrix3x2F saved;
@@ -123,12 +123,12 @@ void Island::ConnectionView() {
                   {b.left + 12, b.top + 76, b.right - 12, b.top + 160});
     if (wifi && selectedWifi >= 0 && selectedWifi < static_cast<int>(connections.networks.size())) {
         const auto &network = connections.networks[selectedWifi];
-        Fill({b.left, detail, b.right, detail + 120}, theme::Inset, 12);
+        Fill({b.left, detail, b.right, detail + 120}, theme::Inset, layout::ControlRadius);
         bool needs = (renderMode || fixtureGeometry) && network.secure && network.profile.empty() && !network.connected;
         if (needs) {
             D2D1_RECT_F input{b.left + 12, detail + 12, b.right - 12,
                               detail + 12 + std::min(32.0f, Layout().body.Height())};
-            Fill(input, theme::CardHover, 8);
+            Fill(input, theme::CardHover, layout::ControlRadius);
             AddHit(402, input, L"Network security key, 8 to 63 characters or 64 hexadecimal digits");
             EnsurePassword();
             if (renderMode)
@@ -143,7 +143,7 @@ void Island::ConnectionView() {
     }
     if (!wifi && selectedBluetooth >= 0 && selectedBluetooth < static_cast<int>(connections.devices.size())) {
         const auto &device = connections.devices[selectedBluetooth];
-        Fill({b.left, detail, b.right, detail + 120}, theme::Inset, 12);
+        Fill({b.left, detail, b.right, detail + 120}, theme::Inset, layout::ControlRadius);
         Text(device.name, {b.left + 12, detail + 6, b.right - 12, detail + 42}, type::Body);
         TextButton(device.connected ? FlyoutDisconnect
                    : device.paired  ? FlyoutConnect

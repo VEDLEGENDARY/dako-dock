@@ -45,7 +45,7 @@ void Island::Stats() {
     unsigned colors[]{theme::Accent, theme::Tertiary, theme::Secondary};
     for (int i = 0; i < 3; ++i) {
         float x = b.left + i * (cell + 8);
-        Fill({x, b.top, x + cell, b.top + 178}, theme::Card, 16);
+        Card({x, b.top, x + cell, b.top + 178});
         DrawRing(x + cell / 2, b.top + 56, 32, valid[i] ? static_cast<float>(values[i] / 100) : 0.0f, colors[i], 6);
         Text(valid[i] ? Number(values[i]) + L"%" : L"—", {x, b.top + 40, x + cell, b.top + 72}, type::Control,
              theme::Text, DWRITE_TEXT_ALIGNMENT_CENTER);
@@ -74,13 +74,13 @@ void Island::Stats() {
     const wchar_t *headers[]{L"DISK", L"NETWORK", L"UP FOR"};
     for (int i = 0; i < 3; ++i) {
         float x = b.left + i * (cell + 8);
-        Fill({x, b.top + 188, x + cell, b.top + 246}, theme::Card, 14);
+        Card({x, b.top + 188, x + cell, b.top + 246});
         Text(headers[i], {x + 10, b.top + 192, x + cell - 8, b.top + 212}, type::Caption, theme::Muted);
         Text(lower[i], {x + 10, b.top + 214, x + cell - 8, b.top + 242}, type::Caption);
         AddHit(2024 + i, {x, b.top + 188, x + cell, b.top + 246}, lower[i], false);
     }
     float x = wide ? leftRight + 12 : b.left, y = wide ? b.top : b.top + 260;
-    Fill({x, y, b.right, y + 150}, theme::Card, 16);
+    Card({x, y, b.right, y + 150});
     Text(L"Top apps · RAM", {x + 12, y + 4, b.right - 64, y + 32}, type::Caption);
     TextButton(StatsSort, {b.right - 62, y + 6, b.right - 10, y + 30}, statsMemory ? L"RAM ⇄" : L"CPU ⇄");
     const auto &ranked = statsMemory && !hardwareState.memoryTop.empty() ? hardwareState.memoryTop : hardwareState.top;
@@ -97,7 +97,7 @@ void Island::Stats() {
         Line(x + 12, row + 23, b.right - 12, row + 23, theme::Secondary, 2);
     }
     float sy = y + 160;
-    Fill({x, sy, b.right, sy + 112}, theme::Card, 16);
+    Card({x, sy, b.right, sy + 112});
     Text(L"Internet speed", {x + 12, sy + 4, b.right - 12, sy + 28}, type::Caption, theme::Muted);
     auto speed = speedTest ? speedTest->Snapshot() : SpeedTest::Result{};
     Text(speed.valid ? Number(speed.down) + L" ↓  " + Number(speed.up) + L" ↑ Mbps" : L"No test yet",

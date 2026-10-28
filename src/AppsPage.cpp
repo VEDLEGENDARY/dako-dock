@@ -137,7 +137,7 @@ void Island::Apps() {
     RepageApps();
     auto b = Body();
     bool compact = CompactApps();
-    Fill({b.left, b.top, b.right, b.top + (compact ? 32.0f : 44.0f)}, theme::Card, 12);
+    Card({b.left, b.top, b.right, b.top + (compact ? 32.0f : 44.0f)});
     Text(L"\xE721", {b.left + 8, b.top + 8, b.left + 32, b.top + 36}, type::Icon, theme::Muted);
     AddHit(401, SearchRect(), L"Search installed apps");
     EnsureAppSearch();
@@ -145,7 +145,7 @@ void Island::Apps() {
         Text(appQuery.empty() ? L"Search installed apps…" : appQuery, SearchRect(), type::Body, theme::Muted);
     float nextY = b.top + (compact ? 40.0f : 56.0f);
     if (ShowAppRail()) {
-        Fill({b.left, nextY, b.right, nextY + 68}, theme::Inset, 14);
+        Fill({b.left, nextY, b.right, nextY + 68}, theme::Inset, layout::ControlRadius);
         Text(L"Pinned", {b.left + 12, nextY, b.right - 12, nextY + 20}, type::Caption, theme::Muted);
         size_t count = std::min(railApps.size(), static_cast<size_t>(std::max(1.0f, (b.right - b.left - 24) / 40)));
         for (size_t i = 0; i < count; ++i) {
@@ -154,9 +154,9 @@ void Island::Apps() {
             float x = b.left + 12 + static_cast<float>(i) * 40;
             D2D1_RECT_F rect{x, nextY + 24, x + 32, nextY + 56};
             AddHit(id, rect, L"Launch pinned " + app.name);
-            Fill(Tactile(id, rect), theme::Card, 8);
+            Fill(Tactile(id, rect), theme::Card, layout::ControlRadius);
             DrawAppIcon(app, rect);
-            FocusRing(id, rect, 8);
+            FocusRing(id, rect, layout::ControlRadius);
         }
         nextY += 76;
     }
@@ -179,7 +179,7 @@ void Island::Apps() {
             Fill(Tactile(id, row), entry.active ? theme::AccentSoft : theme::Card, 8);
             Text(entry.title, {b.left + 12, y, b.right - 12, y + 32}, type::Control,
                  highContrast && entry.active ? theme::SelectedText : theme::Text);
-            FocusRing(id, row, 8);
+            FocusRing(id, row, layout::ControlRadius);
         }
     }
     nextY = AppsListTop();
@@ -237,7 +237,7 @@ void Island::DrawAppIcon(const AppEntry &app, D2D1_RECT_F rect) {
     if (found != appIcons.end() && found->second)
         target->DrawBitmap(found->second.Get(), rect);
     else {
-        Fill(rect, theme::CardHover, 8);
+        Fill(rect, theme::CardHover, layout::ControlRadius);
         Text(app.name.substr(0, 1), rect, type::Control, theme::Text, DWRITE_TEXT_ALIGNMENT_CENTER);
     }
 }

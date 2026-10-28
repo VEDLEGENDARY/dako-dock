@@ -9,7 +9,14 @@ namespace palette {
 struct ThemeSet {
     unsigned surface, card, hover, hairline, text, muted, accent;
 };
-inline constexpr ThemeSet Midnight{0x0B0B0C, 0x161617, 0x1C1C1E, 0x232325, 0xF2F2F2, 0x8C8C91, 0xCFAE60};
+struct Tokens {
+    static constexpr unsigned Surface = 0x0E0E10, Card = 0x17171A, Raised = 0x1F1F23, Inset = 0x0A0A0B;
+    static constexpr unsigned Text = 0xF5F5F7, Muted = 0xA1A1A6, Faint = 0x6E6E73, Danger = 0xFF6961;
+    static constexpr unsigned White = 0xFFFFFF, Black = 0x000000;
+    static constexpr float HairlineOuter = .08f, HairlineInner = .06f, Divider = .07f, AccentSoft = .16f;
+};
+inline constexpr ThemeSet Midnight{Tokens::Surface, Tokens::Card, Tokens::Raised, 0x232325,
+                                    Tokens::Text, Tokens::Muted, 0xCFAE60};
 inline constexpr ThemeSet Paper{0xEEEBE3, 0xF7F5EF, 0xDEDBD4, 0xCFCCC5, 0x0F0F0E, 0x65635E, 0xCFAE60};
 
 struct Hsl {

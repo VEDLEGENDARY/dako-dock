@@ -7,7 +7,7 @@ void Island::MediaCard(bool compact) {
         compact ? std::min(layout::Metrics::MediaBodyHeight, LayoutHeight() - 8) : layout::Metrics::MediaBodyHeight;
     float clusterHeight = std::clamp(cardHeight - 52, 28.0f, 60.0f), controlsTop = top + clusterHeight + 4,
           controlHeight = std::min(36.0f, cardHeight - clusterHeight - 16);
-    Fill({left, top, right, top + cardHeight}, theme::Inset, 14);
+    Fill({left, top, right, top + cardHeight}, theme::Inset, layout::ControlRadius);
     if (compact)
         AddHit(Expand, {left, top, right, top + clusterHeight}, L"Open full controls");
     AddHit(2000, {left, top, right, top + clusterHeight},
@@ -23,7 +23,7 @@ void Island::MediaCard(bool compact) {
         target->SetTransform(D2D1::Matrix3x2F::Translation(8 * (1 - contentBlend.value), 0) * cluster);
     }
     float art = std::min(42.0f, clusterHeight - 8), inset = clusterHeight < 44 ? 4.0f : 12.0f;
-    Fill({left + 12, top + inset, left + 12 + art, top + inset + art}, theme::AccentSoft, 10);
+    Fill({left + 12, top + inset, left + 12 + art, top + inset + art}, theme::AccentSoft, layout::ControlRadius);
     Text(L"\xE8D6", {left + 12, top + inset, left + 12 + art, top + inset + art}, type::Icon, theme::Accent,
          DWRITE_TEXT_ALIGNMENT_CENTER);
     if (!layoutOnly && currentMedia.artwork) {
@@ -60,7 +60,7 @@ void Island::MediaCard(bool compact) {
              : enabled         ? theme::Text
                                : theme::Muted,
              DWRITE_TEXT_ALIGNMENT_CENTER);
-        FocusRing(id, rect, 18);
+        FocusRing(id, rect, layout::ControlRadius);
     }
     float progress = static_cast<float>(
         currentMedia.duration > 0 ? std::clamp(currentMedia.position / currentMedia.duration, 0.0, 1.0) : 0);
@@ -107,16 +107,16 @@ void Island::Controls() {
                         : i == 4 && controlState.dark);
     }
     auto slider = VolumeRect();
-    Fill(slider, theme::Card, 17);
+    Card(slider);
     auto filled = slider;
     filled.right = filled.left + (filled.right - filled.left) * system.volume;
     if (system.volume > 0)
-        Fill(filled, theme::Accent, 17);
+        Fill(filled, theme::Accent, layout::ControlRadius);
     AddHit(Volume, slider, L"Volume. " + Number(system.volume * 100) + L" percent", HasAudio());
     Text(L"\xE767", {slider.left + 12, slider.top, slider.left + 40, slider.bottom}, type::Icon, theme::AccentInk);
     Text(Number(system.volume * 100) + L"%", {slider.right - 64, slider.top, slider.right - 12, slider.bottom},
          type::Caption, theme::Text, DWRITE_TEXT_ALIGNMENT_TRAILING);
-    FocusRing(Volume, slider, 17);
+    FocusRing(Volume, slider, layout::ControlRadius);
     MediaCard(false);
     if (controlState.brightnessSupported) {
         auto rect = BrightnessRect();

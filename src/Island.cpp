@@ -122,7 +122,8 @@ void Island::ConfigureAppearance(bool forceHighContrast) {
     theme::Surface = colors.surface;
     theme::Card = colors.card;
     theme::CardHover = colors.hover;
-    theme::Inset = lightAppearance ? 0xE6E3DB : 0x161617;
+    theme::Inset = lightAppearance ? 0xE6E3DB : palette::Tokens::Inset;
+    theme::Edge = lightAppearance ? palette::Tokens::Black : palette::Tokens::White;
     theme::Border = colors.hairline;
     theme::Text = colors.text;
     theme::Muted = colors.muted;
@@ -161,14 +162,18 @@ void Island::ApplyAccent(unsigned rgb) {
     }
     theme::Accent = rgb;
     theme::AccentHover = dock::Mix(rgb, lightAppearance ? theme::Ink : theme::Paper, 0.10f);
-    theme::AccentInk = Contrast(rgb, theme::Ink) > Contrast(rgb, theme::Paper) ? theme::Ink : theme::Paper;
-    theme::AccentSoft = dock::Mix(theme::Surface, rgb, 0.12f);
+    theme::AccentInk = Contrast(rgb, palette::Tokens::Black) > Contrast(rgb, palette::Tokens::White)
+                           ? palette::Tokens::Black : palette::Tokens::White;
+    theme::AccentSoft = dock::Mix(theme::Card, rgb, palette::Tokens::AccentSoft);
     unsigned readable = rgb;
     for (int i = 0; i < 32 && Contrast(readable, theme::AccentSoft) < 4.5; ++i)
         readable = dock::Mix(readable, lightAppearance ? 0x000000 : 0xFFFFFF, 0.08f);
     theme::SelectedText = theme::Focus = readable;
-    theme::Secondary = lightAppearance ? 0x526E62 : 0xB8D890;
-    theme::Tertiary = lightAppearance ? 0x546C82 : 0xCEADE6;
+    auto hue = palette::ToHsl(rgb);
+    hue.h = std::fmod(hue.h + 40.0f / 360, 1.0f);
+    theme::Secondary = palette::FromHsl(hue);
+    hue.h = std::fmod(hue.h + 40.0f / 360, 1.0f);
+    theme::Tertiary = palette::FromHsl(hue);
 }
 
 void Island::SetAccent(unsigned rgb) {

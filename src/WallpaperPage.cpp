@@ -149,7 +149,7 @@ void Island::Wallpaper() {
                              top + pictureHeight - (distance ? 8 : 0)};
             AddHit(500 + index, rect, wallpapers[index].title);
             hits.back().skew = -0.15838444f;
-            Fill(rect, theme::CardHover, 14);
+            Fill(rect, theme::CardHover, layout::ControlRadius);
             if (!layoutOnly && wallpapers[index].pixels && !wallpapers[index].pixels->empty()) {
                 auto &entry = wallpapers[index];
                 if (!thumbnails[index])
@@ -175,7 +175,7 @@ void Island::Wallpaper() {
                     target->SetTransform(transform);
                 }
             }
-            FocusRing(500 + index, rect, 14);
+            FocusRing(500 + index, rect, layout::ControlRadius);
         }
     if (wallpapers.empty())
         Paragraph(wallpaperLoading ? L"Loading pictures…" : L"Choose a folder to add pictures.",

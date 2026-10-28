@@ -165,7 +165,7 @@ void Island::Palette() {
     {
         DockBodyScope body(*this);
         D2D1_RECT_F input{b.left, b.top + 4, b.right, b.top + 36};
-        Fill(input, theme::CardHover, 10);
+        Fill(input, theme::CardHover, layout::ControlRadius);
         AddHit(401, input, modules::String(IDS_PALETTE_NAME));
         if (renderMode)
             Text(paletteQuery.empty() ? modules::String(IDS_PALETTE_HINT) : paletteQuery,

@@ -1,5 +1,6 @@
 #pragma once
 #include "LayoutMetrics.h"
+#include "ThemePalette.h"
 #include <algorithm>
 #include <cmath>
 #include <array>
@@ -117,10 +118,11 @@ inline unsigned Mix(unsigned from, unsigned to, float amount) {
 } // namespace dock
 
 namespace theme {
-// Portfolio reference: src/app/globals.css (paper, ink, signal, line, chip).
 constexpr unsigned Paper = 0xEEEBE3, Ink = 0x0F0F0E, Signal = 0xFF4A1C;
-inline unsigned Surface = Paper, Card = 0xF7F5EF, CardHover = 0xDEDBD4, Inset = 0xE6E3DB, Border = 0xCFCCC5;
-inline unsigned Text = Ink, Muted = 0x65635E;
+inline unsigned Surface = palette::Tokens::Surface, Card = palette::Tokens::Card, CardHover = palette::Tokens::Raised;
+inline unsigned Inset = palette::Tokens::Inset, Border = 0x232325;
+inline unsigned Edge = palette::Tokens::White, Text = palette::Tokens::Text, Muted = palette::Tokens::Muted;
+inline unsigned Danger = palette::Tokens::Danger;
 inline unsigned Focus = 0xC03610, SelectedText = Ink;
 inline unsigned Accent = Signal, AccentHover = 0xFF633B, AccentInk = Ink, AccentSoft = 0xF3DCD1, Secondary = 0x687F76,
                 Tertiary = 0x677A8A;

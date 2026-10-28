@@ -258,11 +258,11 @@ void Island::Today() {
         center = {b.left, b.top + 312, b.right, b.top + 620};
     }
     auto task = TaskCard();
-    Fill({left.left, left.top, left.right, left.top + 174}, theme::Card, 16);
-    Fill({left.left, left.top + 186, left.right, left.bottom}, theme::Card, 16);
-    Fill({center.left, center.top, center.right, center.top + 142}, theme::Card, 16);
-    Fill({center.left, center.top + 154, center.right, center.bottom}, theme::Card, 16);
-    Fill(task, theme::Card, 16);
+    Card({left.left, left.top, left.right, left.top + 174});
+    Card({left.left, left.top + 186, left.right, left.bottom});
+    Card({center.left, center.top, center.right, center.top + 142});
+    Card({center.left, center.top + 154, center.right, center.bottom});
+    Card(task);
     SYSTEMTIME now{};
     GetLocalTime(&now);
     if (renderMode || fixtureGeometry)
@@ -305,7 +305,7 @@ void Island::Today() {
              DWRITE_TEXT_ALIGNMENT_CENTER);
         bool selected = day.wDay == now.wDay;
         if (selected)
-            Fill({x + 1, center.top + 58, x + pitch - 1, center.top + 88}, theme::Accent, 10);
+            Fill({x + 1, center.top + 58, x + pitch - 1, center.top + 88}, theme::Accent, layout::ControlRadius);
         Text(Number(day.wDay), {x, center.top + 58, x + pitch, center.top + 88}, type::Caption,
              selected ? theme::AccentInk : theme::Text, DWRITE_TEXT_ALIGNMENT_CENTER);
     }
@@ -317,7 +317,8 @@ void Island::Today() {
         GetTimeFormatEx(LOCALE_NAME_USER_DEFAULT, TIME_NOSECONDS, &eventTime, nullptr, formatted, 40);
         when += calendarEvents.front().allDay ? L" · All day" : L" · " + std::wstring(formatted);
     }
-    Fill({center.left + 10, center.top + 100, center.right - 10, center.top + 132}, theme::CardHover, 10);
+    Fill({center.left + 10, center.top + 100, center.right - 10, center.top + 132}, theme::CardHover,
+         layout::ControlRadius);
     Text(when, {center.left + 20, center.top + 100, center.right - 18, center.top + 116}, type::Caption);
     Text(next, {center.left + 20, center.top + 116, center.right - 18, center.top + 134}, type::Caption, theme::Muted);
     AddHit(2005, {center.left, center.top, center.right, center.top + 142}, L"This week. " + next, false);
@@ -359,7 +360,7 @@ void Island::Today() {
         hits.back().clip = R(layout::Intersection(
             {hits.back().clip.left, hits.back().clip.top, hits.back().clip.right, hits.back().clip.bottom},
             {list.left, list.top - scroll, list.right, list.bottom - scroll}));
-        Fill(row, theme::Inset, 10);
+        Fill(row, theme::Inset, layout::ControlRadius);
         Text(tasks[i].done ? L"✓" : L"○", {row.left + 4, y, row.left + 28, y + 36}, type::Body, theme::Secondary);
         Text(tasks[i].title, {row.left + 32, y, row.right - 6, y + 36}, type::Body,
              tasks[i].done ? theme::Muted : theme::Text);
@@ -370,7 +371,7 @@ void Island::Today() {
     if (!layoutOnly)
         target->PopAxisAlignedClip();
     auto input = TaskInputRect();
-    Fill({input.left - 4, input.top - 4, task.right - 8, input.bottom + 4}, theme::CardHover, 10);
+    Fill({input.left - 4, input.top - 4, task.right - 8, input.bottom + 4}, theme::CardHover, layout::ControlRadius);
     AddHit(400, input, L"New task, up to 120 characters", tasks.size() < TaskStore::Capacity);
     if (renderMode)
         Text(L"Add a to-do…", input, type::Caption, theme::Muted);
