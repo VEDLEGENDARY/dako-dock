@@ -1,11 +1,12 @@
 #pragma once
+#include "Shape.h"
 
 namespace layout {
 struct Metrics {
     static constexpr float Space4 = 4, Space8 = 8, Space12 = 12, Space16 = 16, Space20 = 20, Space24 = 24;
     static constexpr float Padding = Space20, Gap = Space12, Section = Space16;
-    static constexpr float PanelRadius = 24, CardRadius = 16, ControlRadius = 12;
-    static constexpr float SurfaceRadius = PanelRadius, SmallRadius = 8;
+    static constexpr float PanelRadius = shape::Surface, CardRadius = shape::Card, ControlRadius = shape::Control;
+    static constexpr float SurfaceRadius = shape::Surface, SmallRadius = shape::Chip;
     static constexpr float PanelInset = Space16, AttachedInset = Space12, FreeInset = Space16;
     static constexpr float Gutter = Space12, CardPad = Space16, TilePad = Space12, RowGap = Space8, MinHit = 32;
     static constexpr float FloatingGap = Space8;

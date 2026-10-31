@@ -21,6 +21,10 @@ struct Rect {
     float Width() const { return std::max(0.0f, right - left); }
     float Height() const { return std::max(0.0f, bottom - top); }
 };
+inline float Extent(Rect rect, float radius, float smoothing = Smoothing) {
+    return std::min(
+        {std::max(0.0f, radius) * (1 + std::clamp(smoothing, 0.0f, 1.0f)), rect.Width() / 2, rect.Height() / 2});
+}
 enum class Edge { Top, Bottom };
 enum class Command { Line, Cubic, Arc };
 struct Segment {

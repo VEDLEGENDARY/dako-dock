@@ -253,7 +253,7 @@ void Island::Shimmer(D2D1_RECT_F rect) {
     float x = rect.left - 64 + (rect.right - rect.left + 128) * loadingClock / 1.2f;
     shimmerBrush->SetStartPoint({x - 64, rect.top});
     shimmerBrush->SetEndPoint({x + 64, rect.top});
-    target->FillRoundedRectangle(D2D1::RoundedRect(rect, layout::CardRadius, layout::CardRadius), shimmerBrush.Get());
+    graphics::Rounded(target.Get(), factory.Get(), geometryCache, rect, shape::Card, shimmerBrush.Get());
     ArmMotion();
 }
 
@@ -261,23 +261,25 @@ void Island::Fill(D2D1_RECT_F rect, unsigned color, float radius) {
     if (layoutOnly)
         return;
     brush->SetColor(Color(color));
-    target->FillRoundedRectangle(D2D1::RoundedRect(rect, radius, radius), brush.Get());
-    if (highContrast && rect.bottom - rect.top >= layout::Metrics::MinHit) {
-        brush->SetColor(Color(theme::Border));
-        target->DrawRoundedRectangle(D2D1::RoundedRect(rect, radius, radius), brush.Get(), 2);
-    }
+    graphics::Rounded(target.Get(), factory.Get(), geometryCache, rect, radius, brush.Get());
 }
 
 void Island::Card(D2D1_RECT_F rect, int level, float hover, float radius) {
     Fill(rect, level == 1 ? dock::Mix(theme::Card, theme::CardHover, hover) : theme::CardHover, radius);
-    if (layoutOnly || highContrast)
+    if (layoutOnly)
         return;
+    if (highContrast) {
+        brush->SetColor(Color(theme::Border));
+        graphics::Rounded(target.Get(), factory.Get(), geometryCache, rect, radius, brush.Get(), 2);
+        return;
+    }
     float pixel = 96 / dpi / textScale;
     float y = (std::floor(rect.top / pixel) + .5f) * pixel;
     brush->SetColor(Color(theme::Edge, level == 1 ? palette::Tokens::HairlineInner : palette::Tokens::HairlineOuter));
     if (level > 1)
-        target->DrawRoundedRectangle(D2D1::RoundedRect(rect, radius, radius), brush.Get(), pixel);
-    target->DrawLine({rect.left + radius, y}, {rect.right - radius, y}, brush.Get(), pixel);
+        graphics::Rounded(target.Get(), factory.Get(), geometryCache, rect, radius, brush.Get(), pixel);
+    float extent = shape::Extent({rect.left, rect.top, rect.right, rect.bottom}, radius);
+    target->DrawLine({rect.left + extent, y}, {rect.right - extent, y}, brush.Get(), pixel);
 }
 
 void Island::Text(const std::wstring &text, D2D1_RECT_F rect, int format, unsigned color, DWRITE_TEXT_ALIGNMENT align) {
@@ -424,6 +426,10 @@ void Island::AddHit(int id, D2D1_RECT_F rect, std::wstring name, bool enabled) {
 void Island::FocusRing(int id, D2D1_RECT_F rect, float radius) {
     if (layoutOnly)
         return;
+    if (highContrast) {
+        brush->SetColor(Color(theme::Border));
+        graphics::Rounded(target.Get(), factory.Get(), geometryCache, rect, radius, brush.Get(), 2);
+    }
     if (focusedKey == StableKey(id)) {
         if (paintedFocus != focusedKey) {
             paintedFocus = focusedKey;
@@ -433,10 +439,11 @@ void Island::FocusRing(int id, D2D1_RECT_F rect, float radius) {
         if (!reducedMotion && !renderMode && focusBlend.Moving())
             ArmMotion();
         brush->SetColor(Color(theme::Focus, highContrast ? 1 : focusBlend.value));
-        target->DrawRoundedRectangle(D2D1::RoundedRect(rect, radius, radius), brush.Get(), highContrast ? 3.0f : 1.5f);
+        graphics::Rounded(target.Get(), factory.Get(), geometryCache, rect, radius, brush.Get(),
+                          highContrast ? 3.0f : 1.5f);
         if (highContrast) {
             brush->SetColor(Color(theme::Surface));
-            target->DrawRoundedRectangle(D2D1::RoundedRect(rect, radius, radius), brush.Get(), 1);
+            graphics::Rounded(target.Get(), factory.Get(), geometryCache, rect, radius, brush.Get(), 1);
         }
     }
 }
@@ -506,7 +513,7 @@ void Island::Button(int id, D2D1_RECT_F rect, const std::wstring &title, const s
         float cy = (visual.top + visual.bottom) / 2;
         D2D1_RECT_F circle{visual.left + 12, cy - 14, visual.left + 40, cy + 14};
         unsigned ink = active ? theme::AccentInk : enabled ? theme::Text : theme::Muted;
-        Fill(circle, active ? dock::Mix(theme::Accent, theme::AccentInk, .12f) : theme::CardHover, 14);
+        Fill(circle, active ? dock::Mix(theme::Accent, theme::AccentInk, .12f) : theme::CardHover, shape::Pill(28));
         Text(icon, circle, type::InlineIcon, ink, DWRITE_TEXT_ALIGNMENT_CENTER);
         bool dropdown = id == Wifi || id == Bluetooth || id == Audio || id == Night;
         D2D1_RECT_F label{visual.left + (dropdown ? 32.0f : 12.0f), cy - 18, visual.right - (dropdown ? 32.0f : 12.0f),
@@ -595,7 +602,7 @@ void Island::CompactHeader(bool wireless) {
     auto l = Layout();
     auto navigation = TabRect(-1);
     l.header = {navigation.left, navigation.top, navigation.right, navigation.bottom};
-    Fill(navigation, theme::Surface, 0);
+    Fill(navigation, theme::Surface, shape::Flat());
     float mid = (l.header.left + l.header.right) / 2;
     TextButton(wireless ? FlyoutBack : 1900, {l.header.left, l.header.top, mid - 3, l.header.bottom},
                wireless ? L"Back" : TabTitle());
@@ -613,7 +620,7 @@ void Island::Tabs() {
         CompactHeader();
         return;
     }
-    Fill(TabRect(-1), theme::Surface, 0);
+    Fill(TabRect(-1), theme::Surface, shape::Flat());
     auto selected = TabRect(static_cast<int>(tab));
     if (!tabMotionReady || reducedMotion || renderMode || highContrast) {
         tabLeft.Snap(selected.left);
@@ -869,7 +876,8 @@ void Island::ScrollDecoration() {
     float length = std::max(24.0f, view * view / extent);
     float y = b.top + (view - length) * std::clamp(scroll / overflow, 0.0f, 1.0f);
     brush->SetColor(Color(theme::Muted, highContrast || renderMode ? 1.0f : scrollThumb.value));
-    target->FillRoundedRectangle(D2D1::RoundedRect({b.right - 3, y, b.right, y + length}, 1.5f, 1.5f), brush.Get());
+    graphics::Rounded(target.Get(), factory.Get(), geometryCache, {b.right - 3, y, b.right, y + length}, shape::Pill(3),
+                      brush.Get());
 }
 
 void Island::Draw() {

@@ -130,11 +130,14 @@ inline void Rounded(ID2D1RenderTarget *target, ID2D1Factory *factory, GeometryCa
     float width = rect.right - rect.left, height = rect.bottom - rect.top;
     if (width <= 0 || height <= 0)
         return;
-    bool pill = radius >= std::min(width, height) / 2 - .001f;
+    bool pill = std::abs(radius - std::min(width, height) / 2) < .001f;
     auto *path = cache.Rounded(factory, width, height, radius, pill ? shape::Flat() : shape::Smoothing);
     if (!path)
         return;
     D2D1::Matrix3x2F saved;
+    D2D1::Matrix3x2F brushTransform;
+    brush->GetTransform(&brushTransform);
+    brush->SetTransform(brushTransform * D2D1::Matrix3x2F::Translation(-rect.left, -rect.top));
     target->GetTransform(&saved);
     target->SetTransform(D2D1::Matrix3x2F::Translation(rect.left, rect.top) * saved);
     if (stroke > 0)
@@ -142,5 +145,6 @@ inline void Rounded(ID2D1RenderTarget *target, ID2D1Factory *factory, GeometryCa
     else
         target->FillGeometry(path, brush);
     target->SetTransform(saved);
+    brush->SetTransform(brushTransform);
 }
 } // namespace graphics
