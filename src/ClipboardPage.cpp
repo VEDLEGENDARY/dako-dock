@@ -131,7 +131,7 @@ void Island::ClipboardView() {
     b.bottom = b.top + Layout().contentHeight;
     bool inlineFilters = b.right - b.left >= 640;
     float searchRight = b.right - (inlineFilters ? 296.0f : 0.0f);
-    Fill({b.left, b.top, b.right, b.top + 40}, theme::Inset, layout::ControlRadius);
+    Fill({b.left, b.top, b.right, b.top + 40}, theme::Inset, shape::Control);
     auto search = ClipboardRect();
     if (b.right - b.left >= 160)
         Text(L"\xE721", {b.left + 8, b.top, b.left + 28, b.top + 40}, type::Icon, theme::Muted);
@@ -212,7 +212,7 @@ void Island::ClipboardView() {
         int id = 8600 + static_cast<int>(i);
         bool selected = item.id == clipboardSelected || clipboardSelection.contains(item.id);
         Fill(row, dock::Mix(selected ? theme::AccentSoft : theme::Surface, theme::CardHover, HoverAmount(id)),
-             layout::ControlRadius);
+             shape::Control);
         AddHit(8600 + static_cast<int>(i), row, (item.pinned ? L"Pinned. " : L"") + item.text);
         Text(item.kind == clipboard::Kind::Image ? L"\xEB9F"
              : item.pinned                       ? L"\xE718"
@@ -224,7 +224,7 @@ void Island::ClipboardView() {
              : age < 3600000 ? std::to_wstring(age / 60000) + L"m"
                              : std::to_wstring(age / 3600000) + L"h",
              {row.right - 44, y, row.right - 6, y + 40}, type::Caption, theme::Muted, DWRITE_TEXT_ALIGNMENT_TRAILING);
-        FocusRing(8600 + static_cast<int>(i), row, layout::ControlRadius);
+        FocusRing(8600 + static_cast<int>(i), row, shape::Control);
         y += 48;
     }
     auto item = std::find_if(clipboardRecords.begin(), clipboardRecords.end(),
@@ -289,8 +289,7 @@ void Island::ClipboardView() {
         D2D1_RECT_F action{x, top, x + actionWidth - 4, top + 32};
         int id = actions[i].first;
         AddHit(id, action, actions[i].second);
-        Fill(Tactile(id, action), dock::Mix(theme::Surface, theme::CardHover, HoverAmount(id)),
-             layout::Metrics::SmallRadius);
+        Fill(Tactile(id, action), dock::Mix(theme::Surface, theme::CardHover, HoverAmount(id)), shape::Chip);
         Text(actions[i].second, action, type::Caption, theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
         FocusRing(id, action);
     }
