@@ -165,7 +165,7 @@ void Island::Palette() {
     {
         DockBodyScope body(*this);
         D2D1_RECT_F input{b.left, b.top, b.right, b.top + layout::Metrics::Space8 * 5};
-        Fill(input, theme::Inset, layout::ControlRadius);
+        Fill(input, theme::Inset, shape::Control);
         if (input.right - input.left >= 160)
             Text(L"\xE721", {input.left + 8, input.top, input.left + 28, input.bottom}, type::Icon, theme::Muted);
         D2D1_RECT_F editor{input.left + (input.right - input.left >= 160 ? 36 : 4), input.top + 4,
