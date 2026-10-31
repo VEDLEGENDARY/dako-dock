@@ -39,8 +39,8 @@ void Island::Photo(ID2D1Bitmap *bitmap, D2D1_RECT_F rect, float opacity, float p
                           D2D1::Matrix3x2F::Translation((rect.left + rect.right - size.width * ratio) / 2 + parallax,
                                                         (rect.top + rect.bottom - size.height * ratio) / 2));
     picture->SetOpacity(opacity);
-    float radius = rect.bottom - rect.top <= 64 ? layout::Metrics::SmallRadius : layout::CardRadius;
-    target->FillRoundedRectangle(D2D1::RoundedRect(rect, radius, radius), picture.Get());
+    float radius = rect.bottom - rect.top <= 64 ? shape::Chip : shape::Card;
+    graphics::Rounded(target.Get(), factory.Get(), geometryCache, rect, radius, picture.Get());
 }
 
 void Island::ChooseWallpaperFolder() {
@@ -202,7 +202,7 @@ void Island::Wallpaper() {
         D2D1_RECT_F rect{cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2};
         AddHit(500 + index, rect, wallpapers[index].title);
         hits.back().skew = std::tan(skew / 57.2957795f);
-        hits.back().radius = layout::CardRadius;
+        hits.back().radius = shape::Card;
         D2D1::Matrix3x2F saved;
         if (!layoutOnly) {
             target->GetTransform(&saved);
@@ -213,7 +213,7 @@ void Island::Wallpaper() {
             target->SetTransform(D2D1::Matrix3x2F::Skew(skew, 0, {cx, cy}) * saved);
         }
         if (!layoutOnly && !highContrast && std::abs(delta) < .5f)
-            depth.Paint(target.Get(), rect, dpi * textScale, layout::CardRadius, edge);
+            depth.Paint(target.Get(), rect, dpi * textScale, shape::Card, edge);
         Card(rect, 2);
         const auto &entry = wallpapers[index];
         if (!layoutOnly && entry.pixels && !entry.pixels->empty()) {
@@ -225,7 +225,7 @@ void Island::Wallpaper() {
             Photo(thumbnails[index].Get(), rect, 1, reducedMotion || highContrast ? 0 : -wallpaperParallax.value * 4);
         } else if (wallpaperLoading)
             Shimmer(rect);
-        FocusRing(500 + index, rect, layout::CardRadius);
+        FocusRing(500 + index, rect, shape::Card);
         if (!layoutOnly) {
             target->SetTransform(saved);
             if (!highContrast && pose.opacity < 1)
