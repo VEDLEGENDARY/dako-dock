@@ -327,9 +327,9 @@ void Island::Today() {
             nextTime = std::wstring(L"Next · ") + value;
         }
         D2D1_RECT_F event{week.left + 12, week.bottom - 64, week.right - 12, week.bottom - 12};
-        Fill(event, theme::CardHover, layout::ControlRadius);
+        Fill(event, theme::CardHover, shape::Control);
         Fill({event.left + 8, event.top + 10, event.left + 12, event.bottom - 10},
-             highContrast ? theme::Text : palette::Tokens::CalendarEvent, 2);
+             highContrast ? theme::Text : palette::Tokens::CalendarEvent, shape::Pill(4));
         TwoLine({event.left + 24, event.top + 4, event.right - 8, event.bottom - 4}, nextTime, next);
         AddHit(2005, R(week), L"This week. " + next, false);
     }
@@ -414,7 +414,7 @@ void Island::Today() {
             {hits.back().clip.left, hits.back().clip.top, hits.back().clip.right, hits.back().clip.bottom},
             {list.left, list.top - scroll, list.right, list.bottom - scroll}));
         Fill(row, dock::Mix(tasks[i].done ? theme::CardHover : theme::Card, theme::CardHover, HoverAmount(id)),
-             layout::ControlRadius);
+             shape::Control);
         if (!layoutOnly) {
             brush->SetColor(Color(tasks[i].done ? theme::Tertiary : theme::Muted));
             target->DrawEllipse(D2D1::Ellipse({row.left + 16, y + 20}, 8, 8), brush.Get(), 1.5f);
@@ -450,7 +450,7 @@ void Island::Today() {
     if (!layoutOnly)
         target->PopAxisAlignedClip();
     auto input = TaskInputRect();
-    Fill({input.left - 4, input.top - 4, task.right - 12, input.bottom + 4}, theme::Inset, layout::ControlRadius);
+    Fill({input.left - 4, input.top - 4, task.right - 12, input.bottom + 4}, theme::Inset, shape::Control);
     AddHit(400, input, L"New task, up to 120 characters", tasks.size() < TaskStore::Capacity);
     if (renderMode)
         Text(L"Add a to-do…", input, type::Caption, theme::Muted);
