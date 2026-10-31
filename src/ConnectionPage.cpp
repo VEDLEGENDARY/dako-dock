@@ -70,7 +70,7 @@ void Island::ConnectionView() {
             brush->SetColor(Color(enabled ? theme::AccentInk : theme::Muted));
             target->FillEllipse(D2D1::Ellipse({w - 48 + 12 * togglePosition.value, y + 18}, 6, 6), brush.Get());
         }
-        FocusRing(FlyoutToggle, {w - 58, y + 2, w - 26, y + 34}, layout::ControlRadius);
+        FocusRing(FlyoutToggle, {w - 58, y + 2, w - 26, y + 34}, shape::Control);
     }
     auto b = Body();
     D2D1::Matrix3x2F saved;
@@ -111,7 +111,7 @@ void Island::ConnectionView() {
         D2D1_RECT_F row{b.left, y, b.right, y + layout::Metrics::AppRowHeight};
         AddHit(id, row, name + L". " + status);
         Fill(Tactile(id, row), dock::Mix(selected ? theme::AccentSoft : theme::Card, theme::CardHover, HoverAmount(id)),
-             layout::ControlRadius);
+             shape::Control);
         Text(wifi ? L"\xE701" : L"\xE702", {b.left + 12, y + 8, b.left + 40, y + 40}, type::Icon,
              highContrast && selected ? theme::SelectedText
              : connected              ? theme::Accent
@@ -133,11 +133,11 @@ void Island::ConnectionView() {
                                 : L"Try Refresh or Windows settings.");
     if (wifi && selectedWifi >= 0 && selectedWifi < static_cast<int>(connections.networks.size())) {
         const auto &network = connections.networks[selectedWifi];
-        Fill({b.left, detail, b.right, detail + 120}, theme::Inset, layout::ControlRadius);
+        Fill({b.left, detail, b.right, detail + 120}, theme::Inset, shape::Control);
         bool needs = (renderMode || fixtureGeometry) && network.secure && network.profile.empty() && !network.connected;
         if (needs) {
             D2D1_RECT_F input{b.left + 12, detail + 12, b.right - 12, detail + 52};
-            Fill(input, theme::Inset, layout::ControlRadius);
+            Fill(input, theme::Inset, shape::Control);
             AddHit(402, input, L"Network security key, 8 to 63 characters or 64 hexadecimal digits");
             EnsurePassword();
             if (renderMode)
@@ -152,7 +152,7 @@ void Island::ConnectionView() {
     }
     if (!wifi && selectedBluetooth >= 0 && selectedBluetooth < static_cast<int>(connections.devices.size())) {
         const auto &device = connections.devices[selectedBluetooth];
-        Fill({b.left, detail, b.right, detail + 120}, theme::Inset, layout::ControlRadius);
+        Fill({b.left, detail, b.right, detail + 120}, theme::Inset, shape::Control);
         Text(device.name, {b.left + 12, detail + 6, b.right - 12, detail + 42}, type::Body);
         TextButton(device.connected ? FlyoutDisconnect
                    : device.paired  ? FlyoutConnect
