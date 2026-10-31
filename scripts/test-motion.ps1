@@ -1,5 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
+& (Join-Path $PSScriptRoot 'test-shape.ps1')
 & (Join-Path $PSScriptRoot 'test-island.ps1')
 New-Item -ItemType Directory -Force -Path (Join-Path $projectRoot 'build\tests\motion') | Out-Null
 & (Join-Path $PSScriptRoot 'test-modules.ps1')
