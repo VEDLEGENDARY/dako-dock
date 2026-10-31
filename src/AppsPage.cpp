@@ -138,7 +138,7 @@ void Island::Apps() {
     RepageApps();
     auto b = Body();
     bool compact = CompactApps();
-    Fill({b.left, b.top, b.right, b.top + 40}, theme::Inset, layout::ControlRadius);
+    Fill({b.left, b.top, b.right, b.top + 40}, theme::Inset, shape::Control);
     if (b.right - b.left >= 160)
         Text(L"\xE721", {b.left + 8, b.top + 8, b.left + 32, b.top + 36}, type::Icon, theme::Muted);
     AddHit(401, SearchRect(), L"Search installed apps");
@@ -150,7 +150,7 @@ void Island::Apps() {
         Text(appQuery.empty() ? L"Search installed apps…" : appQuery, SearchRect(), type::Body, theme::Muted);
     float nextY = b.top + 48;
     if (ShowAppRail()) {
-        Fill({b.left, nextY, b.right, nextY + 68}, theme::Inset, layout::ControlRadius);
+        Fill({b.left, nextY, b.right, nextY + 68}, theme::Inset, shape::Control);
         Text(L"PINNED", {b.left + 12, nextY, b.right - 12, nextY + 20}, type::Overline, theme::Muted);
         size_t count = std::min(railApps.size(), static_cast<size_t>(std::max(1.0f, (b.right - b.left - 24) / 40)));
         for (size_t i = 0; i < count; ++i) {
@@ -159,9 +159,9 @@ void Island::Apps() {
             float x = b.left + 12 + static_cast<float>(i) * 40;
             D2D1_RECT_F rect{x, nextY + 24, x + 32, nextY + 56};
             AddHit(id, rect, L"Launch pinned " + app.name);
-            Fill(Tactile(id, rect), theme::Card, layout::ControlRadius);
+            Fill(Tactile(id, rect), theme::Card, shape::Control);
             DrawAppIcon(app, rect);
-            FocusRing(id, rect, layout::ControlRadius);
+            FocusRing(id, rect, shape::Control);
         }
         nextY += 76;
     }
@@ -183,10 +183,10 @@ void Island::Apps() {
             AddHit(id, row, L"Activate " + entry.title + (entry.minimized ? L", minimized" : L""));
             Fill(Tactile(id, row),
                  dock::Mix(entry.active ? theme::AccentSoft : theme::Card, theme::CardHover, HoverAmount(id)),
-                 layout::ControlRadius);
+                 shape::Control);
             Text(entry.title, {b.left + 12, y, b.right - 12, y + 40}, type::Body,
                  highContrast && entry.active ? theme::SelectedText : theme::Text);
-            FocusRing(id, row, layout::ControlRadius);
+            FocusRing(id, row, shape::Control);
         }
     }
     nextY = AppsListTop();
@@ -212,7 +212,7 @@ void Island::Apps() {
         AddHit(id, row, entry.name);
         bool selected = Favorite(entry) || AppKey(entry) == selectedAppKey;
         Fill(Tactile(id, row), dock::Mix(selected ? theme::AccentSoft : theme::Card, theme::CardHover, HoverAmount(id)),
-             layout::ControlRadius);
+             shape::Control);
         DrawAppIcon(entry, {b.left + 8, y + 6, b.left + 36, y + 34});
         Text(entry.name, {b.left + 48, y, b.right - 56, y + 40}, type::Body,
              highContrast && selected ? theme::SelectedText : theme::Text);
@@ -253,7 +253,7 @@ void Island::DrawAppIcon(const AppEntry &app, D2D1_RECT_F rect) {
     if (found != appIcons.end() && found->second)
         target->DrawBitmap(found->second.Get(), rect);
     else {
-        Fill(rect, theme::CardHover, layout::ControlRadius);
+        Fill(rect, theme::CardHover, shape::Control);
         Text(app.name.substr(0, 1), rect, type::Control, theme::Text, DWRITE_TEXT_ALIGNMENT_CENTER);
     }
 }
