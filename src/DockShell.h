@@ -127,11 +127,11 @@ inline std::vector<DockGroup> BuildDockGroups(const std::vector<PinEntry> &pins,
     return groups;
 }
 struct DockOptions {
-    bool reversedScroll = false, autoHide = false, island = false, magnify = true, labels = true, runningDots = true;
+    bool reversedScroll = false, autoHide = false, magnify = true, labels = true, runningDots = true;
     bool opaque = true;
     anchor::Edge edge = anchor::Edge::Bottom;
     int fullscreenPolicy = 0;
-    float radius = layout::PanelRadius, iconSize = 40, opacity = 1, motionSpeed = 1;
+    float iconSize = 40, opacity = 1, motionSpeed = 1;
     std::vector<std::wstring> hideApps;
     std::wstring monitorMode = L"Each";
     unsigned statusMask = 31;

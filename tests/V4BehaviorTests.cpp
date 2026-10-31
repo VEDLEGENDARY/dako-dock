@@ -28,7 +28,6 @@ LRESULT CALLBACK Notice(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 }
 int main() {
     desktop::DockOptions options;
-    options.island = true;
     std::vector<desktop::DockGroup> groups(80);
     auto layout = desktop::SolveDock(900, groups, {}, options);
     assert(layout.visibleGroups < groups.size());

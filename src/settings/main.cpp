@@ -42,6 +42,8 @@ struct App {
     std::vector<Row> rows;
     int page = 0, scroll = 0;
     bool rebuilding = false, dirty = false;
+    SIZE shapeSize{};
+    UINT shapeDpi = 0;
     std::wstring status;
     const std::vector<std::wstring> pages{L"General", L"Island",    L"Behavior",  L"Overlay", L"Appearance", L"Apps",
                                           L"Content", L"Clipboard", L"Wallpaper", L"Privacy", L"Advanced"};
@@ -190,6 +192,20 @@ struct App {
         InvalidateRect(window, nullptr, FALSE);
     }
     void Layout() {
+        RECT outer{};
+        GetWindowRect(window, &outer);
+        UINT outerDpi = GetDpiForWindow(window);
+        SIZE nextShape{outer.right - outer.left, outer.bottom - outer.top};
+        if (factory && (nextShape.cx != shapeSize.cx || nextShape.cy != shapeSize.cy || outerDpi != shapeDpi)) {
+            shapeSize = nextShape;
+            shapeDpi = outerDpi;
+            float scale = outerDpi / 96.0f;
+            auto *path =
+                visuals.geometry.Rounded(factory.Get(), nextShape.cx / scale, nextShape.cy / scale, shape::Surface);
+            HRGN region = shape::Region(path, D2D1::Matrix3x2F::Scale(scale, scale));
+            if (!SetWindowRgn(window, region, TRUE))
+                DeleteObject(region);
+        }
         RECT raw{};
         GetClientRect(window, &raw);
         int dpi = static_cast<int>(std::lround(GetDpiForWindow(window) * visuals.scale));
@@ -281,41 +297,41 @@ struct App {
         float searchRight = static_cast<float>(settingsui::Metrics::Padding +
                                                (r.right < 640 ? contentWidth : settingsui::Metrics::Sidebar - 40));
         brush->SetColor(settingsui::Color(visuals.inset));
-        auto searchWell = D2D1::RoundedRect({20, 24, searchRight, 64}, layout::Metrics::ControlRadius,
-                                            layout::Metrics::ControlRadius);
-        target->FillRoundedRectangle(searchWell, brush.Get());
+        D2D1_RECT_F searchWell{20, 24, searchRight, 64};
+        graphics::Rounded(target.Get(), factory.Get(), visuals.geometry, searchWell, shape::Control, brush.Get());
         text(L"\xE721", {28, 24, 48, 64}, type::Icon, theme.muted);
         if (GetFocus() == search) {
             brush->SetColor(settingsui::Color(theme.accent));
-            target->DrawRoundedRectangle(searchWell, brush.Get(), visuals.highContrast ? 2.0f : 1.5f);
+            graphics::Rounded(target.Get(), factory.Get(), visuals.geometry, searchWell, shape::Control, brush.Get(),
+                              visuals.highContrast ? 2.0f : 1.5f);
         }
         if (r.right >= 640)
             text(L"Dako settings", {left, 24, right, 56}, type::Title, theme.text);
         target->PushAxisAlignedClip({left, top, right, top + viewport}, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         for (size_t i = 0; i < rows.size(); ++i) {
             float y = top + static_cast<float>(i) * settingsui::Metrics::Row - scroll;
-            auto card = D2D1::RoundedRect({left, y, right, y + settingsui::Metrics::Card}, layout::Metrics::CardRadius,
-                                          layout::Metrics::CardRadius);
+            D2D1_RECT_F card{left, y, right, y + settingsui::Metrics::Card};
             brush->SetColor(settingsui::Color(theme.card));
-            target->FillRoundedRectangle(card, brush.Get());
+            graphics::Rounded(target.Get(), factory.Get(), visuals.geometry, card, shape::Card, brush.Get());
             brush->SetColor(settingsui::Color(visuals.edge, visuals.highContrast ? 1 : palette::Tokens::HairlineInner));
             if (visuals.highContrast)
-                target->DrawRoundedRectangle(card, brush.Get(), 2);
-            else
-                target->DrawLine({left + layout::Metrics::CardRadius, y + .5f},
-                                 {right - layout::Metrics::CardRadius, y + .5f}, brush.Get(), 96.0f / dpi);
+                graphics::Rounded(target.Get(), factory.Get(), visuals.geometry, card, shape::Card, brush.Get(), 2);
+            else {
+                float extent = shape::Extent({card.left, card.top, card.right, card.bottom}, shape::Card);
+                target->DrawLine({left + extent, y + .5f}, {right - extent, y + .5f}, brush.Get(), 96.0f / dpi);
+            }
             text(std::wstring(rows[i].setting->label) +
                      (rows[i].setting->kind == v4::Kind::Integer ? L" · " + values.Text(rows[i].setting->key) : L""),
                  {left + 16, y + 12, right - 16, y + 36}, type::Title, theme.text);
             text(rows[i].setting->description, {left + 16, y + 40, right - 16, y + 80}, type::Caption, theme.muted);
             if (rows[i].setting->kind != v4::Kind::Boolean) {
                 brush->SetColor(settingsui::Color(visuals.inset));
-                auto well = D2D1::RoundedRect({left + 12, y + 84, right - 12, y + 132}, layout::Metrics::ControlRadius,
-                                              layout::Metrics::ControlRadius);
-                target->FillRoundedRectangle(well, brush.Get());
+                D2D1_RECT_F well{left + 12, y + 84, right - 12, y + 132};
+                graphics::Rounded(target.Get(), factory.Get(), visuals.geometry, well, shape::Control, brush.Get());
                 if (GetFocus() == rows[i].control) {
                     brush->SetColor(settingsui::Color(theme.accent));
-                    target->DrawRoundedRectangle(well, brush.Get(), visuals.highContrast ? 2.0f : 1.5f);
+                    graphics::Rounded(target.Get(), factory.Get(), visuals.geometry, well, shape::Control, brush.Get(),
+                                      visuals.highContrast ? 2.0f : 1.5f);
                 }
             }
         }
@@ -323,9 +339,8 @@ struct App {
             brush->SetColor(settingsui::Color(theme.surface, visuals.highContrast ? 1.0f : .6f));
             target->FillRectangle({left, top, right, top + viewport}, brush.Get());
             brush->SetColor(settingsui::Color(theme.hover));
-            target->FillRoundedRectangle(D2D1::RoundedRect({left, top, right, top + 160}, layout::Metrics::CardRadius,
-                                                           layout::Metrics::CardRadius),
-                                         brush.Get());
+            graphics::Rounded(target.Get(), factory.Get(), visuals.geometry, {left, top, right, top + 160},
+                              shape::Surface, brush.Get());
             text(L"Discard unsaved settings?", {left + 16, top + 12, right - 16, top + 44}, type::Title, theme.text);
             text(L"Your saved settings will be kept.", {left + 16, top + 48, right - 16, top + 88}, type::Caption,
                  theme.muted);
@@ -358,7 +373,8 @@ struct App {
             float length = std::max(24.0f, viewport * viewport / total);
             float y = top + (viewport - length) * scroll / (total - viewport);
             brush->SetColor(settingsui::Color(theme.muted, opacity));
-            target->FillRoundedRectangle(D2D1::RoundedRect({right - 3, y, right, y + length}, 1.5f, 1.5f), brush.Get());
+            graphics::Rounded(target.Get(), factory.Get(), visuals.geometry, {right - 3, y, right, y + length},
+                              shape::Pill(3), brush.Get());
         }
         text(status, {left, static_cast<float>(r.bottom - 44), right, static_cast<float>(r.bottom - 4)}, type::Caption,
              theme.muted);

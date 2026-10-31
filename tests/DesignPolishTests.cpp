@@ -68,7 +68,7 @@ int main() {
     RequireDesign(surface != nullptr, "Bezier surface builds");
     D2D1_RECT_F bounds{};
     surface->GetBounds(nullptr, &bounds);
-    RequireDesign(std::abs(bounds.left + 24) < .01f && std::abs(bounds.bottom - 400) < .01f,
+    RequireDesign(std::abs(bounds.left + shape::Fillet) < .01f && std::abs(bounds.bottom - 400) < .01f,
                   "Bezier bounds include attached shoulders");
     for (int i = 0; i < 1000; ++i)
         RequireDesign(cache.Surface(factory.Get(), false, 0, 0, 800.1f, 400, 24, anchor::Edge::Bottom) == surface,

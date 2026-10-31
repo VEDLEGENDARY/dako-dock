@@ -63,9 +63,8 @@ void Island::ConnectionView() {
         if (!layoutOnly) {
             if (highContrast) {
                 brush->SetColor(Color(theme::Border));
-                target->DrawRoundedRectangle(
-                    D2D1::RoundedRect(toggle, (toggle.bottom - toggle.top) / 2, (toggle.bottom - toggle.top) / 2),
-                    brush.Get(), 2);
+                graphics::Rounded(target.Get(), factory.Get(), geometryCache, toggle,
+                                  shape::Pill(toggle.bottom - toggle.top), brush.Get(), 2);
             }
             brush->SetColor(Color(enabled ? theme::AccentInk : theme::Muted));
             target->FillEllipse(D2D1::Ellipse({w - 48 + 12 * togglePosition.value, y + 18}, 6, 6), brush.Get());

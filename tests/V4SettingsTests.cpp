@@ -12,7 +12,10 @@ int wmain(int argc, wchar_t **argv) {
     assert(store.Get(L"Schema")[L"Version"] == L"4");
     v4::Values values;
     assert(values.Bool(L"PeekPlayingOnly"));
-    values.data[L"Radius"] = L"28";
+    assert(!v4::Find(L"Radius"));
+    v4::Values legacy(std::map<std::wstring, std::wstring>{{L"Radius", L"8"}});
+    assert(!legacy.data.contains(L"Radius"));
+    values.data[L"Scale"] = L"88";
     values.data[L"Theme"] = L"Paper";
     assert(v4::SaveValues(values, path));
     assert(v4::ReadValues(path).data == values.data);
@@ -21,9 +24,9 @@ int wmain(int argc, wchar_t **argv) {
     assert(v4::SaveValues(v4::Values{}, path));
     assert(store.Import(exported));
     assert(v4::ReadValues(path).data == values.data);
-    values.data[L"Radius"] = L"-1";
+    values.data[L"Scale"] = L"-1";
     assert(!v4::SaveValues(values, path));
-    assert(v4::ReadValues(path).Int(L"Radius") == 28);
+    assert(v4::ReadValues(path).Int(L"Scale") == 88);
     for (const auto &setting : v4::Schema) {
         assert(v4::Valid(setting, setting.value));
         assert(!v4::Valid(setting, L"bad\nvalue"));

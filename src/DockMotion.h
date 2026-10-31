@@ -62,7 +62,7 @@ template <int Segments = 16>
 inline std::array<Point, 4 * (Segments + 1) + 1> Attached(float left, float top, float width, float height,
                                                           float corner = layout::Metrics::PanelRadius) {
     std::array<Point, 4 * (Segments + 1) + 1> out{};
-    float r = std::min(corner, height / 2), shoulder = 24;
+    float r = std::min(corner, height / 2), shoulder = shape::Fillet;
     auto curve = [&](int offset, Point a, Point b, Point c, Point d) {
         for (int i = 0; i <= Segments; ++i) {
             float t = i / static_cast<float>(Segments), u = 1 - t;
@@ -168,7 +168,7 @@ inline unsigned Danger = palette::Tokens::Danger;
 inline unsigned Focus = 0xC03610, SelectedText = Ink;
 inline unsigned Accent = Signal, AccentHover = 0xFF633B, AccentInk = Ink, AccentSoft = 0xF3DCD1, Secondary = 0x687F76,
                 Tertiary = 0x677A8A;
-inline float Radius = layout::Metrics::SurfaceRadius;
+inline constexpr float Radius = shape::Surface;
 constexpr float SmallRadius = layout::Metrics::SmallRadius;
 constexpr float InsetSize = layout::Metrics::Padding, Gap = layout::Metrics::Gap;
 constexpr float DockWidth = 216, DockHeight = 18, TopRail = 0, EnvelopeWidth = 1000, EnvelopeHeight = 760;

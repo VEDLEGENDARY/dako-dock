@@ -91,9 +91,8 @@ bool Island::PresentedContains(float x, float y) const {
     if (renderMode)
         return x >= 0 && x <= width && y >= 0 && y <= height;
     float left = (envelopeWidth - width) / 2;
-    auto polygon =
-        anchor::ForEdge(edge, dock::Attached(left, PanelY(), width, height, theme::Radius), PanelY(), height);
-    return dockReveal.value > .003f && anchor::Contains(polygon, x, y);
+    auto *path = geometryCache.Surface(factory.Get(), false, left, PanelY(), width, height, shape::Surface, edge);
+    return dockReveal.value > .003f && shape::Contains(path, {x, y});
 }
 
 int Island::HitAt(float x, float y, bool accessibleHit) {
@@ -117,9 +116,9 @@ int Island::HitAt(float x, float y, bool accessibleHit) {
     for (int i = static_cast<int>(hits.size()) - 1; i >= 0; --i) {
         const auto &h = hits[i];
         auto r = h.rect, c = h.clip;
+        auto *path = geometryCache.Rounded(factory.Get(), r.right - r.left, r.bottom - r.top, h.radius);
         if ((h.enabled || accessibleHit) && x >= c.left && x <= c.right && y >= c.top && y <= c.bottom &&
-            layout::SkewContains({r.left, r.top, r.right, r.bottom}, h.skew, std::min(h.radius, (r.bottom - r.top) / 2),
-                                 x, y))
+            shape::Contains(path, {x - h.skew * (y - (r.top + r.bottom) / 2) - r.left, y - r.top}))
             return i;
     }
     return -1;

@@ -209,7 +209,6 @@ void Island::Place() {
                                                                       static_cast<float>(h))));
     if (bounds.left != left || bounds.top != top || bounds.right - bounds.left != w || bounds.bottom - bounds.top != h)
         SetWindowPos(window, HWND_TOPMOST, left, top, w, h, SWP_NOACTIVATE);
-    const int radius = static_cast<int>(theme::Radius * scale);
     std::array<int, 9> signature{w,
                                  h,
                                  static_cast<int>(std::lround(width * scale)),
@@ -222,7 +221,8 @@ void Island::Place() {
     if (signature != regionSignature) {
         regionSignature = signature;
         auto notch = NotchPixels(scale);
-        HRGN shape = renderMode       ? CreateRoundRectRgn(0, 0, w + 1, h + 1, radius * 2, radius * 2)
+        auto rounded = shape::RoundedPath(factory.Get(), {0, 0, w / scale, h / scale}, shape::Surface);
+        HRGN shape = renderMode       ? shape::Region(rounded.Get(), D2D1::Matrix3x2F::Scale(scale, scale))
                      : YieldResting() ? CreateRectRgn(0, 0, 0, 0)
                                       : CreatePolygonRgn(notch.data(), static_cast<int>(notch.size()), WINDING);
         if (!renderMode && dockReveal.value > 0.003f) {

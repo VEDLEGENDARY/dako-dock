@@ -388,9 +388,9 @@ void Island::DrawChrome() {
                                         : anchor::Grow(edge) * 8 * (1 - std::clamp(chrome.blend.value, 0.0f, 1.0f))) *
                              saved);
         if (!highContrast)
-            depth.Paint(target.Get(), rect, dpi * textScale, menu ? layout::ControlRadius : layout::CardRadius, edge);
+            depth.Paint(target.Get(), rect, dpi * textScale, shape::Surface, edge);
     }
-    Card(rect, 2, 0, menu ? layout::ControlRadius : layout::CardRadius);
+    Card(rect, 2, 0, shape::Surface);
     if (menu) {
         if (header) {
             Text(chrome.title,

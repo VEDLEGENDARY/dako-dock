@@ -60,7 +60,7 @@ class GeometryCache {
                 sink->AddLine(p(x + w * .78f, y + h));
                 curve(p(x + w * .89f, y + h), p(x + w * .89f, y), p(x + w, y));
             } else {
-                float r = std::min(radius, h / 2), shoulder = 24;
+                float r = std::min(radius, h / 2), shoulder = shape::Fillet;
                 sink->BeginFigure(p(x - shoulder, y), D2D1_FIGURE_BEGIN_FILLED);
                 curve(p(x - 3, y), p(x, y + 3), p(x, y + r));
                 sink->AddLine(p(x, y + h - r));

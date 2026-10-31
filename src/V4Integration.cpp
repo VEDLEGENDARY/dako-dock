@@ -9,11 +9,8 @@ void Island::ApplyV4Values() {
     edge = options.Text(L"Edge") == L"Top" ? anchor::Edge::Top : anchor::Edge::Bottom;
     accentColor = static_cast<unsigned>(std::stoul(options.Text(L"Accent"), nullptr, 16));
     interaction.Configure({options.Int(L"HoverDelay") / 1000.0f, options.Int(L"LeaveDelay") / 1000.0f, .8f, .3f});
-    theme::Radius = static_cast<float>(options.Int(L"Radius"));
-    dockOptions.radius = theme::Radius;
     dockOptions.reversedScroll = options.Text(L"Scroll") == L"Reversed";
     dockOptions.autoHide = options.Bool(L"AutoHide");
-    dockOptions.island = true;
     dockOptions.edge = edge;
     dockOptions.fullscreenPolicy = options.Text(L"Fullscreen") == L"Hide over games"        ? 1
                                    : options.Text(L"Fullscreen") == L"Hide over fullscreen" ? 2

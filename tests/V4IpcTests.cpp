@@ -19,7 +19,8 @@ static LRESULT CALLBACK Procedure(HWND window, UINT message, WPARAM wparam, LPAR
 static bool PumpUntil(const std::function<bool()> &done, DWORD timeout = 3000) {
     ULONGLONG deadline = GetTickCount64() + timeout;
     while (GetTickCount64() < deadline) {
-        if (done()) return true;
+        if (done())
+            return true;
         MsgWaitForMultipleObjectsEx(0, nullptr, 25, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
         MSG message{};
         while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
@@ -32,10 +33,16 @@ static bool PumpUntil(const std::function<bool()> &done, DWORD timeout = 3000) {
 int wmain(int argc, wchar_t **argv) {
     if (argc == 3 && std::wstring_view(argv[1]) == L"--preview-child") {
         v4::Preview packet;
-        wcscpy_s(packet.key, L"Radius");
-        wcscpy_s(packet.value, L"23");
-        bool sent=false;for(int i=0;i<50&&!sent;++i){sent=v4::SendPreview(packet,argv[2]);if(!sent)Sleep(20);}
-        if(!sent)return 2;
+        wcscpy_s(packet.key, L"Scale");
+        wcscpy_s(packet.value, L"83");
+        bool sent = false;
+        for (int i = 0; i < 50 && !sent; ++i) {
+            sent = v4::SendPreview(packet, argv[2]);
+            if (!sent)
+                Sleep(20);
+        }
+        if (!sent)
+            return 2;
         Sleep(10000);
         return 0;
     }
@@ -52,12 +59,12 @@ int wmain(int argc, wchar_t **argv) {
     {
         v4::SettingsWatch watch(window, channel);
         v4::Preview packet;
-        wcscpy_s(packet.key, L"Radius");
-        wcscpy_s(packet.value, L"28");
+        wcscpy_s(packet.key, L"Scale");
+        wcscpy_s(packet.value, L"88");
         assert(PumpUntil([&] { return v4::SendPreview(packet, channel); }));
         assert(PumpUntil([] { return previews == 1; }));
         auto received = watch.Consume();
-        assert(received && std::wstring(received->value) == L"28");
+        assert(received && std::wstring(received->value) == L"88");
         v4::SignalSettings(channel);
         assert(PumpUntil([] { return commits == 1; }));
         packet.command = 1;

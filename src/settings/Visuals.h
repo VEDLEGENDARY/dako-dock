@@ -1,6 +1,7 @@
 #pragma once
 #include "../UiTypography.h"
 #include "../DockMotion.h"
+#include "../GeometryCache.h"
 #include <chrono>
 
 namespace settingsui {
@@ -19,6 +20,7 @@ struct Visuals {
     float scale = 1;
     std::shared_ptr<type::Library> typography;
     ComPtr<ID2D1Factory> factory;
+    graphics::GeometryCache geometry;
     void Configure(bool paper, bool reduced) {
         HIGHCONTRASTW hc{sizeof(hc)};
         SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(hc), &hc, 0);
@@ -84,19 +86,21 @@ struct Button {
             auto size = target->GetSize();
             target->BeginDraw();
             target->Clear(Color(toggle ? t.card : t.surface));
-            auto rounded = [&](D2D1_RECT_F rect, float radius, unsigned color) {
+            auto controlShape = [&](D2D1_RECT_F rect, float radius, unsigned color) {
                 brush->SetColor(Color(color));
-                target->FillRoundedRectangle(D2D1::RoundedRect(rect, radius, radius), brush.Get());
+                graphics::Rounded(target.Get(), visuals.factory.Get(), visuals.geometry, rect, radius, brush.Get());
                 if (visuals.highContrast) {
                     brush->SetColor(Color(t.text));
-                    target->DrawRoundedRectangle(D2D1::RoundedRect(rect, radius, radius), brush.Get(), 2);
+                    graphics::Rounded(target.Get(), visuals.factory.Get(), visuals.geometry, rect, radius, brush.Get(),
+                                      2);
                 }
             };
             D2D1_RECT_F bounds{1, 1, size.width - 1, size.height - 1};
             if (toggle) {
                 float x = (size.width - Metrics::SwitchWidth) / 2, y = (size.height - Metrics::SwitchHeight) / 2;
-                rounded({x, y, x + Metrics::SwitchWidth, y + Metrics::SwitchHeight}, Metrics::SwitchHeight / 2,
-                        dock::Mix(dock::Mix(t.hover, t.accent, knob.value), t.text, highlight.value * .08f));
+                controlShape({x, y, x + Metrics::SwitchWidth, y + Metrics::SwitchHeight},
+                             shape::Pill(Metrics::SwitchHeight),
+                             dock::Mix(dock::Mix(t.hover, t.accent, knob.value), t.text, highlight.value * .08f));
                 float cx = x + Metrics::SwitchHeight / 2 + (Metrics::SwitchWidth - Metrics::SwitchHeight) * knob.value;
                 auto hcInk = GetSysColor(COLOR_HIGHLIGHTTEXT);
                 unsigned ink = visuals.highContrast
@@ -108,7 +112,7 @@ struct Button {
                                                   Metrics::Knob / 2 * (1 - .03f * press.value), Metrics::Knob / 2),
                                     brush.Get());
             } else {
-                rounded(bounds, layout::Metrics::ControlRadius, dock::Mix(t.card, t.hover, highlight.value));
+                controlShape(bounds, shape::Control, dock::Mix(t.card, t.hover, highlight.value));
                 wchar_t text[128]{};
                 GetWindowTextW(window, text, 128);
                 bool clear = GetDlgCtrlID(window) == 20;
@@ -123,9 +127,8 @@ struct Button {
             }
             if (GetFocus() == window || visuals.highContrast) {
                 brush->SetColor(Color(GetFocus() == window ? t.accent : t.text));
-                target->DrawRoundedRectangle(
-                    D2D1::RoundedRect(bounds, layout::Metrics::ControlRadius, layout::Metrics::ControlRadius),
-                    brush.Get(), visuals.highContrast ? 2.0f : 1.5f);
+                graphics::Rounded(target.Get(), visuals.factory.Get(), visuals.geometry, bounds, shape::Control,
+                                  brush.Get(), visuals.highContrast ? 2.0f : 1.5f);
             }
             if (target->EndDraw() == D2DERR_RECREATE_TARGET) {
                 brush.Reset();

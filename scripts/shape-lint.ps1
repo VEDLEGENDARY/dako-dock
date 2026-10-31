@@ -5,9 +5,10 @@ function Get-ShapeRadiusViolations {
         param($match)
         [regex]::Replace($match.Value, '[^\r\n]', ' ')
     })
-    $positions = @{ Fill = @(2); FocusRing = @(2); RoundedRect = @(1,2);
+    $positions = @{ Fill = @(2); FocusRing = @(2); RoundedRect = @(1,2); 'graphics::Rounded' = @(4); controlShape = @(1);
                     CreateRoundRectRgn = @(4,5); Attached = @(4,5) }
-    foreach ($call in [regex]::Matches($mask, '\b(Fill|FocusRing|RoundedRect|CreateRoundRectRgn|Attached)\s*(?:<[^>]+>)?\s*\(')) {
+    $calls = '(?i)\b(graphics::Rounded|Fill|FocusRing|RoundedRect|CreateRoundRectRgn|Attached|controlShape)\s*(?:<[^>]+>)?\s*\('
+    foreach ($call in [regex]::Matches($mask, $calls)) {
         $start = $call.Index + $call.Length
         $depth = 0
         $arguments = @()

@@ -216,6 +216,8 @@ inline HRESULT Paint(ID2D1RenderTarget *target, IDWriteFactory *writer, Resource
     HRESULT result = target->CreateSolidColorBrush(D2D1::ColorF(theme::Text), &brush);
     if (FAILED(result))
         return result;
+    ComPtr<ID2D1Factory> shapeFactory;
+    target->GetFactory(&shapeFactory);
     ComPtr<ID2D1DeviceContext> context;
     target->QueryInterface(IID_PPV_ARGS(&context));
     D2D1::Matrix3x2F transform;
@@ -225,45 +227,27 @@ inline HRESULT Paint(ID2D1RenderTarget *target, IDWriteFactory *writer, Resource
     float scale = dpiX / 96 * std::max(.01f, std::abs(transform._11)), pixel = 1 / scale;
     auto fill = [&](layout::Rect r, unsigned color, float radius, float alpha = 1.0f) {
         brush->SetColor(D2D1::ColorF(color, alpha));
-        target->FillRoundedRectangle(D2D1::RoundedRect(Rect(r), radius, radius), brush.Get());
+        graphics::Rounded(target, shapeFactory.Get(), resources.geometryCache, Rect(r), radius, brush.Get());
     };
     target->Clear(D2D1::ColorF(0, 0.0f));
-    bool translucent = options.island && !contrast && options.opacity < .999f;
+    bool translucent = !contrast && options.opacity < .999f;
     if (translucent) {
         auto layer = D2D1::LayerParameters();
         layer.opacity = options.opacity;
         target->PushLayer(layer, nullptr);
     }
     auto pill = geometry.pill;
-    if (options.island) {
-        ComPtr<ID2D1Factory> factory;
-        target->GetFactory(&factory);
-        auto *path = resources.geometryCache.Surface(factory.Get(), false, 0, 0, pill.Width(), pill.Height(),
-                                                     options.radius, options.edge);
-        if (path) {
-            target->SetTransform(D2D1::Matrix3x2F::Translation(pill.left, pill.top) * transform);
-            brush->SetColor(D2D1::ColorF(theme::Surface));
-            target->FillGeometry(path, brush.Get());
-            target->SetTransform(D2D1::Matrix3x2F::Scale((pill.Width() - pixel) / pill.Width(),
-                                                         (pill.Height() - pixel) / pill.Height()) *
-                                 D2D1::Matrix3x2F::Translation(pill.left + pixel / 2, pill.top + pixel / 2) *
-                                 transform);
-            brush->SetColor(
-                D2D1::ColorF(contrast ? theme::Border : theme::Edge, contrast ? 1.0f : palette::Tokens::HairlineOuter));
-            target->DrawGeometry(path, brush.Get(), contrast ? 2.0f : pixel);
-            target->SetTransform(transform);
-        }
-    } else {
-        fill(pill, theme::Surface, pill.Height() / 2);
+    {
+        fill(pill, theme::Surface, shape::Pill(pill.Height()));
         brush->SetColor(
             D2D1::ColorF(contrast ? theme::Border : theme::Edge, contrast ? 1.0f : palette::Tokens::HairlineOuter));
-        target->DrawRoundedRectangle(D2D1::RoundedRect(Rect(pill), pill.Height() / 2, pill.Height() / 2), brush.Get(),
-                                     contrast ? 2.0f : pixel);
+        graphics::Rounded(target, shapeFactory.Get(), resources.geometryCache, Rect(pill), shape::Pill(pill.Height()),
+                          brush.Get(), contrast ? 2.0f : pixel);
     }
     if (!contrast) {
         float y = options.edge == anchor::Edge::Bottom ? pill.top + pixel * 1.5f : pill.bottom - pixel * 1.5f;
         brush->SetColor(D2D1::ColorF(theme::Edge, palette::Tokens::HairlineInner));
-        target->DrawLine({pill.left + options.radius, y}, {pill.right - options.radius, y}, brush.Get(), pixel);
+        target->DrawLine({pill.left + shape::Surface, y}, {pill.right - shape::Surface, y}, brush.Get(), pixel);
     }
     brush->SetColor(D2D1::ColorF(contrast ? theme::Border : theme::Edge, contrast ? 1.0f : palette::Tokens::Divider));
     for (float divider : geometry.dividers) {
@@ -312,7 +296,8 @@ inline HRESULT Paint(ID2D1RenderTarget *target, IDWriteFactory *writer, Resource
             for (int row = 0; row < 2; ++row)
                 for (int column = 0; column < 2; ++column) {
                     D2D1_RECT_F square{x + column * 10, y + row * 10, x + column * 10 + 7, y + row * 10 + 7};
-                    target->FillRoundedRectangle(D2D1::RoundedRect(square, 7.0f / 4, 7.0f / 4), brush.Get());
+                    graphics::Rounded(target, shapeFactory.Get(), resources.geometryCache, square,
+                                      shape::Pill(square.bottom - square.top) / 2, brush.Get());
                 }
         } else {
             brush->SetColor(D2D1::ColorF(app ? theme::Text : dock::Mix(theme::Muted, theme::Text, hover)));
@@ -337,8 +322,8 @@ inline HRESULT Paint(ID2D1RenderTarget *target, IDWriteFactory *writer, Resource
         }
         if (hit.action == focused) {
             brush->SetColor(D2D1::ColorF(theme::Focus, contrast ? 1 : resources.focusOpacity.value));
-            target->DrawRoundedRectangle(D2D1::RoundedRect(Rect(r), layout::ControlRadius, layout::ControlRadius),
-                                         brush.Get(), contrast ? 2.0f : pixel * 1.5f);
+            graphics::Rounded(target, shapeFactory.Get(), resources.geometryCache, Rect(r), shape::Control, brush.Get(),
+                              contrast ? 2.0f : pixel * 1.5f);
         }
         if (app)
             target->PopLayer();
@@ -364,10 +349,13 @@ inline HRESULT PaintPreview(ID2D1RenderTarget *target, IDWriteFactory *writer, R
     HRESULT result = target->CreateSolidColorBrush(D2D1::ColorF(theme::Text), &brush);
     if (FAILED(result))
         return result;
+    ComPtr<ID2D1Factory> shapeFactory;
+    target->GetFactory(&shapeFactory);
     target->DrawTextW(title.c_str(), static_cast<UINT32>(title.size()), resources.text.Get(), {12, 6, width - 12, 36},
                       brush.Get());
     brush->SetColor(D2D1::ColorF(theme::Inset));
-    target->FillRoundedRectangle(D2D1::RoundedRect({12, 42, width - 12, height - 48}, 10, 10), brush.Get());
+    graphics::Rounded(target, shapeFactory.Get(), resources.geometryCache, {12, 42, width - 12, height - 48},
+                      shape::Chip, brush.Get());
     if (unavailable || fixture) {
         const std::wstring message = unavailable ? L"Preview unavailable for this window" : L"Inert fixture window";
         brush->SetColor(D2D1::ColorF(theme::Muted));
@@ -376,7 +364,8 @@ inline HRESULT PaintPreview(ID2D1RenderTarget *target, IDWriteFactory *writer, R
     }
     for (const auto &hit : PreviewHits(width, height)) {
         brush->SetColor(D2D1::ColorF(hit.action == focused + 1 ? theme::AccentSoft : theme::Inset));
-        target->FillRoundedRectangle(D2D1::RoundedRect(Rect(hit.rect), 8, 8), brush.Get());
+        graphics::Rounded(target, shapeFactory.Get(), resources.geometryCache, Rect(hit.rect), shape::Control,
+                          brush.Get());
         brush->SetColor(D2D1::ColorF(hit.action == focused + 1 ? theme::SelectedText : theme::Text));
         target->DrawTextW(hit.label.c_str(), static_cast<UINT32>(hit.label.size()), resources.text.Get(),
                           Rect(hit.rect), brush.Get());

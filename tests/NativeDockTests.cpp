@@ -413,7 +413,6 @@ int wmain(int argc, wchar_t **argv) {
         bars.SetData(overflowPins, {}, {});
         for (auto edge : {anchor::Edge::Top, anchor::Edge::Bottom}) {
             desktop::DockOptions islandOptions;
-            islandOptions.island = true;
             islandOptions.edge = edge;
             bars.Options(islandOptions);
             PumpDock(20);

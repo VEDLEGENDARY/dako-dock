@@ -22,8 +22,6 @@ inline constexpr Setting Schema[]{
      Kind::Choice, 0, 2, L"Primary;Cursor;Each", true},
     {L"Scale", L"Island scale (%)", L"Island", L"100", L"Scale the island in addition to Windows text scaling.",
      Kind::Integer, 75, 150, L"", true},
-    {L"Radius", L"Corner radius", L"Island", L"24", L"Panel corner radius in logical pixels.", Kind::Integer, 8, 32,
-     L"", true},
     {L"Opacity", L"Idle opacity (%)", L"Island", L"100", L"Opacity of the resting app strip.", Kind::Integer, 30, 100,
      L"", true},
     {L"AutoHide", L"Auto-hide", L"Island", L"0", L"Keep an edge affordance while the pointer is away.", Kind::Boolean,

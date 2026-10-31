@@ -333,7 +333,7 @@ class Island {
     DWORD systemTransparency = 1;
     ComPtr<ID2D1RoundedRectangleGeometry> wallpaperMask;
     ComPtr<ID2D1StrokeStyle> ringStroke;
-    graphics::GeometryCache geometryCache;
+    mutable graphics::GeometryCache geometryCache;
     graphics::AmbientShadow shadow;
     graphics::DepthCache depth;
     nativechrome::Host chromeHost;

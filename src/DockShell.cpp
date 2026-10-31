@@ -148,26 +148,9 @@ struct DockShell::Impl {
         bar.hits = std::move(geometry.hits);
         auto pill = bar.geometry.pill;
         float pixels = bar.Scale();
-        int radius = static_cast<int>(std::lround(pill.Height() * pixels));
-        HRGN region = CreateRoundRectRgn(static_cast<int>(std::lround(pill.left * pixels)),
-                                         static_cast<int>(std::lround(pill.top * pixels)),
-                                         static_cast<int>(std::lround(pill.right * pixels)),
-                                         static_cast<int>(std::lround(pill.bottom * pixels)), radius, radius);
-        if (options.island) {
-            DeleteObject(region);
-            auto makeRegion = [&](auto polygon) {
-                polygon = anchor::ForEdge(options.edge, polygon, pill.top, pill.Height());
-                std::vector<POINT> points;
-                for (auto p : polygon)
-                    points.push_back(
-                        {static_cast<LONG>(std::lround(p.x * pixels)), static_cast<LONG>(std::lround(p.y * pixels))});
-                return CreatePolygonRgn(points.data(), static_cast<int>(points.size()), WINDING);
-            };
-            region =
-                pixels > 1.5f
-                    ? makeRegion(dock::Attached<24>(pill.left, pill.top, pill.Width(), pill.Height(), options.radius))
-                    : makeRegion(dock::Attached(pill.left, pill.top, pill.Width(), pill.Height(), options.radius));
-        }
+        auto silhouette = shape::RoundedPath(factory.Get(), {pill.left, pill.top, pill.right, pill.bottom},
+                                             shape::Pill(pill.Height()), shape::Flat());
+        HRGN region = shape::Region(silhouette.Get(), D2D1::Matrix3x2F::Scale(pixels, pixels));
         for (const auto &hit : bar.hits)
             if (hit.action >= DockGroupFirst) {
                 auto r = hit.rect;
@@ -177,11 +160,8 @@ struct DockShell::Impl {
                     r.top -= 8;
                 else
                     r.bottom += 8;
-                int corner = static_cast<int>(layout::ControlRadius * pixels * 2);
-                HRGN icon = CreateRoundRectRgn(static_cast<int>(std::floor(r.left * pixels)),
-                                               static_cast<int>(std::floor(r.top * pixels)),
-                                               static_cast<int>(std::ceil(r.right * pixels)),
-                                               static_cast<int>(std::ceil(r.bottom * pixels)), corner, corner);
+                auto path = shape::RoundedPath(factory.Get(), {r.left, r.top, r.right, r.bottom}, shape::Control);
+                HRGN icon = shape::Region(path.Get(), D2D1::Matrix3x2F::Scale(pixels, pixels));
                 CombineRgn(region, region, icon, RGN_OR);
                 DeleteObject(icon);
             }
@@ -390,7 +370,7 @@ struct DockShell::Impl {
                      bounds.left + static_cast<LONG>(std::lround(pill.right * scale)),
                      bounds.top + static_cast<LONG>(std::lround(pill.bottom * scale))};
         bool fits = (pill.Width() + 96) * scale <= bounds.right - bounds.left;
-        bar.shadow.Position(bar.window, surface, bar.dpi * textScale, options.radius, options.edge, 1,
+        bar.shadow.Position(bar.window, surface, bar.dpi * textScale, shape::Surface, options.edge, 1,
                             fits && !contrast && !bar.hidden && !bar.hideOffset);
         EndPaint(bar.window, &paint);
     }
@@ -768,13 +748,10 @@ struct DockShell::Impl {
             POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
             ScreenToClient(bar.window, &point);
             auto pill = bar.geometry.pill;
-            float top = options.edge == anchor::Edge::Bottom ? pill.top : 0;
-            auto polygon = anchor::ForEdge(options.edge,
-                                           dock::Attached(pill.left, top, pill.Width(), 72 - pill.top, options.radius),
-                                           top, 72 - pill.top);
-            bool inside = options.island
-                              ? anchor::Contains(polygon, point.x / bar.Scale(), point.y / bar.Scale() - bar.hideOffset)
-                              : CapsuleContains(pill, point.x / bar.Scale(), point.y / bar.Scale());
+            auto *path = bar.resources.geometryCache.Rounded(factory.Get(), pill.Width(), pill.Height(),
+                                                             shape::Pill(pill.Height()), shape::Flat());
+            bool inside = shape::Contains(
+                path, {point.x / bar.Scale() - pill.left, point.y / bar.Scale() - bar.hideOffset - pill.top});
             return inside ? HTCLIENT : HTTRANSPARENT;
         }
         case WM_PAINT:
@@ -896,7 +873,7 @@ struct DockShell::Impl {
             return 0;
         }
         case WM_MOUSEHOVER:
-            if (!options.island && bar.hover >= DockGroupFirst)
+            if (bar.hover >= DockGroupFirst)
                 ShowPreview(bar, bar.hover - DockGroupFirst);
             return 0;
         case WM_MOUSEWHEEL:
@@ -1389,7 +1366,6 @@ bool DockShell::RenderFixture(const std::wstring &path, UINT dpi, float textScal
     }
     DockOptions fixtureOptions;
     if (variant >= 20) {
-        fixtureOptions.island = true;
         fixtureOptions.edge = variant == 20 ? anchor::Edge::Top : anchor::Edge::Bottom;
     }
     dockview::Resources resources;

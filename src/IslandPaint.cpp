@@ -556,9 +556,8 @@ void Island::Button(int id, D2D1_RECT_F rect, const std::wstring &title, const s
         if (!layoutOnly) {
             if (highContrast) {
                 brush->SetColor(Color(theme::Border));
-                target->DrawRoundedRectangle(
-                    D2D1::RoundedRect(toggle, (toggle.bottom - toggle.top) / 2, (toggle.bottom - toggle.top) / 2),
-                    brush.Get(), 2);
+                graphics::Rounded(target.Get(), factory.Get(), geometryCache, toggle,
+                                  shape::Pill(toggle.bottom - toggle.top), brush.Get(), 2);
             }
             brush->SetColor(Color(active ? theme::AccentInk : theme::Muted));
             target->FillEllipse(
@@ -827,7 +826,7 @@ void Island::DrawToast() {
                        ? 0
                        : -anchor::Grow(edge) * 8 * (1 - std::clamp(toastBlend.value, 0.0f, 1.0f));
     target->SetTransform(D2D1::Matrix3x2F::Translation(0, offset) * saved);
-    Card(rect, 2);
+    Card(rect, 2, 0, shape::Surface);
     Text(note, {rect.left + 12, rect.top, rect.right - 12, rect.bottom}, type::Label, theme::Text);
     target->SetTransform(saved);
     target->PopLayer();
