@@ -4,13 +4,15 @@
 #include <cmath>
 namespace wallpaper {
 struct CardPose {
-    float x, scale, opacity, skew, z;
+    float x, scale, opacity, skew, z, widthScale;
 };
 inline CardPose Pose(float delta, float centerWidth) {
     float a = std::min(std::abs(delta), 2.5f), sign = delta < 0 ? -1.0f : 1.0f;
-    float ease = 1 - std::exp(-1.8f * a);
-    return {sign * (centerWidth * .62f * ease + 34 * std::max(0.0f, a - 1)), 1 - .16f * std::min(a, 2.0f),
-            std::clamp(1 - .34f * a, 0.0f, 1.0f), -.158f * std::clamp(delta, -1.0f, 1.0f), -a};
+    float t = std::min(a, 1.0f);
+    t = t * t * (3 - 2 * t);
+    float strip = std::min(64.0f, centerWidth * .22f), first = (centerWidth + strip) / 2 + 12;
+    float x = a <= 1 ? a * first : first + (a - 1) * (strip + 12);
+    return {sign * x, 1 - .07f * t, std::clamp(1 - .18f * a, 0.0f, 1.0f), -.158f, -a, 1 - t + t * strip / centerWidth};
 }
 enum class Result { Applied, InvalidTarget, FitFailed, ImageFailed, RollbackFailed };
 struct Operations {

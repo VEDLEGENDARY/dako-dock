@@ -197,7 +197,8 @@ inline DockLayout SolveDock(float width, const std::vector<DockGroup> &groups, c
     apps = std::min(apps, available);
     float total = std::min(limit, fixed + apps), x = (width - total) / 2;
     bool bottom = options.edge == anchor::Edge::Bottom;
-    out.pill = {x, bottom ? 16.0f : 0.0f, x + total, bottom ? 72.0f : 56.0f};
+    float gap = layout::Metrics::FloatingGap;
+    out.pill = {x, bottom ? 16.0f - gap : gap, x + total, bottom ? 72.0f - gap : 56.0f + gap};
     out.baseline = bottom ? out.pill.bottom - 8 : out.pill.top + 8;
     out.dotY = out.baseline + (bottom ? 4 : -4);
     out.dividerTop = (out.pill.top + out.pill.bottom) / 2 - 10;

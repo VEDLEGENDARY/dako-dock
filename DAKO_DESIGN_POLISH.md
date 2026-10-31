@@ -1,6 +1,6 @@
 # DAKO_DESIGN_POLISH.md
 
-## Execution evidence (2026-10-28)
+## Execution evidence (2026-10-28–31)
 
 - Phase 0: `scripts/verify.ps1 -RenderDirectory docs/verification/design-baseline` passed:
   1,068 PNGs plus native geometry, identity and MSAA assertions. Baseline files are preserved unchanged.
@@ -9,11 +9,43 @@
 - L2: confirmed. The non-emergency status rect is zero height and the baseline wallpaper error note is absent.
 - M2: confirmed. The baseline active pill is painted from `TabRect`, never `tabLeft` / `tabRight`.
 - M3: confirmed. The baseline carousel uses integer selection, ignores both motion channels, and clips photos square.
-- G7: polygon/rounded-backdrop mismatch confirmed in source. Live screenshot inspection was attempted,
-  but computer-use app approval timed out; visible aliasing and blur bleed remain unverified at this point.
+- G7: polygon/rounded-backdrop mismatch confirmed and replaced with the same attached outline.
+  Live isolated preview inspection on October 29 showed a clean opaque edge and the in-island menu;
+  Escape restored the invoking Menu focus. Physical mixed-DPI/backdrop sign-off remains a manual check.
+
+- Phases 1–8 are implemented in separate phase commits. Tokens, typography, Bezier geometry, layout,
+  motion, dock feedback, in-island chrome, remaining pages and standalone settings are covered.
+- Final automated functional acceptance: 1,087 PNGs (five DPI and four text tiers), MSAA/geometry/hit-target
+  assertions, motion/privacy/module tests, native settings tests and 50 native composition cycles.
+  See [phase 8 evidence](docs/verification/design-phases/phase-8/README.md) for commands and measurements.
+- Performance acceptance remains open: idle private memory is 39.2188 MiB versus the rebuilt same-host
+  baseline's 33.6016 MiB. CPU and paint time improved; presented p50/p95/p99 intervals are 8.3333 ms.
+  This is not an unconditional completion of the memory non-regression guard below.
+- The original catalog already decoded at 320x200. That bound is retained below section 5.6's 720px
+  ceiling to avoid increasing persistent memory. Opaque-panel shadows use a cached layered bitmap;
+  hidden shadow windows and full rendering resources are released, and retired GPU scratch buffers are trimmed.
+- Physical mixed-DPI/backdrop edge inspection, a complete screen-reader journey and real-device
+  restoration remain manual acceptance work. Automated fixtures do not substitute for those checks.
 
 
 Design, graphics and animation pass for `VEDLEGENDARY/dako-dock` (V4 line, bottom island, C++20 / Win32 / Direct2D / DirectComposition).
+
+## Owner acceptance refinements (2026-10-30)
+
+The owner's latest instructions take precedence over conflicting layout examples below:
+
+- Use the earlier owner-supplied images preserved in `docs/v4/references` as the visual target.
+  Restore their page composition and missing details rather than treating this brief as a redesign.
+- For a bottom dock, put primary navigation and Menu together at the bottom, nearest the pointer.
+  Keep the content upright; mirror the navigation placement for a top dock.
+- Float the taskbar slightly (8 DIP). Do not reserve a strip of browser/application work area.
+  The explicit Replace taskbar option still owns Explorer hiding and recovery.
+- Keep the five reference Controls tiles, a full-width volume bar and horizontal media card.
+  Secondary brightness, wallpaper fit/target/apply and pagination commands remain accessible in Menu.
+  Preserve consent controls and truthful unavailable states when real data differs from the images.
+- The owner subsequently emphasized pixel accuracy and smoothness for every page. Use the reference
+  canvas dimensions in the [visual audit](docs/verification/design-phases/phase-8/reference-audit.md),
+  superseding the earlier shared-size layout. Resize through the existing springs and keep the dock edge fixed.
 
 Goal: a super clean, Apple-precise look. One calm dark surface, one accent, consistent geometry, soft depth, and motion that feels physical but never costs idle CPU. No behavior changes.
 

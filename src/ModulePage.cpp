@@ -88,8 +88,8 @@ void Island::ModuleView() {
         CompactHeader(true);
     else {
         auto h = layout.header;
-        SmallButton(FlyoutBack, {h.left, 8, h.left + 40, 44}, L"\xE72B", modules::String(IDS_BACK));
-        Text(modules::String(modulePanel.title), {h.left + 52, 8, h.right, 44}, type::Section);
+        SmallButton(FlyoutBack, {h.left, h.top, h.left + 40, h.bottom}, L"\xE72B", modules::String(IDS_BACK));
+        Text(modules::String(modulePanel.title), {h.left + 52, h.top, h.right, h.bottom}, type::Section);
     }
     {
         DockBodyScope scope(*this);
@@ -119,12 +119,12 @@ void Island::ModuleView() {
                 Paragraph(row.label, {b.left, y, b.right, y + 38});
                 AddHit(7200 + static_cast<int>(slot), {b.left, y, b.right, y + 38}, row.label, false);
             } else
-                TextButton(5100 + static_cast<int>(slot), {b.left, y, b.right, y + 38}, row.label, false, row.enabled);
+                ListRow(5100 + static_cast<int>(slot), {b.left, y, b.right, y + 40}, row.label, L"", false,
+                        row.enabled);
         }
         if (modulePanel.rows.empty()) {
             auto message = modules::String(IDS_MODULE_EMPTY);
-            Paragraph(message, b);
-            AddHit(7220, b, std::move(message), false);
+            EmptyState(b, L"\xE8A5", message, L"Try another search or return to Features.", 7220);
         }
     }
     if (!layout.emergency) {

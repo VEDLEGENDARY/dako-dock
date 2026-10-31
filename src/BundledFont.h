@@ -10,6 +10,7 @@ class BundledFont {
     Microsoft::WRL::ComPtr<IDWriteInMemoryFontFileLoader> loader_;
     Microsoft::WRL::ComPtr<IDWriteFontCollection1> collection_;
     std::vector<char> bytes_;
+    HANDLE nativeFont_ = nullptr;
 
   public:
     explicit BundledFont(IDWriteFactory *factory) {
@@ -21,8 +22,11 @@ class BundledFont {
             return;
         bytes_.resize(static_cast<size_t>(file.tellg()));
         file.seekg(0);
-        if (!file.read(bytes_.data(), static_cast<std::streamsize>(bytes_.size())) ||
-            FAILED(factory->QueryInterface(IID_PPV_ARGS(&factory_))) ||
+        if (!file.read(bytes_.data(), static_cast<std::streamsize>(bytes_.size())))
+            return;
+        DWORD count = 0;
+        nativeFont_ = AddFontMemResourceEx(bytes_.data(), static_cast<DWORD>(bytes_.size()), nullptr, &count);
+        if (FAILED(factory->QueryInterface(IID_PPV_ARGS(&factory_))) ||
             FAILED(factory_->CreateInMemoryFontFileLoader(&loader_)) ||
             FAILED(factory_->RegisterFontFileLoader(loader_.Get())))
             return;
@@ -37,6 +41,8 @@ class BundledFont {
         factory_->CreateFontCollectionFromFontSet(set.Get(), &collection_);
     }
     ~BundledFont() {
+        if (nativeFont_)
+            RemoveFontMemResourceEx(nativeFont_);
         collection_.Reset();
         if (factory_ && loader_)
             factory_->UnregisterFontFileLoader(loader_.Get());

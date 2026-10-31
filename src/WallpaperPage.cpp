@@ -39,7 +39,8 @@ void Island::Photo(ID2D1Bitmap *bitmap, D2D1_RECT_F rect, float opacity, float p
                           D2D1::Matrix3x2F::Translation((rect.left + rect.right - size.width * ratio) / 2 + parallax,
                                                         (rect.top + rect.bottom - size.height * ratio) / 2));
     picture->SetOpacity(opacity);
-    target->FillRoundedRectangle(D2D1::RoundedRect(rect, layout::CardRadius, layout::CardRadius), picture.Get());
+    float radius = rect.bottom - rect.top <= 64 ? layout::Metrics::SmallRadius : layout::CardRadius;
+    target->FillRoundedRectangle(D2D1::RoundedRect(rect, radius, radius), picture.Get());
 }
 
 void Island::ChooseWallpaperFolder() {
@@ -98,6 +99,10 @@ void Island::WallpaperAction(int id) {
         WallpaperSource(0);
         return;
     }
+    if (id == 9502) {
+        ChooseWallpaperFolder();
+        return;
+    }
     if (id == WallpaperCurrent) {
         WallpaperSource(2);
         return;
@@ -152,52 +157,60 @@ void Island::WallpaperAction(int id) {
 }
 void Island::Wallpaper() {
     auto b = Body();
-    float segment = std::min(104.0f, (b.right - b.left - 12) / 2);
+    float segment = std::min(72.0f, (b.right - b.left - 12) / 2);
     TextButton(WallpaperCollection, {b.left, b.top, b.left + segment, b.top + 32}, L"Recent", wallpaperSource == 0);
     TextButton(WallpaperFolder, {b.left + segment + 4, b.top, b.left + segment * 2 + 4, b.top + 32}, L"My folder",
                wallpaperSource == 1);
     if (b.right - b.left >= 400) {
-        Text(std::to_wstring(wallpapers.size()) + L" pictures", {b.left + 228, b.top, b.right - 88, b.top + 32},
+        Text(std::to_wstring(wallpapers.size()) + L" pictures", {b.left + 164, b.top, b.right - 48, b.top + 32},
              type::Caption, theme::Muted);
-        TextButton(WallpaperCurrent, {b.right - 80, b.top, b.right, b.top + 32}, L"Current");
+        SmallButton(9502, {b.right - 32, b.top, b.right, b.top + 32}, L"\xE8B7", L"Choose wallpaper folder");
     }
     if (thumbnails.size() != wallpapers.size())
         thumbnails.resize(wallpapers.size());
     if (renderMode || reducedMotion || highContrast)
         wallpaperFocus.Snap(static_cast<float>(selectedWallpaper));
-    else if (wallpaperFocus.goal != static_cast<float>(selectedWallpaper)) {
-        wallpaperFocus.goal = static_cast<float>(selectedWallpaper);
-        ArmMotion();
+    else if (!wallpapers.empty()) {
+        float selected = static_cast<float>(selectedWallpaper), size = static_cast<float>(wallpapers.size());
+        float goal = selected + std::round((wallpaperFocus.value - selected) / size) * size;
+        if (wallpaperFocus.goal != goal) {
+            wallpaperFocus.goal = goal;
+            ArmMotion();
+        }
     }
     auto stage = Layout().stage;
+    float skew = highContrast ? 0.0f : -9.0f;
     float focus = wallpaperFocus.value;
     std::array<int, 7> indices{};
     int count = 0, middle = static_cast<int>(std::lround(focus));
-    for (int index = middle - 3; index <= middle + 3; ++index)
-        if (index >= 0 && index < static_cast<int>(wallpapers.size()))
-            indices[count++] = index;
+    int total = static_cast<int>(wallpapers.size()), visible = std::min(5, total);
+    int firstVisible = middle - std::min(2, (total - 1) / 2);
+    for (int index = firstVisible; index < firstVisible + visible; ++index)
+        indices[count++] = index;
     std::sort(indices.begin(), indices.begin() + count,
               [&](int left, int right) { return std::abs(left - focus) > std::abs(right - focus); });
     PaintGroup reveal(*this, 0);
     for (int slot = 0; slot < count; ++slot) {
-        int index = indices[slot];
-        float delta = index - focus;
+        int visualIndex = indices[slot], index = (visualIndex % total + total) % total;
+        float delta = visualIndex - focus;
         auto pose = wallpaper::Pose(delta, stage.Width());
         if (pose.opacity <= 0)
             continue;
-        float w = stage.Width() * pose.scale, h = stage.Height() * pose.scale;
-        float cx = stage.CenterX() + pose.x, cy = (stage.top + stage.bottom) / 2 + std::abs(delta) * 4;
+        float w = std::max(layout::Metrics::MinHit, stage.Width() * pose.widthScale);
+        float h = std::max(layout::Metrics::MinHit, stage.Height() * pose.scale);
+        float cx = stage.CenterX() + pose.x, cy = (stage.top + stage.bottom) / 2;
         D2D1_RECT_F rect{cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2};
         AddHit(500 + index, rect, wallpapers[index].title);
-        hits.back().skew = std::tan(pose.skew);
+        hits.back().skew = std::tan(skew / 57.2957795f);
         hits.back().radius = layout::CardRadius;
         D2D1::Matrix3x2F saved;
         if (!layoutOnly) {
             target->GetTransform(&saved);
             auto layer = D2D1::LayerParameters();
             layer.opacity = highContrast ? 1.0f : pose.opacity;
-            target->PushLayer(layer, nullptr);
-            target->SetTransform(D2D1::Matrix3x2F::Skew(pose.skew * 57.2957795f, 0, {cx, cy}) * saved);
+            if (!highContrast && pose.opacity < 1)
+                target->PushLayer(layer, nullptr);
+            target->SetTransform(D2D1::Matrix3x2F::Skew(skew, 0, {cx, cy}) * saved);
         }
         if (!layoutOnly && !highContrast && std::abs(delta) < .5f)
             depth.Paint(target.Get(), rect, dpi * textScale, layout::CardRadius, edge);
@@ -212,16 +225,11 @@ void Island::Wallpaper() {
             Photo(thumbnails[index].Get(), rect, 1, reducedMotion || highContrast ? 0 : -wallpaperParallax.value * 4);
         } else if (wallpaperLoading)
             Shimmer(rect);
-        if (!layoutOnly && index == static_cast<int>(selectedWallpaper) && std::abs(delta) < .25f) {
-            brush->SetColor(Color(theme::Accent, highContrast ? 1.0f : 1 - std::abs(delta) * 4));
-            D2D1_RECT_F ring{rect.left + 3, rect.top + 3, rect.right - 3, rect.bottom - 3};
-            target->DrawRoundedRectangle(D2D1::RoundedRect(ring, layout::CardRadius - 3, layout::CardRadius - 3),
-                                         brush.Get(), 2);
-        }
         FocusRing(500 + index, rect, layout::CardRadius);
         if (!layoutOnly) {
             target->SetTransform(saved);
-            target->PopLayer();
+            if (!highContrast && pose.opacity < 1)
+                target->PopLayer();
         }
     }
     float center = stage.CenterX();
@@ -234,14 +242,5 @@ void Island::Wallpaper() {
         Line(center + 12, y + 8, center + 24, y - 4, theme::Muted, 1.5f);
         Text(wallpaperLoading ? L"Loading pictures…" : L"Choose a folder to add pictures.",
              {b.left + 12, y + 20, b.right - 12, y + 52}, type::Body, theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
-    } else if (!layoutOnly) {
-        size_t dots = std::min(size_t{9}, wallpapers.size());
-        size_t first = selectedWallpaper > dots / 2 ? selectedWallpaper - dots / 2 : 0;
-        first = std::min(first, wallpapers.size() - dots);
-        for (size_t i = 0; i < dots; ++i) {
-            brush->SetColor(Color(first + i == selectedWallpaper ? theme::Text : theme::Muted));
-            float x = center + (static_cast<float>(i) - static_cast<float>(dots - 1) / 2) * 12;
-            target->FillEllipse(D2D1::Ellipse({x, b.bottom - 6}, 3, 3), brush.Get());
-        }
     }
 }

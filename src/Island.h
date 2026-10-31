@@ -71,7 +71,7 @@ constexpr UINT AudioDeviceChanged = WM_APP + 5;
 constexpr UINT RevealDock = WM_APP + 7;
 constexpr UINT MotionFrame = WM_APP + 31;
 constexpr UINT_PTR TransitionTimer = 1, StatsTimer = 2, MediaTimer = 3, InteractionTimer = 4, FocusTimer = 5,
-                   ConnectivityTimer = 6, ToastTimer = 7;
+                   ConnectivityTimer = 6, ToastTimer = 7, ScrollFadeTimer = 8;
 constexpr wchar_t WindowClass[] = L"Dako.Native.Island";
 
 inline void Check(HRESULT result) {
@@ -309,7 +309,7 @@ class Island {
 
     std::unique_ptr<controls::Service> nativeControls;
     controls::Snapshot controlState;
-    bool draggingBrightness = false, statsMemory = false;
+    bool draggingBrightness = false, statsMemory = true;
     size_t outputPage = 0;
     int wallpaperSource = 0;
     std::wstring wallpaperFolder, wallpaperTarget;
@@ -380,6 +380,12 @@ class Island {
     HMONITOR refreshMonitor = nullptr;
     std::array<int, 9> regionSignature{-1, -1, -1, -1, -1, -1, -1, -1, -1};
     float envelopeWidth = theme::EnvelopeWidth, scroll = 0, pointerX = -10000, textScale = 1;
+    float observedScroll = 0;
+    dock::Spring scrollThumb{0};
+    ComPtr<ID2D1LinearGradientBrush> scrollFade;
+    void ScrollDecoration();
+    void EmptyState(D2D1_RECT_F rect, const wchar_t *glyph, const std::wstring &title, const std::wstring &hint,
+                    int readout = 1980);
     dock::Scheduler scheduler;
     FrameClock frameClock;
     bool frameTickReady = false;
@@ -600,10 +606,12 @@ class Island {
     void Text(const std::wstring &text, D2D1_RECT_F rect, int format = type::Body, unsigned color = theme::Text,
               DWRITE_TEXT_ALIGNMENT align = DWRITE_TEXT_ALIGNMENT_LEADING);
     void TwoLine(D2D1_RECT_F rect, const std::wstring &title, const std::wstring &subtitle,
-                 unsigned color = theme::Text);
+                 unsigned color = theme::Text, int role = type::Title);
+    void ListRow(int id, D2D1_RECT_F rect, const std::wstring &title, const std::wstring &subtitle = L"",
+                 bool selected = false, bool enabled = true);
     void Line(float x1, float y1, float x2, float y2, unsigned color, float thickness = 1);
     void AddHit(int id, D2D1_RECT_F rect, std::wstring name, bool enabled = true);
-    void FocusRing(int id, D2D1_RECT_F rect, float radius = 12);
+    void FocusRing(int id, D2D1_RECT_F rect, float radius = layout::ControlRadius);
     bool Hover(int id) const;
     float HoverAmount(int id) const;
     void SetHover(int next);

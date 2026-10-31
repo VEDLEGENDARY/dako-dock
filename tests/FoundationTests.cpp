@@ -204,13 +204,19 @@ int main() {
                                       "bounded bar exposes overflow instead of overlap");
                 }
         for (float height : {300.0f, 560.0f, 748.0f}) {
-            float expected = layout::Solve({800, height, layout::View::Controls, 20}).panel.Height();
             for (auto view : {layout::View::Today, layout::View::Apps, layout::View::Stats, layout::View::Wallpaper})
-                RequireFoundation(layout::Solve({800, height, view, 20}).panel.Height() == expected,
-                                  "tab changes preserve fixed island height");
+                RequireFoundation(layout::Solve({800, height, view, 20}).panel.Height() <= height,
+                                  "reference proportions clamp to short monitor envelopes");
+        }
+        const float widths[]{580, 800, 800, 800, 800, 944, 800};
+        const float heights[]{368, 416, 320, 424, 400, 304, 400};
+        for (int view = 0; view < 7; ++view) {
+            auto reference = layout::Solve({1100, 760, static_cast<layout::View>(view)});
+            RequireFoundation(reference.panel.Width() == widths[view] && reference.panel.Height() == heights[view],
+                              "primary pages preserve the owner-reference proportions before viewport clamping");
         }
         std::puts("PASS: versioned settings migration/atomic merge, 20 tasks, ICS recurrence/time zones, window "
-                  "filter, bar DPI math and fixed tab height.");
+                  "filter, bar DPI math and reference page proportions.");
         winrt::uninit_apartment();
         return 0;
     } catch (const std::exception &error) {

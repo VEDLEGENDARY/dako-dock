@@ -55,6 +55,7 @@ void Island::BeginChrome(ChromeKind kind, const std::wstring &title, const std::
     }
     ArmMotion();
     NotifyWinEvent(EVENT_SYSTEM_DIALOGSTART, window, OBJID_CLIENT, CHILDID_SELF);
+    NotifyWinEvent(EVENT_OBJECT_NAMECHANGE, window, OBJID_CLIENT, CHILDID_SELF);
     InvalidateRect(window, nullptr, FALSE);
 }
 
@@ -101,6 +102,7 @@ void Island::CloseChrome() {
         PositionInputs();
     }
     NotifyWinEvent(EVENT_SYSTEM_DIALOGEND, window, OBJID_CLIENT, CHILDID_SELF);
+    NotifyWinEvent(EVENT_OBJECT_NAMECHANGE, window, OBJID_CLIENT, CHILDID_SELF);
 }
 
 int Island::WaitChrome() {
@@ -365,6 +367,7 @@ void Island::DrawChrome() {
         top = std::clamp(chrome.anchor.y + (edge == anchor::Edge::Bottom ? -chrome.height : 0), body.top,
                          std::max(body.top, body.bottom - chrome.height));
     D2D1_RECT_F rect{left, top - chrome.scroll, left + sheetWidth, top - chrome.scroll + chrome.height};
+    float opacity = highContrast ? 1.0f : std::clamp(chrome.blend.value, 0.0f, 1.0f);
     if (!layoutOnly) {
         brush->SetColor(Color(highContrast ? theme::Surface : palette::Tokens::Black, highContrast ? 1.0f
                                                                                       : menu       ? .12f
@@ -372,8 +375,9 @@ void Island::DrawChrome() {
         target->FillRectangle(body, brush.Get());
         target->PushAxisAlignedClip(body, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         auto layer = D2D1::LayerParameters();
-        layer.opacity = highContrast ? 1.0f : std::clamp(chrome.blend.value, 0.0f, 1.0f);
-        target->PushLayer(layer, nullptr);
+        layer.opacity = opacity;
+        if (opacity < 1)
+            target->PushLayer(layer, nullptr);
     }
     D2D1::Matrix3x2F saved;
     if (!layoutOnly) {
@@ -456,7 +460,8 @@ void Island::DrawChrome() {
     }
     if (!layoutOnly) {
         target->SetTransform(saved);
-        target->PopLayer();
+        if (opacity < 1)
+            target->PopLayer();
         target->PopAxisAlignedClip();
     }
 }

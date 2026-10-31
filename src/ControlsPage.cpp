@@ -5,7 +5,9 @@ void Island::MediaCard(bool compact) {
     auto rect = compact ? l.body : layout::ControlsColumns(l)[1];
     if (compact)
         rect.bottom = std::min(rect.bottom, rect.top + layout::Metrics::MediaBodyHeight);
-    Card(R(rect));
+    bool compactLayout = compact || rect.Width() < 300;
+    if (!compact)
+        Card(R(rect));
     float cx = rect.CenterX();
     if (!currentMedia.available) {
         Text(L"\xE8D6", {rect.left, rect.top + 24, rect.right, rect.top + 72}, type::LargeIcon, theme::Muted,
@@ -16,11 +18,10 @@ void Island::MediaCard(bool compact) {
             AddHit(Expand, R(rect), L"Open full controls");
         return;
     }
-    float artSize = compact ? 40.0f : 120.0f;
-    D2D1_RECT_F art{compact ? rect.left + 12 : cx - artSize / 2, rect.top + (compact ? 4.0f : 16.0f),
-                    compact ? rect.left + 12 + artSize : cx + artSize / 2,
-                    rect.top + (compact ? 4.0f : 16.0f) + artSize};
-    Fill(art, theme::Inset, layout::CardRadius);
+    float artSize = compactLayout ? 40.0f : 48.0f;
+    float artLeft = rect.left + (compact ? 0.0f : 16.0f), artTop = rect.top + (compactLayout ? 12.0f : 32.0f);
+    D2D1_RECT_F art{artLeft, artTop, artLeft + artSize, artTop + artSize};
+    Fill(art, theme::Inset, layout::Metrics::SmallRadius);
     Text(L"\xE8D6", art, type::LargeIcon, theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
     if (!layoutOnly && currentMedia.artwork) {
         if (mediaPixels != currentMedia.artwork || !mediaBitmap) {
@@ -33,68 +34,82 @@ void Island::MediaCard(bool compact) {
         }
         Photo(mediaBitmap.Get(), art);
     }
-    if (compact) {
-        TwoLine({rect.left + 64, rect.top, rect.right - 12, rect.top + 44}, currentMedia.title, currentMedia.artist);
-        AddHit(Expand, {rect.left, rect.top, rect.right, rect.top + 44}, L"Open full controls");
+    if (compactLayout) {
+        D2D1_RECT_F metadata{rect.left + 64, rect.top + 16, rect.right - 8, rect.top + 36};
+        Text(currentMedia.title, metadata, type::Label, theme::Text, DWRITE_TEXT_ALIGNMENT_CENTER);
+        metadata.top += 20;
+        metadata.bottom += 20;
+        Text(currentMedia.artist, metadata, type::Caption, theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
+        if (compact)
+            AddHit(Expand, {rect.left, rect.top, rect.right, rect.top + 60}, L"Open full controls");
     } else {
-        Text(currentMedia.title, {rect.left + 16, rect.top + 140, rect.right - 16, rect.top + 164}, type::Title,
-             theme::Text, DWRITE_TEXT_ALIGNMENT_CENTER);
-        Text(currentMedia.artist, {rect.left + 16, rect.top + 164, rect.right - 16, rect.top + 184}, type::Caption,
-             theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
+        Text(L"\xE767", {rect.left + 16, rect.top + 4, rect.left + 32, rect.top + 24}, type::InlineIcon, theme::Muted);
+        Text(system.audioName, {rect.left + 36, rect.top + 4, rect.right - 16, rect.top + 24}, type::Caption,
+             theme::Muted);
+        TwoLine({rect.left + 80, rect.top + 32, rect.right - 164, rect.top + 80}, currentMedia.title,
+                currentMedia.artist, theme::Text, type::Title);
     }
     AddHit(2000, R(rect),
            currentMedia.title + L". " + currentMedia.artist + L". " + Clock(currentMedia.position) + L" of " +
                Clock(currentMedia.duration),
            false);
-    float y = rect.top + (compact ? 48.0f : 188.0f), playSize = compact ? 32.0f : 48.0f;
+    float y = rect.top + (compactLayout ? 88.0f : 32.0f), playSize = compactLayout ? 32.0f : 40.0f;
+    float transportCenter = compactLayout ? cx : rect.right - 84;
+    unsigned playFill = highContrast ? theme::Accent : dock::Mix(theme::Accent, palette::Tokens::White, .7f);
+    unsigned playInk = Contrast(playFill, palette::Tokens::Black) > Contrast(playFill, palette::Tokens::White)
+                           ? palette::Tokens::Black
+                           : palette::Tokens::White;
     for (int i = 0; i < 3; ++i) {
         float size = i == 1 ? playSize : 32.0f;
-        float x = cx + (i - 1) * (compact ? 44.0f : 58.0f);
+        float x = transportCenter + (i - 1) * 44;
         D2D1_RECT_F button{x - size / 2, y + (playSize - size) / 2, x + size / 2, y + (playSize + size) / 2};
         int id = Previous + i;
         bool enabled = i == 0 ? currentMedia.canPrevious : i == 1 ? currentMedia.canPlay : currentMedia.canNext;
         AddHit(id, button, i == 0 ? L"Previous track" : i == 1 ? L"Play or pause" : L"Next track", enabled);
-        Fill(Tactile(id, button),
-             i == 1 && enabled ? theme::Accent : dock::Mix(theme::Card, theme::CardHover, HoverAmount(id)), size / 2);
+        if (!compact)
+            Fill(Tactile(id, button),
+                 i == 1 && enabled ? playFill : dock::Mix(theme::CardHover, theme::Text, HoverAmount(id) * .1f),
+                 size / 2);
         Text(i == 0                 ? L"\xE892"
              : i == 2               ? L"\xE893"
              : currentMedia.playing ? L"\xE769"
                                     : L"\xE768",
-             button, type::Icon,
-             i == 1 && enabled ? theme::AccentInk
-             : enabled         ? theme::Text
-                               : theme::Muted,
+             button, type::InlineIcon,
+             i == 1 && enabled && !compact ? playInk
+             : enabled                     ? theme::Text
+                                           : theme::Muted,
              DWRITE_TEXT_ALIGNMENT_CENTER);
         FocusRing(id, button, size / 2);
     }
     if (options.Bool(L"MediaScrubber")) {
-        float trackY = rect.bottom - 8;
+        float trackY = compactLayout ? rect.top + 70 : rect.bottom - 16;
+        float trackPad = rect.Width() < 160 ? 8.0f : 52.0f;
         float progress = currentMedia.duration > 0
                              ? static_cast<float>(std::clamp(currentMedia.position / currentMedia.duration, 0.0, 1.0))
                              : 0;
-        Line(rect.left + 16, trackY, rect.right - 16, trackY, theme::Inset, 2);
-        float position = rect.left + 16 + (rect.Width() - 32) * progress;
-        Line(rect.left + 16, trackY, position, trackY, theme::Accent, 2);
+        Line(rect.left + trackPad, trackY, rect.right - trackPad, trackY, theme::Inset, 2);
+        float position = rect.left + trackPad + (rect.Width() - 2 * trackPad) * progress;
+        Line(rect.left + trackPad, trackY, position, trackY, theme::Accent, 2);
         if (!layoutOnly) {
             brush->SetColor(Color(theme::Text));
             target->FillEllipse(D2D1::Ellipse({position, trackY}, 3, 3), brush.Get());
         }
-        Text(Clock(currentMedia.position), {rect.left + 16, rect.bottom - 32, cx, rect.bottom - 12}, type::Caption,
+        Text(Clock(currentMedia.position), {rect.left + 8, trackY - 12, rect.left + 48, trackY + 12}, type::Caption,
              theme::Muted);
-        Text(Clock(currentMedia.duration), {cx, rect.bottom - 32, rect.right - 16, rect.bottom - 12}, type::Caption,
+        Text(Clock(currentMedia.duration), {rect.right - 48, trackY - 12, rect.right - 8, trackY + 12}, type::Caption,
              theme::Muted, DWRITE_TEXT_ALIGNMENT_TRAILING);
-        AddHit(2970, {rect.left + 16, rect.bottom - 32, rect.right - 16, rect.bottom}, L"Media playback position",
-               currentMedia.duration > 0);
+        AddHit(2970, {rect.left + trackPad, trackY - 16, rect.right - trackPad, trackY + 16},
+               L"Media playback position", currentMedia.duration > 0);
     }
 }
 
 D2D1_RECT_F Island::VolumeRect() const {
     auto left = layout::ControlsColumns(Layout())[0];
-    return {left.left, left.bottom - 72, left.right, left.bottom};
+    return {left.left, left.bottom - 32, left.right, left.bottom};
 }
 D2D1_RECT_F Island::VolumeTrack() const {
     auto r = VolumeRect();
-    return {r.left + 52, r.bottom - 24, r.right - 20, r.bottom - 20};
+    return {r.left, r.top, r.right, r.bottom};
 }
 bool Island::HasAudio() const { return fixtureGeometry ? fixtureAudioAvailable : system.audio != nullptr; }
 
@@ -102,11 +117,11 @@ void Island::Controls() {
     auto l = Layout();
     auto left = layout::ControlsColumns(l)[0];
     auto grid = left;
-    grid.bottom -= 84;
+    grid.bottom -= 44;
     auto rows = l.narrow ? layout::Rows(grid, {1, 1, 1}) : layout::Rows(grid, {1, 1});
-    const int ids[]{Wifi, Bluetooth, Audio, Night, Dark, Brightness};
+    const int ids[]{Wifi, Bluetooth, Audio, Night, Dark};
     const wchar_t *names[]{L"Wi-Fi", L"Bluetooth", L"Audio", L"Night Light", L"Dark mode", L"Brightness"};
-    const wchar_t *icons[]{L"\xE701", L"\xE702", L"\xE767", L"\xE708", L"\xE790", L"\xE706"};
+    const wchar_t *icons[]{L"\xE701", L"\xE702", L"\xE767", L"\xE708", L"\xE7A1", L"\xE706"};
     std::wstring details[]{system.wifi,
                            system.bluetooth,
                            system.audioName,
@@ -114,40 +129,36 @@ void Island::Controls() {
                            controlState.dark ? L"On" : L"Off",
                            Number(controlState.brightness) + L"%"};
     int columns = l.narrow ? 2 : 3;
-    for (int i = 0; i < 6; ++i) {
+    for (int i = 0; i < 5; ++i) {
         PaintGroup reveal(*this, i);
-        auto cells =
-            l.narrow ? layout::Columns(rows[i / columns], {1, 1}) : layout::Columns(rows[i / columns], {1, 1, 1});
+        auto cells = l.narrow ? layout::Columns(rows[i / columns], {1, 1})
+                     : i < 3  ? layout::Columns(rows[0], {1, 1, 1})
+                              : layout::Columns(rows[1], {1, 1});
         bool active = i == 0   ? system.wifiConnected
                       : i == 1 ? std::any_of(connections.devices.begin(), connections.devices.end(),
                                              [](const auto &device) { return device.connected; })
+                      : i == 2 ? HasAudio()
                       : i == 4 ? controlState.dark
                                : false;
-        if (i == 5 && !controlState.brightnessSupported)
-            Button(FocusStart, R(cells[i % columns]), L"Focus", focusRunning ? L"Running" : L"Start a session",
-                   L"\xE916", focusRunning);
-        else
-            Button(ids[i], R(cells[i % columns]), names[i], details[i], icons[i], active, i != 2 || HasAudio());
+        size_t slot = l.narrow ? i % columns : i < 3 ? i : i - 3;
+        Button(ids[i], R(cells[slot]), names[i], details[i], icons[i], active, i != 2 || HasAudio());
     }
     auto volume = VolumeRect(), track = VolumeTrack();
     {
         PaintGroup reveal(*this, 6);
-        Card(volume);
-        Text(L"\xE767", {volume.left + 16, volume.top + 16, volume.left + 40, volume.bottom - 16}, type::TileIcon,
-             HasAudio() ? theme::Text : theme::Muted);
-        Text(L"Volume", {track.left, volume.top + 8, volume.right - 72, volume.top + 36}, type::Label);
-        Text(Number(system.volume * 100) + L"%",
-             {volume.right - 68, volume.top + 8, volume.right - 16, volume.top + 36}, type::Caption, theme::Muted,
-             DWRITE_TEXT_ALIGNMENT_TRAILING);
         volumeMotion.goal = system.volume;
         if (reducedMotion || renderMode || highContrast)
             volumeMotion.Snap(volumeMotion.goal);
         else if (!layoutOnly && volumeMotion.Moving())
             ArmMotion();
-        Fill(track, theme::Inset, (track.bottom - track.top) / 2);
+        Fill(track, theme::Card, (track.bottom - track.top) / 2);
         float position = track.left + (track.right - track.left) * std::clamp(volumeMotion.value, 0.0f, 1.0f);
         if (position > track.left)
             Fill({track.left, track.top, position, track.bottom}, theme::Accent, (track.bottom - track.top) / 2);
+        Text(L"\xE767", {volume.left + 12, volume.top, volume.left + 36, volume.bottom}, type::InlineIcon,
+             system.volume > .08f ? theme::AccentInk : theme::Muted);
+        Text(Number(system.volume * 100) + L"%", {volume.right - 64, volume.top, volume.right - 12, volume.bottom},
+             type::Caption, theme::Text, DWRITE_TEXT_ALIGNMENT_TRAILING);
         if (!layoutOnly) {
             float alpha = draggingVolume || focusedKey == StableKey(Volume) ? 1.0f : HoverAmount(Volume);
             brush->SetColor(Color(theme::Text, highContrast ? 1 : alpha));

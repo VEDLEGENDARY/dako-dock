@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <vector>
 #include <array>
+#include <cstring>
 
 namespace graphics {
 // A cached Gaussian nine-slice. No worker, timer or per-frame bitmap allocation.
@@ -12,6 +13,10 @@ class AmbientShadow {
     HBITMAP bitmap_ = nullptr;
     HGDIOBJ previous_ = nullptr;
     std::array<int, 4> key_{};
+    std::array<int, 2> sliceKey_{};
+    std::vector<unsigned> slice_;
+    unsigned *pixels_ = nullptr;
+    int tile_ = 0, cut_ = 0, capacityWidth_ = 0, capacityHeight_ = 0;
     BYTE alpha_ = 0;
     static LRESULT CALLBACK Procedure(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
         if (message == WM_NCHITTEST)
@@ -22,14 +27,18 @@ class AmbientShadow {
     }
     void ReleaseBitmap() {
         if (memory_) {
-            SelectObject(memory_, previous_);
+            if (previous_)
+                SelectObject(memory_, previous_);
             DeleteDC(memory_);
             memory_ = nullptr;
+            previous_ = nullptr;
         }
         if (bitmap_) {
             DeleteObject(bitmap_);
             bitmap_ = nullptr;
         }
+        pixels_ = nullptr;
+        capacityWidth_ = capacityHeight_ = 0;
     }
     static void Blur(std::vector<float> &pixels, int size, int radius) {
         std::vector<float> scratch(pixels.size());
@@ -88,42 +97,64 @@ class AmbientShadow {
     }
 
   private:
-    bool Build(int width, int height, float dpi, float radius) {
-        ReleaseBitmap();
-        int tile = 0, cut = 0;
-        auto slice = Slice(dpi, radius, 20, 48, .38f, tile, cut);
-        BITMAPINFO info{};
-        info.bmiHeader = {sizeof(BITMAPINFOHEADER), width, -height, 1, 32, BI_RGB, 0, 0, 0, 0, 0};
-        void *raw = nullptr;
-        bitmap_ = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &raw, nullptr, 0);
-        memory_ = CreateCompatibleDC(nullptr);
-        if (!bitmap_ || !memory_ || !raw) {
-            ReleaseBitmap();
-            return false;
+    bool Build(int width, int height, float dpi, float radius, SIZE reserve) {
+        std::array<int, 2> sliceKey{static_cast<int>(std::lround(dpi)), static_cast<int>(std::lround(radius * 2))};
+        if (slice_.empty() || sliceKey_ != sliceKey) {
+            slice_ = Slice(dpi, radius, 20, 48, .38f, tile_, cut_);
+            sliceKey_ = sliceKey;
         }
-        previous_ = SelectObject(memory_, bitmap_);
-        auto *pixels = static_cast<unsigned *>(raw);
+        int nextWidth = (std::max(width, static_cast<int>(reserve.cx)) + 127) / 128 * 128;
+        int nextHeight = (std::max(height, static_cast<int>(reserve.cy)) + 63) / 64 * 64;
+        if (!bitmap_ || nextWidth > capacityWidth_ || nextHeight > capacityHeight_) {
+            nextWidth = std::max(nextWidth, capacityWidth_);
+            nextHeight = std::max(nextHeight, capacityHeight_);
+            ReleaseBitmap();
+            BITMAPINFO info{};
+            info.bmiHeader = {sizeof(BITMAPINFOHEADER), nextWidth, -nextHeight, 1, 32, BI_RGB, 0, 0, 0, 0, 0};
+            void *raw = nullptr;
+            bitmap_ = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &raw, nullptr, 0);
+            memory_ = CreateCompatibleDC(nullptr);
+            if (!bitmap_ || !memory_ || !raw) {
+                ReleaseBitmap();
+                return false;
+            }
+            previous_ = SelectObject(memory_, bitmap_);
+            pixels_ = static_cast<unsigned *>(raw);
+            capacityWidth_ = nextWidth;
+            capacityHeight_ = nextHeight;
+        }
+        int tile = tile_, cut = cut_;
         auto source = [=](int n, int extent) {
             return n < cut ? n : n >= extent - cut ? tile - (extent - n) : cut + 4;
         };
-        for (int y = 0; y < height; ++y)
-            for (int x = 0; x < width; ++x) {
-                pixels[static_cast<size_t>(y) * width + x] = slice[source(y, height) * tile + source(x, width)];
-            }
+        for (int y = 0; y < height; ++y) {
+            auto *row = pixels_ + static_cast<size_t>(y) * capacityWidth_;
+            const auto *mask = slice_.data() + source(y, height) * tile;
+            if (width >= 2 * cut) {
+                memcpy(row, mask, static_cast<size_t>(cut) * sizeof(unsigned));
+                std::fill(row + cut, row + width - cut, mask[cut + 4]);
+                memcpy(row + width - cut, mask + tile - cut, static_cast<size_t>(cut) * sizeof(unsigned));
+            } else
+                for (int x = 0; x < width; ++x)
+                    row[x] = mask[source(x, width)];
+        }
         return true;
     }
 
   public:
-    ~AmbientShadow() {
-        if (window_)
-            DestroyWindow(window_);
-        ReleaseBitmap();
-    }
+    ~AmbientShadow() { Hide(); }
+    bool Visible() const { return window_ && IsWindowVisible(window_) && bitmap_; }
     void Hide() {
-        if (window_)
-            ShowWindow(window_, SW_HIDE);
+        if (window_) {
+            DestroyWindow(window_);
+            window_ = nullptr;
+        }
+        ReleaseBitmap();
+        key_ = {};
+        alpha_ = 0;
     }
-    void Position(HWND above, RECT panel, float dpi, float radius, anchor::Edge edge, float reveal, bool visible) {
+    void Position(HWND above, RECT panel, float dpi, float radius, anchor::Edge edge, float reveal, bool visible,
+                  SIZE reserve = {}) {
         if (!visible || reveal <= 0) {
             Hide();
             return;
@@ -147,7 +178,7 @@ class AmbientShadow {
         std::array<int, 4> key{w, h, static_cast<int>(dpi), static_cast<int>(std::lround(radius * 2))};
         bool rebuilt = key != key_ || !bitmap_;
         if (rebuilt) {
-            if (!Build(w, h, dpi, radius))
+            if (!Build(w, h, dpi, radius, {reserve.cx + margin * 2, reserve.cy + margin * 2}))
                 return;
             key_ = key;
         }

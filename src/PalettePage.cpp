@@ -159,26 +159,35 @@ void Island::Palette() {
         CompactHeader(true);
     else {
         auto h = l.header;
-        SmallButton(FlyoutBack, {h.left, 8, h.left + 40, 44}, L"\xE72B", L"Back to Apps");
-        Text(L"Search Dako", {h.left + 52, 8, h.right, 44}, type::Section);
+        SmallButton(FlyoutBack, {h.left, h.top, h.left + 40, h.bottom}, L"\xE72B", L"Back to Apps");
+        Text(L"Search Dako", {h.left + 52, h.top, h.right, h.bottom}, type::Section);
     }
     {
         DockBodyScope body(*this);
-        D2D1_RECT_F input{b.left, b.top + 4, b.right, b.top + 36};
-        Fill(input, theme::CardHover, layout::ControlRadius);
-        AddHit(401, input, modules::String(IDS_PALETTE_NAME));
+        D2D1_RECT_F input{b.left, b.top, b.right, b.top + layout::Metrics::Space8 * 5};
+        Fill(input, theme::Inset, layout::ControlRadius);
+        if (input.right - input.left >= 160)
+            Text(L"\xE721", {input.left + 8, input.top, input.left + 28, input.bottom}, type::Icon, theme::Muted);
+        D2D1_RECT_F editor{input.left + (input.right - input.left >= 160 ? 36 : 4), input.top + 4,
+                           input.right - (paletteQuery.empty() ? 4 : 40), input.bottom - 4};
+        AddHit(401, editor, modules::String(IDS_PALETTE_NAME));
+        FocusRing(401, input);
+        if (!paletteQuery.empty())
+            SmallButton(9500, {input.right - 36, input.top + 4, input.right - 4, input.bottom - 4}, L"\xE711",
+                        L"Clear search");
         if (renderMode)
-            Text(paletteQuery.empty() ? modules::String(IDS_PALETTE_HINT) : paletteQuery,
-                 {input.left + 12, input.top, input.right - 12, input.bottom}, type::Body, theme::Muted);
+            Text(paletteQuery.empty() ? modules::String(IDS_PALETTE_HINT) : paletteQuery, editor, type::Body,
+                 theme::Muted);
         EnsureAppSearch();
         size_t slots = PaletteSlots();
         for (size_t slot = 0; slot < slots && palettePage * PaletteSlots() + slot < paletteItems.size(); ++slot) {
             const auto &item = paletteItems[palettePage * PaletteSlots() + slot];
             float y = b.top + 48 + static_cast<float>(slot) * 44;
-            TextButton(2600 + static_cast<int>(slot), {b.left, y, b.right, y + 38}, item.label);
+            ListRow(2600 + static_cast<int>(slot), {b.left, y, b.right, y + 40}, item.label);
         }
         if (paletteItems.empty())
-            Paragraph(L"No matches.", {b.left + 12, b.top + 52, b.right - 12, b.bottom - 12});
+            EmptyState({b.left, b.top + 48, b.right, std::max(b.bottom, b.top + 144)}, L"\xE721", L"No matches",
+                       L"Try an app name or a Dako command.");
     }
     if (!l.emergency) {
         auto f = Footer();
@@ -194,8 +203,8 @@ void Island::DockPopover() {
         CompactHeader(true);
     else {
         auto h = l.header;
-        SmallButton(FlyoutBack, {h.left, 8, h.left + 40, 44}, L"\xE72B", L"Back to island");
-        Text(L"Status & tray", {h.left + 52, 8, h.right, 44}, type::Section);
+        SmallButton(FlyoutBack, {h.left, h.top, h.left + 40, h.bottom}, L"\xE72B", L"Back to island");
+        Text(L"Status & tray", {h.left + 52, h.top, h.right, h.bottom}, type::Section);
     }
     {
         DockBodyScope body(*this);
@@ -244,8 +253,8 @@ void Island::RecentView() {
         CompactHeader(true);
     else {
         auto h = l.header;
-        SmallButton(FlyoutBack, {h.left, 8, h.left + 40, 44}, L"\xE72B", L"Back to Apps");
-        Text(L"Recent documents", {h.left + 52, 8, h.right, 44}, type::Section);
+        SmallButton(FlyoutBack, {h.left, h.top, h.left + 40, h.bottom}, L"\xE72B", L"Back to Apps");
+        Text(L"Recent documents", {h.left + 52, h.top, h.right, h.bottom}, type::Section);
     }
     {
         DockBodyScope body(*this);

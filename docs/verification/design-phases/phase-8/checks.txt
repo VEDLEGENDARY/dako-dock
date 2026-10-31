@@ -1,0 +1,8 @@
+PASS: release build /W4 /WX /permissive-.
+PASS: 120-column style gate and git diff whitespace check.
+PASS: 1,087 fixture PNGs, geometry, identity, minimum targets and MSAA.
+PASS: motion, module, privacy, foundation and native settings gates.
+PASS: 50 native composition cycles, fields during motion, visible opaque shadow and floating work-area preservation.
+PASS: 60-second warm rest CPU and 120 Hz presentation pacing.
+OPEN: idle private memory 39.2188 MiB versus same-host phase-0 baseline 33.6016 MiB.
+OPEN: physical mixed-DPI/backdrop, full screen-reader and real-device restoration checks.

@@ -16,7 +16,7 @@ void Island::SnapMotion() {
     revealClock = paneClock = 1;
     for (auto *v : {&dockReveal, &dockWidth, &dockHeight, &paneBlend, &wallpaperFocus, &tabLeft, &tabRight,
                     &railPointer, &railStrength, &paletteBlend, &contentBlend, &togglePosition, &wallpaperParallax,
-                    &volumeMotion, &composerFocus, &toastBlend, &focusBlend, &chrome.blend})
+                    &volumeMotion, &composerFocus, &toastBlend, &focusBlend, &chrome.blend, &scrollThumb})
         v->Snap(v->goal);
     for (auto &v : rings)
         v.Snap(v.goal);
@@ -132,6 +132,10 @@ void Island::ArmMotion() {
 }
 
 void Island::SetExpanded(bool value, bool deliberate) {
+    if (!value) {
+        KillTimer(window, ScrollFadeTimer);
+        scrollThumb.Snap(0);
+    }
     if (!value && ChromeActive()) {
         chrome.result = chrome.cancel;
         CloseChrome();
@@ -295,6 +299,7 @@ void Island::Transition() {
         advance(*spring, dock::motion::Soft, dt);
     advance(toastBlend, dock::motion::Fade, dt);
     advance(focusBlend, dock::motion::Focus, dt);
+    advance(scrollThumb, dock::motion::Fade, dt);
     if (ChromeActive()) {
         advance(chrome.blend, dock::motion::Fade, dt);
         if (chrome.closing && !chrome.blend.Moving())

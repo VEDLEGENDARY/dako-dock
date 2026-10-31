@@ -167,7 +167,7 @@ class IslandAccessible final : public IAccessible, public IEnumVARIANT {
                 ? (app && app->ChromeActive()
                        ? (app->chrome.kind == Island::ChromeKind::Menu ? ROLE_SYSTEM_MENUPOPUP : ROLE_SYSTEM_DIALOG)
                        : ROLE_SYSTEM_PANE)
-            : ReadingControl(id)                                    ? ROLE_SYSTEM_STATICTEXT
+            : (ReadingControl(id) || id == 1980)                    ? ROLE_SYSTEM_STATICTEXT
             : (id >= 100 && id < 107) || (id >= 2901 && id <= 2904) ? ROLE_SYSTEM_PAGETAB
             : (id == Volume || id == Brightness)                    ? ROLE_SYSTEM_SLIDER
             : (id >= 200 && id < 220) || (id >= 900 && id < 1000) || id == FlyoutToggle || id == Dark ||
@@ -194,7 +194,7 @@ class IslandAccessible final : public IAccessible, public IEnumVARIANT {
         int index = Child(child, app);
         if (index >= 0) {
             int hitId = app->hits[index].id;
-            bool reading = ReadingControl(hitId);
+            bool reading = ReadingControl(hitId) || hitId == 1980;
             state->lVal = reading ? STATE_SYSTEM_READONLY : STATE_SYSTEM_FOCUSABLE;
             if (!app->VisibleHit(app->hits[index]) ||
                 (!app->Actionable() && !(app->hits[index].id == Expand && !app->expanded && !app->YieldResting())))
@@ -204,6 +204,16 @@ class IslandAccessible final : public IAccessible, public IEnumVARIANT {
             if (app->focused == index && GetFocus() == window_)
                 state->lVal |= STATE_SYSTEM_FOCUSED;
             int id = app->hits[index].id;
+            if (app->chrome.kind == Island::ChromeKind::Menu && id >= Island::ChromeRow &&
+                id < Island::ChromeRow + static_cast<int>(app->chrome.slots)) {
+                size_t row = app->chrome.offset + id - Island::ChromeRow;
+                if (row < app->chrome.items.size()) {
+                    if (app->chrome.items[row].checked)
+                        state->lVal |= STATE_SYSTEM_CHECKED;
+                    if (!app->chrome.items[row].children.empty())
+                        state->lVal |= STATE_SYSTEM_HASPOPUP;
+                }
+            }
             if (id == 2941 && app->privacySnapshot.offline)
                 state->lVal |= STATE_SYSTEM_CHECKED;
             if (id >= 2901 && id <= 2904 && id - 2901 == app->featuresPage)
@@ -441,7 +451,7 @@ void VerifyAccessibility(Island &app) {
     verify(2004, ROLE_SYSTEM_STATICTEXT, STATE_SYSTEM_READONLY);
     verify(2005, ROLE_SYSTEM_STATICTEXT, STATE_SYSTEM_READONLY);
     verify(2123, ROLE_SYSTEM_STATICTEXT, STATE_SYSTEM_READONLY);
-    verify(TodayOptions, ROLE_SYSTEM_PUSHBUTTON, STATE_SYSTEM_FOCUSABLE);
+    verify(1901, ROLE_SYSTEM_PUSHBUTTON, STATE_SYSTEM_FOCUSABLE);
     verify(201, ROLE_SYSTEM_CHECKBUTTON, STATE_SYSTEM_CHECKED);
     verify(400, ROLE_SYSTEM_TEXT, STATE_SYSTEM_FOCUSABLE);
     app.tab = Tab::Stats;

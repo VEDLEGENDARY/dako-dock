@@ -70,10 +70,9 @@ void Island::ControlAction(int id) {
 D2D1_RECT_F Island::BrightnessRect() const {
     auto l = Layout();
     auto grid = layout::ControlsColumns(l)[0];
-    grid.bottom -= 84;
+    grid.bottom -= 44;
     auto rows = l.narrow ? layout::Rows(grid, {1, 1, 1}) : layout::Rows(grid, {1, 1});
-    return R(l.narrow ? layout::Columns(rows.back(), {1, 1})[1]
-                      : layout::Columns(rows.back(), {1, 1, 1})[2]);
+    return R(layout::Columns(rows.back(), {1, 1})[1]);
 }
 void Island::OutputDevices() {
     auto b = Body();
@@ -81,8 +80,9 @@ void Island::OutputDevices() {
     if (Layout().emergency)
         CompactHeader(true);
     else {
-        SmallButton(FlyoutBack, {header.left, 8, header.left + 40, 44}, L"\xE72B", L"Back to controls");
-        Text(L"Audio outputs", {header.left + 52, 8, header.right, 44}, type::Section);
+        SmallButton(FlyoutBack, {header.left, header.top, header.left + 40, header.bottom}, L"\xE72B",
+                    L"Back to controls");
+        Text(L"Audio outputs", {header.left + 52, header.top, header.right, header.bottom}, type::Section);
     }
     Text(L"Change the default output in Sound settings.", {b.left, b.top, b.right, b.top + 32}, type::Secondary,
          theme::Muted);
@@ -93,19 +93,17 @@ void Island::OutputDevices() {
     for (size_t slot = 0; slot < slots && outputPage * slots + slot < count; ++slot) {
         const auto &output = controlState.outputs[outputPage * slots + slot];
         float y = b.top + 40 + static_cast<float>(slot) * 56;
-        D2D1_RECT_F rect{b.left, y, b.right, y + 48};
-        Fill(rect, output.isDefault ? theme::AccentSoft : theme::Card, 12);
+        D2D1_RECT_F rect{b.left, y, b.right, y + layout::Metrics::AppRowHeight};
+        Fill(rect, output.isDefault ? theme::AccentSoft : theme::Card, layout::ControlRadius);
         AddHit(2100 + static_cast<int>(slot), rect,
                output.name + (output.isDefault ? L", default output" : L", available output"), false);
-        Text(output.name, {rect.left + 12, y, rect.right - 12, y + 26}, type::Control,
-             highContrast && output.isDefault ? theme::SelectedText : theme::Text);
-        Text(output.isDefault ? L"Default output" : L"Available", {rect.left + 12, y + 24, rect.right - 12, y + 46},
-             type::Caption, highContrast && output.isDefault ? theme::SelectedText : theme::Muted);
+        TwoLine({rect.left + 12, y, rect.right - 12, rect.bottom}, output.name,
+                output.isDefault ? L"Default output" : L"Available",
+                highContrast && output.isDefault ? theme::SelectedText : theme::Text, type::Body);
     }
     if (!count)
-        Paragraph(nativeControls ? L"No active audio outputs. Open Sound settings to review devices."
-                                 : L"No active audio outputs.",
-                  {b.left + 12, b.top + 48, b.right - 12, b.bottom - 12});
+        EmptyState({b.left, b.top + 40, b.right, b.bottom}, L"\xE767", L"No active audio outputs",
+                   L"Open Sound settings to review devices.");
     if (Layout().emergency)
         return;
     auto footer = Footer();

@@ -21,7 +21,7 @@ struct VolumeSample {
 struct HardwareSnapshot {
     std::wstring cpu = L"Processor", gpu = L"Graphics";
     double gpuPercent = 0, vramGiB = 0, totalGiB = 0;
-    DWORD processes = 0;
+    DWORD processes = 0, cpuBaseMHz = 0;
     bool gpuValid = false, batteryPresent = false;
     int batterySeconds = -1;
     ULONGLONG uptimeSeconds = 0;
@@ -185,6 +185,9 @@ class HardwareStats {
                      RRF_RT_REG_SZ, nullptr, name, &bytes);
         if (name[0])
             next.cpu = name;
+        DWORD frequencyBytes = sizeof(next.cpuBaseMHz);
+        RegGetValueW(HKEY_LOCAL_MACHINE, L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", L"~MHz",
+                     RRF_RT_REG_DWORD, nullptr, &next.cpuBaseMHz, &frequencyBytes);
         std::wstring luid;
         Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
         if (SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))

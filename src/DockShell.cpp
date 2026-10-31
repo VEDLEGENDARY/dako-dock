@@ -391,7 +391,7 @@ struct DockShell::Impl {
                      bounds.top + static_cast<LONG>(std::lround(pill.bottom * scale))};
         bool fits = (pill.Width() + 96) * scale <= bounds.right - bounds.left;
         bar.shadow.Position(bar.window, surface, bar.dpi * textScale, options.radius, options.edge, 1,
-                            fits && !options.opaque && !contrast && !bar.hidden && !bar.hideOffset);
+                            fits && !contrast && !bar.hidden && !bar.hideOffset);
         EndPaint(bar.window, &paint);
     }
     int Hit(const DockSurface &bar, float x, float y) const {
@@ -1134,7 +1134,7 @@ bool DockShell::Start(HWND owner, Shell *recovery, bool preview, float textScale
     self.textScale = textScale;
     self.callbacks = std::move(callbacks);
     self.stopping = false;
-    if (!preview && (!recovery || !recovery->Active() || !recovery->EnsureRecovery()))
+    if (self.reserve && (!recovery || !recovery->Active() || !recovery->EnsureRecovery()))
         return false;
     if (FAILED(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, self.factory.GetAddressOf())))
         return false;
@@ -1177,7 +1177,7 @@ void DockShell::Stop() {
 }
 void DockShell::RefreshMonitors() {
     if (!impl_->Monitors())
-        impl_->Error(L"Dako could not reserve a bar on every monitor.");
+        impl_->Error(L"Dako could not create a dock on every monitor.");
 }
 void DockShell::ExplorerRestarted() { RefreshMonitors(); }
 void DockShell::SetData(std::vector<PinEntry> pins, std::vector<WindowEntry> windows, DockStatus status) {

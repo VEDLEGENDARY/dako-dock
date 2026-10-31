@@ -109,6 +109,7 @@ void Island::ReadTextScale() {
 }
 
 void Island::ConfigureAppearance(bool forceHighContrast) {
+    scrollFade.Reset();
     HIGHCONTRASTW contrast{sizeof(contrast)};
     SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(contrast), &contrast, 0);
     highContrast = forceHighContrast || (contrast.dwFlags & HCF_HIGHCONTRASTON) != 0;
@@ -170,11 +171,8 @@ void Island::ApplyAccent(unsigned rgb) {
     for (int i = 0; i < 32 && Contrast(readable, theme::AccentSoft) < 4.5; ++i)
         readable = dock::Mix(readable, lightAppearance ? 0x000000 : 0xFFFFFF, 0.08f);
     theme::SelectedText = theme::Focus = readable;
-    auto hue = palette::ToHsl(rgb);
-    hue.h = std::fmod(hue.h + 40.0f / 360, 1.0f);
-    theme::Secondary = palette::FromHsl(hue);
-    hue.h = std::fmod(hue.h + 40.0f / 360, 1.0f);
-    theme::Tertiary = palette::FromHsl(hue);
+    theme::Secondary = palette::Tokens::MetricGpu;
+    theme::Tertiary = palette::Tokens::MetricRam;
 }
 
 void Island::SetAccent(unsigned rgb) {
@@ -285,6 +283,8 @@ void Island::Initialize() {
 }
 
 void Island::ReleaseGraphics() {
+    scrollFade.Reset();
+    textLayouts.clear();
     frameClock.Stop();
     frameTickReady = false;
     if (backdropWindow)
@@ -311,11 +311,11 @@ void Island::ReleaseGraphics() {
 
 void Island::EnsureEditResources() {
     if (!editFont)
-        editFont = CreateFontW(-static_cast<int>(std::lround(13 * textScale * dpi / 96)), 0, 0, 0, FW_NORMAL, FALSE,
-                               FALSE, FALSE, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+        editFont = CreateFontW(-static_cast<int>(std::lround(type::Sizes[type::Body] * textScale * dpi / 96)), 0, 0, 0,
+                               FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Rubik");
     if (!editBackground)
-        editBackground = CreateSolidBrush(
-            RGB((theme::CardHover >> 16) & 255, (theme::CardHover >> 8) & 255, theme::CardHover & 255));
+        editBackground =
+            CreateSolidBrush(RGB((theme::Inset >> 16) & 255, (theme::Inset >> 8) & 255, theme::Inset & 255));
 }
 
 Island::~Island() {

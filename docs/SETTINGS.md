@@ -93,7 +93,8 @@ it; stale-generation messages are ignored. A failed apply stops the schedule unt
 ## Taskbar, startup and network
 
 Ordinary startup displays the app island without reserving work area. Replace taskbar requires the separate
-desktop consent/recovery flow. A layout choice or import cannot grant it. Ctrl+Alt+Shift+T restores Explorer;
+desktop consent/recovery flow; Dako still floats over applications without reserving a strip. A layout choice
+or import cannot grant it. Ctrl+Alt+Shift+T restores Explorer;
 Ctrl+Alt+Shift+Q exits. Start with Windows manages only this user's Dako value in the Windows Run key and
 points to this portable folder. Move the folder before enabling startup, or toggle startup after moving it.
 

@@ -109,7 +109,10 @@ int Island::HitAt(float x, float y, bool accessibleHit) {
         return -1;
     x = (x - PanelX()) / textScale;
     y = (y - PanelY()) / textScale;
-    if (x < 0 || x > LayoutWidth() || y < 0 || y > LayoutHeight())
+    auto navigation = TabRect(-1);
+    bool overNavigation = flyout == Flyout::None && !miniMode && x >= navigation.left && x <= navigation.right &&
+                          y >= navigation.top && y <= navigation.bottom;
+    if (!overNavigation && (x < 0 || x > LayoutWidth() || y < 0 || y > LayoutHeight()))
         return -1;
     for (int i = static_cast<int>(hits.size()) - 1; i >= 0; --i) {
         const auto &h = hits[i];
@@ -147,6 +150,14 @@ void Island::LabelInput(HWND input, const wchar_t *name) {
 }
 
 void Island::Invoke(int id) {
+    if (!ChromeActive() && (id == 9500 || id == 9501)) {
+        HWND input = id == 9501 ? clipboardEdit : appSearch;
+        if (input) {
+            SetWindowTextW(input, L"");
+            SetFocus(input);
+        }
+        return;
+    }
     if (ChromeAction(id))
         return;
     if (id == 8970 || id == 8971) {
@@ -314,6 +325,24 @@ void Island::Invoke(int id) {
         return;
     }
     note.clear();
+    if (id == Brightness && controlState.brightnessSupported) {
+        auto value = PromptText(window, L"Display brightness", L"Brightness percent (0–100)",
+                                std::to_wstring(controlState.brightness), 3);
+        if (value) {
+            wchar_t *end = nullptr;
+            long percent = wcstol(value->c_str(), &end, 10);
+            if (!value->empty() && end && !*end && percent >= 0 && percent <= 100) {
+                controlState.brightness = static_cast<int>(percent);
+                if (controls::MayWrite(renderMode, fixtureGeometry, previewMode) && nativeControls &&
+                    PrepareSystemChange())
+                    nativeControls->SetBrightness(controlState.monitor, controlState.brightness);
+            } else
+                note = L"Enter a brightness from 0 to 100.";
+        }
+        RebuildLayout();
+        InvalidateRect(window, nullptr, FALSE);
+        return;
+    }
     if (id == 400 || id == 401 || id == 402 || id == 403 || id == Volume || id == Brightness) {
         FocusAt(IndexForKey(StableKey(id)));
         return;
@@ -474,6 +503,10 @@ void Island::Invoke(int id) {
             else
                 ChooseWallpaperFolder();
             break;
+        case 9502:
+            if (!renderMode && !fixtureGeometry)
+                ChooseWallpaperFolder();
+            break;
         case WallpaperCollection:
         case WallpaperCurrent:
         case WallpaperPrevious:
@@ -582,7 +615,8 @@ void Island::Invoke(int id) {
             PostMessageW(window, WM_CLOSE, 0, 0);
             break;
         }
-    wallpaperFocus.goal = static_cast<float>(selectedWallpaper);
+    float selected = static_cast<float>(selectedWallpaper), size = static_cast<float>(wallpapers.size());
+    wallpaperFocus.goal = size > 0 ? selected + std::round((wallpaperFocus.value - selected) / size) * size : 0;
     if (reducedMotion || renderMode)
         wallpaperFocus.Snap(wallpaperFocus.goal);
     else if (wallpaperFocus.Moving())
@@ -635,11 +669,13 @@ void Island::FocusAt(int index) {
     }
     auto h = hits[index];
     auto b = Body();
-    if (!ChromeActive() && h.clip.top == b.top && h.clip.bottom == b.bottom) {
-        if (h.rect.top < b.top)
-            scroll = std::max(0.0f, scroll + h.rect.top - b.top);
-        else if (h.rect.bottom > b.bottom)
-            scroll += h.rect.bottom - b.bottom;
+    if (!ChromeActive() && h.clip.top >= b.top - .01f && h.clip.bottom <= b.bottom + .01f &&
+        h.clip.bottom > h.clip.top && h.id != 1900 && h.id != 1901 && !(h.id >= 100 && h.id < 107)) {
+        if (h.rect.top < h.clip.top)
+            scroll = std::max(0.0f, scroll + h.rect.top - h.clip.top);
+        else if (h.rect.bottom > h.clip.bottom)
+            scroll += h.rect.bottom - h.clip.bottom;
+        scroll = std::clamp(scroll, 0.0f, std::max(0.0f, Layout().contentHeight - (b.bottom - b.top)));
         RebuildLayout();
         index = IndexForKey(focusedKey);
     }
@@ -981,6 +1017,8 @@ void Island::OpenCompactMenu(bool views) {
             add(403, L"Read current text");
             add(ClipboardRefresh, L"Refresh");
             add(ClipboardClear, L"Clear preview");
+            add(8753, L"Previous clipboard items", clipboardOffset > 0);
+            add(8754, L"Next clipboard items", clipboardOffset + 1 < clipboardRecords.size());
             break;
         case Tab::Apps:
             add(401, L"Search installed apps");
@@ -1023,7 +1061,7 @@ void Island::OpenCompactMenu(bool views) {
     RECT bounds{};
     GetWindowRect(window, &bounds);
     float scale = dpi / 96;
-    auto anchorRect = Layout().emergency ? R(Layout().header) : Footer();
+    auto anchorRect = TabRect(-1);
     int x = bounds.left + static_cast<int>((PanelX() + anchorRect.left * textScale) * scale);
     float anchorY = edge == anchor::Edge::Bottom ? anchorRect.top : anchorRect.bottom;
     int y = bounds.top + static_cast<int>((PanelY() + anchorY * textScale) * scale);
@@ -1053,7 +1091,6 @@ void Island::ContextMenu() {
     AppendMenuW(menu, MF_STRING | (!systemAppearance && lightAppearance ? MF_CHECKED : 0), 13, L"Light appearance");
     AppendMenuW(menu, MF_STRING | (!systemAppearance && !lightAppearance ? MF_CHECKED : 0), 14, L"Dark appearance");
     AppendMenuW(menu, MF_STRING | (shell.MaximizeNew() ? MF_CHECKED : 0), 15, L"Maximize new windows in desktop mode");
-    AppendMenuW(menu, MF_STRING, 16, (L"Browser clearance: " + Number(browserClearance) + L" DIP (cycle)").c_str());
     AppendMenuW(menu, MF_STRING | (fixedAccent ? MF_CHECKED : 0), 17, L"Portfolio orange accent");
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, 2, L"Exit and restore Windows\tCtrl+Alt+Shift+Q");
@@ -1106,8 +1143,6 @@ void Island::ContextMenu() {
         }
         if (command == 15)
             shell.SetMaximizeNew(!shell.MaximizeNew());
-        if (command == 16)
-            browserClearance = browserClearance >= 192 ? 112 : browserClearance + 40;
         if (command == 17)
             fixedAccent = !fixedAccent;
         if (!SaveSettings())
@@ -1399,6 +1434,11 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
                 KillTimer(window, ToastTimer);
                 app->toastVisible = false;
                 app->toastBlend.goal = 0;
+                app->ArmMotion();
+                InvalidateRect(window, nullptr, FALSE);
+            } else if (wparam == ScrollFadeTimer) {
+                KillTimer(window, ScrollFadeTimer);
+                app->scrollThumb.goal = 0;
                 app->ArmMotion();
                 InvalidateRect(window, nullptr, FALSE);
             } else if (wparam == TransitionTimer)
@@ -1693,7 +1733,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
             auto dc = reinterpret_cast<HDC>(wparam);
             auto input = reinterpret_cast<HWND>(lparam);
             unsigned background = input == app->chromeEdit      ? theme::Inset
-                                  : input == app->appSearch     ? theme::Card
+                                  : input == app->appSearch     ? theme::Inset
                                   : input == app->clipboardEdit ? theme::Inset
                                   : input == app->taskEdit
                                       ? dock::Mix(theme::CardHover, theme::AccentSoft, app->composerFocus.value)
@@ -2028,6 +2068,7 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
             KillTimer(window, InteractionTimer);
             KillTimer(window, FocusTimer);
             KillTimer(window, ConnectivityTimer);
+            KillTimer(window, ScrollFadeTimer);
             if (app->toggleHotkey)
                 UnregisterHotKey(window, 1);
             if (app->quitHotkey)

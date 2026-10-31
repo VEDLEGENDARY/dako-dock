@@ -115,7 +115,7 @@ void Island::OpenApp(const AppEntry &app) {
 
 bool Island::CompactApps() const { return Layout().body.Height() < 124; }
 bool Island::ShowAppRail() const {
-    return Layout().body.Height() >= (runningIndices.empty() ? 200.0f : 300.0f) && !railApps.empty();
+    return Layout().body.Height() >= (runningIndices.empty() ? 200.0f : 320.0f) && !railApps.empty();
 }
 void Island::RepageApps() {
     std::vector<int> groups;
@@ -131,23 +131,27 @@ size_t Island::AppSlots() const {
 }
 D2D1_RECT_F Island::SearchRect() const {
     auto b = Body();
-    return {b.left + 36, b.top + (CompactApps() ? 4.0f : 8.0f), b.right - 12, b.top + (CompactApps() ? 28.0f : 36.0f)};
+    return {b.left + (b.right - b.left >= 160 ? 36 : 4), b.top + 4, b.right - (appQuery.empty() ? 4 : 40), b.top + 36};
 }
 void Island::Apps() {
     FilterRunning();
     RepageApps();
     auto b = Body();
     bool compact = CompactApps();
-    Card({b.left, b.top, b.right, b.top + (compact ? 32.0f : 44.0f)});
-    Text(L"\xE721", {b.left + 8, b.top + 8, b.left + 32, b.top + 36}, type::Icon, theme::Muted);
+    Fill({b.left, b.top, b.right, b.top + 40}, theme::Inset, layout::ControlRadius);
+    if (b.right - b.left >= 160)
+        Text(L"\xE721", {b.left + 8, b.top + 8, b.left + 32, b.top + 36}, type::Icon, theme::Muted);
     AddHit(401, SearchRect(), L"Search installed apps");
+    FocusRing(401, {b.left, b.top, b.right, b.top + 40});
+    if (!appQuery.empty())
+        SmallButton(9500, {b.right - 36, b.top + 4, b.right - 4, b.top + 36}, L"\xE711", L"Clear search");
     EnsureAppSearch();
     if (renderMode)
         Text(appQuery.empty() ? L"Search installed apps…" : appQuery, SearchRect(), type::Body, theme::Muted);
-    float nextY = b.top + (compact ? 40.0f : 56.0f);
+    float nextY = b.top + 48;
     if (ShowAppRail()) {
         Fill({b.left, nextY, b.right, nextY + 68}, theme::Inset, layout::ControlRadius);
-        Text(L"Pinned", {b.left + 12, nextY, b.right - 12, nextY + 20}, type::Caption, theme::Muted);
+        Text(L"PINNED", {b.left + 12, nextY, b.right - 12, nextY + 20}, type::Overline, theme::Muted);
         size_t count = std::min(railApps.size(), static_cast<size_t>(std::max(1.0f, (b.right - b.left - 24) / 40)));
         for (size_t i = 0; i < count; ++i) {
             int id = 1400 + static_cast<int>(i);
@@ -161,24 +165,26 @@ void Island::Apps() {
         }
         nextY += 76;
     }
-    if (b.bottom - b.top >= 224 && !runningIndices.empty()) {
-        Text(L"Running · " + std::to_wstring(runningIndices.size()), {b.left + 4, nextY, b.right - 82, nextY + 24},
-             type::Caption, theme::Muted);
-        SmallButton(RunningPrevious, {b.right - 72, nextY, b.right - 42, nextY + 24}, L"\xE76B",
+    if (b.bottom - b.top >= 248 && !runningIndices.empty()) {
+        Text(L"RUNNING · " + std::to_wstring(runningIndices.size()), {b.left + 4, nextY, b.right - 82, nextY + 24},
+             type::Overline, theme::Muted);
+        SmallButton(RunningPrevious, {b.right - 72, nextY, b.right - 40, nextY + 32}, L"\xE76B",
                     L"Previous running windows", runningPage > 0);
-        SmallButton(RunningNext, {b.right - 34, nextY, b.right - 4, nextY + 24}, L"\xE76C", L"Next running windows",
+        SmallButton(RunningNext, {b.right - 36, nextY, b.right - 4, nextY + 32}, L"\xE76C", L"Next running windows",
                     (runningPage + 1) * 2 < runningIndices.size());
         for (size_t slot = 0; slot < 2; ++slot) {
             size_t index = runningPage * 2 + slot;
             if (index >= runningIndices.size())
                 break;
             const auto &entry = runningWindows[runningIndices[index]];
-            float y = nextY + 24 + static_cast<float>(slot) * 36;
-            D2D1_RECT_F row{b.left, y, b.right, y + 32};
+            float y = nextY + 36 + static_cast<float>(slot) * 44;
+            D2D1_RECT_F row{b.left, y, b.right, y + 40};
             int id = 2400 + static_cast<int>(slot);
             AddHit(id, row, L"Activate " + entry.title + (entry.minimized ? L", minimized" : L""));
-            Fill(Tactile(id, row), entry.active ? theme::AccentSoft : theme::Card, 8);
-            Text(entry.title, {b.left + 12, y, b.right - 12, y + 32}, type::Control,
+            Fill(Tactile(id, row),
+                 dock::Mix(entry.active ? theme::AccentSoft : theme::Card, theme::CardHover, HoverAmount(id)),
+                 layout::ControlRadius);
+            Text(entry.title, {b.left + 12, y, b.right - 12, y + 40}, type::Body,
                  highContrast && entry.active ? theme::SelectedText : theme::Text);
             FocusRing(id, row, layout::ControlRadius);
         }
@@ -193,10 +199,10 @@ void Island::Apps() {
         int current = AppGroup(entry);
         if (group != current) {
             group = current;
-            Text(group == 0   ? L"Pinned"
-                 : group == 1 ? L"Recent · launched through Dako"
-                              : L"Installed applications",
-                 {b.left + 4, nextY, b.right - 4, nextY + (compact ? 20.0f : 24.0f)}, type::Caption, theme::Muted);
+            Text(group == 0   ? L"PINNED"
+                 : group == 1 ? L"RECENT"
+                              : L"INSTALLED APPLICATIONS",
+                 {b.left + 4, nextY, b.right - 4, nextY + (compact ? 20.0f : 24.0f)}, type::Overline, theme::Muted);
             nextY += compact ? 20.0f : 24.0f;
         }
         int id = 300 + static_cast<int>(slot);
@@ -205,7 +211,8 @@ void Island::Apps() {
         D2D1_RECT_F row{b.left, y, b.right - 44, y + (compact ? 36.0f : 40.0f)};
         AddHit(id, row, entry.name);
         bool selected = Favorite(entry) || AppKey(entry) == selectedAppKey;
-        Fill(Tactile(id, row), selected ? theme::AccentSoft : theme::Card, 10);
+        Fill(Tactile(id, row), dock::Mix(selected ? theme::AccentSoft : theme::Card, theme::CardHover, HoverAmount(id)),
+             layout::ControlRadius);
         DrawAppIcon(entry, {b.left + 8, y + 6, b.left + 36, y + 34});
         Text(entry.name, {b.left + 48, y, b.right - 56, y + 40}, type::Body,
              highContrast && selected ? theme::SelectedText : theme::Text);
@@ -224,10 +231,9 @@ void Island::Apps() {
             Shimmer(placeholder);
         }
     } else if (filteredApps.empty())
-        Paragraph(apps.empty() ? (appsLoading ? L"Loading installed apps…"
-                                              : L"No installed applications available. Reopen Apps to retry.")
-                               : L"No matching apps. Change the search text.",
-                  {b.left + 12, nextY + 16, b.right - 12, b.bottom - 8});
+        EmptyState({b.left, nextY, b.right, std::max(b.bottom, nextY + 96)}, L"\xE71D",
+                   apps.empty() ? L"No applications available" : L"No matching apps",
+                   apps.empty() ? L"Reopen Apps to try again." : L"Change the search text.");
 }
 
 void Island::DrawAppIcon(const AppEntry &app, D2D1_RECT_F rect) {

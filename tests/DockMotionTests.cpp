@@ -14,7 +14,7 @@ void Require(bool condition, const char *message) {
 int main() {
     Require(dock::BrowserExecutable(L"C:\\Program Files\\BraveSoftware\\Brave.exe") &&
                 dock::BrowserExecutable(L"firefox.exe"),
-            "browser names and paths get browser clearance");
+            "browser names and paths are recognized");
     Require(!dock::BrowserExecutable(L"Code.exe") && !dock::BrowserExecutable(L"discord.exe"),
             "Chromium-based desktop apps keep normal popup positioning");
     Require(dock::PanelTop(true) == 112 && dock::PanelTop(false) == 0,
@@ -102,7 +102,7 @@ int main() {
                 auto l = layout::Solve({aw, ah, static_cast<layout::View>(v), 100});
                 Require(l.panel.Width() <= aw && l.panel.Height() <= ah,
                         "panel is bounded at all supported DPI/monitor cases");
-                Require(l.body.Height() > 0 && l.body.top >= l.header.bottom && l.status.Height() > 0,
+                Require(l.body.Height() > 0 && !layout::Intersects(l.body, l.header) && l.status.Height() > 0,
                         "header and content remain separate, and the toast has usable geometry");
                 if (l.footer.Height() > 0)
                     Require(l.body.bottom < l.footer.top && l.footer.bottom <= l.panel.bottom,

@@ -17,3 +17,7 @@ Section 0.5 of that plan controls behavior and overrides conflicting older brief
 Reflect the outer geometry, attachment edge, growth and flyout direction for bottom placement.
 Keep text, icons, artwork and content orientation upright. Apps and Power retain existing behavior and use
 the same appearance. Weather and speed testing remain gated by Offline and explicit opt-in.
+
+October 30 acceptance: the owner reaffirmed these images and requested navigation/Menu at the bottom for
+the bottom dock, an 8 DIP floating taskbar gap, and no reserved browser work-area strip. Those explicit
+changes override the reference images' top navigation. Live content, consent and unavailable states remain truthful.

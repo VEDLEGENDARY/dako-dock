@@ -48,21 +48,29 @@ void Island::ConnectionView() {
     if (l.emergency)
         CompactHeader(true);
     else {
-        SmallButton(FlyoutBack, {20, 8, 56, 44}, L"\xE72B", L"Back to controls");
-        Text(wifi ? L"Wi-Fi" : L"Bluetooth", {68, 8, w - 132, 44}, type::Control);
-        SmallButton(FlyoutRefresh, {w - 116, 8, w - 80, 44}, L"\xE72C", wifi ? L"Refresh networks" : L"Find devices",
-                    !busy);
-        D2D1_RECT_F toggle{w - 68, 14, w - 20, 38};
-        AddHit(FlyoutToggle, toggle, enabled ? L"Turn radio off" : L"Turn radio on", available && !busy);
-        Fill(toggle, enabled ? theme::Accent : theme::CardHover, 12);
+        float y = l.header.top;
+        SmallButton(FlyoutBack, {20, y, 56, y + 36}, L"\xE72B", L"Back to controls");
+        Text(wifi ? L"Wi-Fi" : L"Bluetooth", {68, y, w - 132, y + 36}, type::Control);
+        SmallButton(FlyoutRefresh, {w - 116, y, w - 80, y + 36}, L"\xE72C",
+                    wifi ? L"Refresh networks" : L"Find devices", !busy);
+        D2D1_RECT_F toggle{w - 56, y + 10, w - 28, y + 26};
+        AddHit(FlyoutToggle, {w - 58, y + 2, w - 26, y + 34}, enabled ? L"Turn radio off" : L"Turn radio on",
+               available && !busy);
+        Fill(toggle, enabled ? theme::Accent : theme::CardHover, (toggle.bottom - toggle.top) / 2);
         togglePosition.goal = enabled ? 1.0f : 0.0f;
         if (reducedMotion || renderMode)
             togglePosition.Snap(togglePosition.goal);
         if (!layoutOnly) {
+            if (highContrast) {
+                brush->SetColor(Color(theme::Border));
+                target->DrawRoundedRectangle(
+                    D2D1::RoundedRect(toggle, (toggle.bottom - toggle.top) / 2, (toggle.bottom - toggle.top) / 2),
+                    brush.Get(), 2);
+            }
             brush->SetColor(Color(enabled ? theme::AccentInk : theme::Muted));
-            target->FillEllipse(D2D1::Ellipse({w - 56 + 24 * togglePosition.value, 26}, 8, 8), brush.Get());
+            target->FillEllipse(D2D1::Ellipse({w - 48 + 12 * togglePosition.value, y + 18}, 6, 6), brush.Get());
         }
-        FocusRing(FlyoutToggle, toggle, layout::ControlRadius);
+        FocusRing(FlyoutToggle, {w - 58, y + 2, w - 26, y + 34}, layout::ControlRadius);
     }
     auto b = Body();
     D2D1::Matrix3x2F saved;
@@ -100,35 +108,36 @@ void Island::ConnectionView() {
                               : wifi    ? (connections.networks[index].secure ? L"Secured" : L"Open network")
                               : connections.devices[index].paired ? L"Paired"
                                                                   : L"Ready to pair";
-        D2D1_RECT_F row{b.left, y, b.right, y + 48};
+        D2D1_RECT_F row{b.left, y, b.right, y + layout::Metrics::AppRowHeight};
         AddHit(id, row, name + L". " + status);
-        Fill(Tactile(id, row), selected ? theme::AccentSoft : theme::Card, 12);
+        Fill(Tactile(id, row), dock::Mix(selected ? theme::AccentSoft : theme::Card, theme::CardHover, HoverAmount(id)),
+             layout::ControlRadius);
         Text(wifi ? L"\xE701" : L"\xE702", {b.left + 12, y + 8, b.left + 40, y + 40}, type::Icon,
              highContrast && selected ? theme::SelectedText
              : connected              ? theme::Accent
                                       : theme::Muted,
              DWRITE_TEXT_ALIGNMENT_CENTER);
-        Text(name, {b.left + 52, y + 2, b.right - 12, y + 26}, type::Body,
-             highContrast && selected ? theme::SelectedText : theme::Text);
-        Text(status, {b.left + 52, y + 26, b.right - 12, y + 46}, type::Secondary,
-             highContrast && selected ? theme::SelectedText : theme::Muted);
+        TwoLine({b.left + 52, y, b.right - 12, row.bottom}, name, status,
+                highContrast && selected ? theme::SelectedText : theme::Text, type::Body);
         FocusRing(id, row);
     }
     float detail = b.top + 52 + static_cast<float>(slots) * 56 + 12;
     if (!count)
-        Paragraph(busy         ? L"Searching…"
-                  : !available ? L"No adapter available. Use More settings."
-                  : !enabled   ? L"Radio is off."
-                               : L"No results. Try Refresh.",
-                  {b.left + 12, b.top + 76, b.right - 12, b.top + 160});
+        EmptyState({b.left, b.top + 52, b.right, b.top + 180}, wifi ? L"\xE701" : L"\xE702",
+                   busy         ? L"Searching…"
+                   : !available ? L"No adapter available"
+                   : !enabled   ? L"Radio is off"
+                                : L"No results",
+                   busy         ? L"Nearby devices will appear here."
+                   : !available ? L"Use More settings."
+                                : L"Try Refresh or Windows settings.");
     if (wifi && selectedWifi >= 0 && selectedWifi < static_cast<int>(connections.networks.size())) {
         const auto &network = connections.networks[selectedWifi];
         Fill({b.left, detail, b.right, detail + 120}, theme::Inset, layout::ControlRadius);
         bool needs = (renderMode || fixtureGeometry) && network.secure && network.profile.empty() && !network.connected;
         if (needs) {
-            D2D1_RECT_F input{b.left + 12, detail + 12, b.right - 12,
-                              detail + 12 + std::min(32.0f, Layout().body.Height())};
-            Fill(input, theme::CardHover, layout::ControlRadius);
+            D2D1_RECT_F input{b.left + 12, detail + 12, b.right - 12, detail + 52};
+            Fill(input, theme::Inset, layout::ControlRadius);
             AddHit(402, input, L"Network security key, 8 to 63 characters or 64 hexadecimal digits");
             EnsurePassword();
             if (renderMode)

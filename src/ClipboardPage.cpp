@@ -27,7 +27,9 @@ void Island::ReadClipboard() {
 
 D2D1_RECT_F Island::ClipboardRect() const {
     auto b = Body();
-    return {b.left + 12, b.top + 4, b.right - 260, b.top + 34};
+    float right = b.right - (b.right - b.left >= 640 ? 296.0f : 0.0f);
+    return {b.left + (b.right - b.left >= 160 ? 36 : 4), b.top + 4, right - (clipboardQuery.empty() ? 4 : 40),
+            b.top + 36};
 }
 void Island::EnsureClipboardEdit() {
     if (clipboardEdit || renderMode || capturingPane || layoutOnly)
@@ -126,20 +128,39 @@ void Island::ClipboardAction(int id) {
 }
 void Island::ClipboardView() {
     auto b = Body();
-    Card({b.left, b.top, b.right, b.top + 38});
+    b.bottom = b.top + Layout().contentHeight;
+    bool inlineFilters = b.right - b.left >= 640;
+    float searchRight = b.right - (inlineFilters ? 296.0f : 0.0f);
+    Fill({b.left, b.top, b.right, b.top + 40}, theme::Inset, layout::ControlRadius);
     auto search = ClipboardRect();
+    if (b.right - b.left >= 160)
+        Text(L"\xE721", {b.left + 8, b.top, b.left + 28, b.top + 40}, type::Icon, theme::Muted);
     AddHit(403, search, L"Search clipboard history");
+    FocusRing(403, {b.left, b.top, searchRight, b.top + 40});
+    if (!clipboardQuery.empty())
+        SmallButton(9501, {searchRight - 36, b.top + 4, searchRight - 4, b.top + 36}, L"\xE711",
+                    L"Clear history search");
     if (renderMode)
-        Text(L"Search history…", search, type::Caption, theme::Muted);
+        Text(clipboardQuery.empty() ? L"Search history…" : clipboardQuery, search, type::Body, theme::Muted);
     EnsureClipboardEdit();
     const wchar_t *filters[]{L"All", L"Text", L"Images", L"Links"};
-    float chip = (b.right - b.left >= 600 ? 56.0f : b.right - b.left >= 480 ? 48.0f : 36.0f);
+    int columns = std::max(1, std::min(5, static_cast<int>((b.right - b.left) / 72)));
+    float filterLeft = inlineFilters ? b.right - 288 : b.left;
+    float filterTop = inlineFilters ? b.top + 4 : b.top + 48;
+    float chip = inlineFilters ? 56.0f : (b.right - b.left) / columns;
     for (int i = 0; i < 4; ++i)
-        TextButton(
-            8700 + i,
-            {b.right - 36 - 4 * chip + i * chip, b.top + 4, b.right - 36 - 4 * chip + (i + 1) * chip - 3, b.top + 34},
-            i == 2 && chip < 56 ? L"Img" : filters[i], clipboardFilter == i);
-    SmallButton(8791, {b.right - 32, b.top + 4, b.right, b.top + 34}, L"\xE713", L"Clipboard settings");
+        TextButton(8700 + i,
+                   {filterLeft + (i % columns) * chip, filterTop + (i / columns) * 40,
+                    filterLeft + (i % columns + 1) * chip - 4, filterTop + 32 + (i / columns) * 40},
+                   filters[i], clipboardFilter == i);
+    SmallButton(8791,
+                {filterLeft + (4 % columns) * chip, filterTop + (4 / columns) * 40,
+                 filterLeft + (4 % columns) * chip + 32, filterTop + 32 + (4 / columns) * 40},
+                L"\xE713", L"Clipboard settings");
+    float listTop = inlineFilters ? b.top + 48 : b.top + 48 + ((5 + columns - 1) / columns) * 40;
+    int actionColumns = std::max(1, std::min(4, static_cast<int>((b.right - b.left) / 112)));
+    int actionCount = !moduleRegistry.Enabled(L"clipboard") ? 1 : b.right - b.left > 600 ? 4 : 3;
+    float actionHeight = static_cast<float>((actionCount + actionColumns - 1) / actionColumns) * 40;
     clipboardRecords = moduleRegistry.ClipboardRecords();
     if ((renderMode || fixtureGeometry) && clipboardRecords.empty()) {
         clipboard::Item item;
@@ -169,9 +190,9 @@ void Island::ClipboardView() {
         clipboardSelected = clipboardRecords.front().id;
     bool wide = LayoutWidth() >= 640;
     float split = wide ? b.left + (b.right - b.left) * .47f : b.right;
-    float y = b.top + 48;
+    float y = listTop;
     int previousGroup = -1;
-    for (size_t i = clipboardOffset; i < clipboardRecords.size() && y + 56 < b.bottom - 38; ++i) {
+    for (size_t i = clipboardOffset; i < clipboardRecords.size() && y + 64 < b.bottom - actionHeight; ++i) {
         const auto &item = clipboardRecords[i];
         auto tick = GetTickCount64() + clipboard::MaxRetentionMs;
         uint64_t age = item.captured && tick >= item.captured ? tick - item.captured : 0;
@@ -184,30 +205,32 @@ void Island::ClipboardView() {
             Text(group == 0   ? L"PINNED"
                  : group == 1 ? L"TODAY"
                               : L"YESTERDAY",
-                 {b.left + 8, y, split - 8, y + 20}, type::Caption, theme::Muted);
+                 {b.left + 8, y, split - 8, y + 20}, type::Overline, theme::Muted);
             y += 24;
         }
-        D2D1_RECT_F row{b.left, y, split - 12, y + 32};
-        if (item.id == clipboardSelected || clipboardSelection.contains(item.id))
-            Fill(row, theme::AccentSoft, layout::ControlRadius);
+        D2D1_RECT_F row{b.left, y, split - 12, y + 40};
+        int id = 8600 + static_cast<int>(i);
+        bool selected = item.id == clipboardSelected || clipboardSelection.contains(item.id);
+        Fill(row, dock::Mix(selected ? theme::AccentSoft : theme::Surface, theme::CardHover, HoverAmount(id)),
+             layout::ControlRadius);
         AddHit(8600 + static_cast<int>(i), row, (item.pinned ? L"Pinned. " : L"") + item.text);
-        Text(item.kind == clipboard::Kind::Image ? L"▧"
-             : item.pinned                       ? L"⌖"
-                                                 : L"≡",
-             {row.left + 8, y, row.left + 32, y + 32}, type::Caption, theme::Accent);
-        Text(item.kind == clipboard::Kind::Image ? L"Image" : item.text, {row.left + 38, y, row.right - 46, y + 32},
-             type::Caption);
+        Text(item.kind == clipboard::Kind::Image ? L"\xEB9F"
+             : item.pinned                       ? L"\xE718"
+                                                 : L"\xE8A5",
+             {row.left + 8, y, row.left + 28, y + 40}, type::Icon, theme::Muted);
+        Text(item.kind == clipboard::Kind::Image ? L"Image" : item.text, {row.left + 36, y, row.right - 46, y + 40},
+             type::Body);
         Text(age < 60000     ? L"now"
              : age < 3600000 ? std::to_wstring(age / 60000) + L"m"
                              : std::to_wstring(age / 3600000) + L"h",
-             {row.right - 44, y, row.right - 6, y + 32}, type::Caption, theme::Muted, DWRITE_TEXT_ALIGNMENT_TRAILING);
+             {row.right - 44, y, row.right - 6, y + 40}, type::Caption, theme::Muted, DWRITE_TEXT_ALIGNMENT_TRAILING);
         FocusRing(8600 + static_cast<int>(i), row, layout::ControlRadius);
-        y += 38;
+        y += 48;
     }
     auto item = std::find_if(clipboardRecords.begin(), clipboardRecords.end(),
                              [&](const auto &entry) { return entry.id == clipboardSelected; });
     if (wide) {
-        D2D1_RECT_F preview{split, b.top + 48, b.right, b.bottom - 40};
+        D2D1_RECT_F preview{split, listTop, b.right, b.bottom - actionHeight - 8};
         Card(preview);
         if (item != clipboardRecords.end()) {
             auto panel = item->kind == clipboard::Kind::Image ? moduleRegistry.View(L"clipboard", L"") : std::nullopt;
@@ -225,7 +248,8 @@ void Island::ClipboardView() {
                                         preview.top + 16 + image.height * scale});
                 }
             } else
-                Paragraph(item->text, {preview.left + 16, preview.top + 16, preview.right - 16, preview.bottom - 68});
+                Paragraph(item->text, {preview.left + 16, preview.top + 16, preview.right - 16, preview.bottom - 88},
+                          theme::Text, type::Label);
             auto tick = GetTickCount64() + clipboard::MaxRetentionMs;
             auto age = item->captured && tick >= item->captured ? tick - item->captured : 0;
             std::wstring kind = item->kind == clipboard::Kind::Image   ? L"Image"
@@ -235,9 +259,11 @@ void Island::ClipboardView() {
                 item->kind == clipboard::Kind::Image
                     ? item->text + L" px"
                     : std::to_wstring(item->text.size()) + (item->text.size() == 4096 ? L"+ chars" : L" chars");
-            Text(L"Type   " + kind + L" · Size   " + size,
-                 {preview.left + 16, preview.bottom - 56, preview.right - 16, preview.bottom - 32}, type::Caption,
-                 theme::Muted);
+            Line(preview.left + 16, preview.bottom - 80, preview.right - 16, preview.bottom - 80, theme::Border);
+            Text(L"Type     " + kind, {preview.left + 16, preview.bottom - 72, preview.right - 16, preview.bottom - 52},
+                 type::Caption, theme::Muted);
+            Text(L"Size     " + size, {preview.left + 16, preview.bottom - 52, preview.right - 16, preview.bottom - 32},
+                 type::Caption, theme::Muted);
             Text(L"Copied   " +
                      (age < 60000 ? std::wstring(L"Just now") : std::to_wstring(age / 60000) + L" minutes ago"),
                  {preview.left + 16, preview.bottom - 32, preview.right - 16, preview.bottom - 8}, type::Caption,
@@ -245,20 +271,27 @@ void Island::ClipboardView() {
         }
     }
     if (clipboardRecords.empty())
-        Paragraph(moduleRegistry.Enabled(L"clipboard")
-                      ? L"No matching history. New copies appear here while history is enabled."
-                      : L"Clipboard history is optional. Enable it to capture new copies.",
-                  {b.left + 12, b.top + 64, b.right - 12, b.top + 138});
-    float bottom = b.bottom - 32;
+        EmptyState({b.left, listTop, b.right, b.bottom - actionHeight}, L"\xE8A5", L"No matching history",
+                   moduleRegistry.Enabled(L"clipboard") ? L"New copies appear here."
+                                                        : L"Enable history to capture new copies.");
+    std::vector<std::pair<int, std::wstring>> actions;
     if (!moduleRegistry.Enabled(L"clipboard"))
-        TextButton(8790, {b.left, bottom, b.left + 170, b.bottom}, L"Enable history");
+        actions.emplace_back(8790, L"Enable history");
     else {
-        TextButton(8750, {b.left, bottom, b.left + 90, b.bottom}, L"Copy Ctrl C");
-        TextButton(8751, {b.left + 98, bottom, b.left + 180, b.bottom}, L"Pin Ctrl P");
-        TextButton(8752, {b.left + 188, bottom, b.left + 280, b.bottom}, L"Remove Del");
+        actions = {{8750, L"Ctrl C · Copy"}, {8751, L"Ctrl P · Pin"}, {8752, L"Del · Remove"}};
         if (b.right - b.left > 600)
-            TextButton(8755, {b.left + 288, bottom, b.left + 390, b.bottom}, L"Paste Enter");
+            actions.insert(actions.begin(), {8755, L"Paste"});
     }
-    TextButton(8753, {b.right - 92, bottom, b.right - 50, b.bottom}, L"↑");
-    TextButton(8754, {b.right - 44, bottom, b.right, b.bottom}, L"↓");
+    float actionWidth = std::min(128.0f, (b.right - b.left) / actionColumns);
+    for (size_t i = 0; i < actions.size(); ++i) {
+        float x = b.left + static_cast<float>(i % actionColumns) * actionWidth;
+        float top = b.bottom - actionHeight + static_cast<float>(i / actionColumns) * 40;
+        D2D1_RECT_F action{x, top, x + actionWidth - 4, top + 32};
+        int id = actions[i].first;
+        AddHit(id, action, actions[i].second);
+        Fill(Tactile(id, action), dock::Mix(theme::Surface, theme::CardHover, HoverAmount(id)),
+             layout::Metrics::SmallRadius);
+        Text(actions[i].second, action, type::Caption, theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
+        FocusRing(id, action);
+    }
 }

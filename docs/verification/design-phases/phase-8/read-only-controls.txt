@@ -1,0 +1,14 @@
+brightness_supported=1
+audio_output_count=2
+radios_available=1
+radios_off=0
+fixed_volume_count=5
+history_samples=2
+cpu_rank_count=4
+memory_rank_count=4
+battery_present=1
+battery_seconds=6863
+uptime_seconds=200777
+settings_unchanged=PASS
+request_only_idle=PASS
+PASS

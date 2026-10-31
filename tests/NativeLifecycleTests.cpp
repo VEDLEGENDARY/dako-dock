@@ -163,10 +163,23 @@ int wmain(int argc, wchar_t **argv) {
         RequireLive(app.composition.Active(), "native composition is active");
         report << "composition=1\nframe_readiness=" << (app.composition.FrameReady() != nullptr)
                << "\nfallback_timer_ms=" << app.motionInterval << "\n";
+        RequireLive(app.shadow.Visible(), "opaque panels retain their click-through ambient shadow");
+        report << "opaque_shadow_visible=PASS\n";
         // Use the production mouse route without pumping a frame between clicks.
         // Previously Actionable() rejected all of these while springs were moving.
         auto click = [&](int id) {
-            app.RebuildLayout();
+            // Retargeted body content becomes clickable as it enters the presented
+            // viewport; navigation remains presented throughout rapid resizing.
+            for (int frame = 0; frame < 30; ++frame) {
+                app.RebuildLayout();
+                int index = app.IndexForKey(app.StableKey(id));
+                RequireLive(index >= 0, "rapid-click target exists");
+                auto r = app.hits[index].rect, c = app.hits[index].clip;
+                float x = (r.left + r.right) / 2, y = (r.top + r.bottom) / 2;
+                if (x >= c.left && x <= c.right && y >= c.top && y <= c.bottom)
+                    break;
+                PumpFor(8);
+            }
             auto found = std::find_if(app.hits.begin(), app.hits.end(), [&](const Hit &h) { return h.id == id; });
             RequireLive(found != app.hits.end(), "rapid-click target exists");
             int x = static_cast<int>((app.PanelX() + (found->rect.left + found->rect.right) / 2 * app.textScale) *
@@ -191,6 +204,8 @@ int wmain(int argc, wchar_t **argv) {
         app.EnsureTaskEdit();
         app.RebuildLayout();
         app.PositionInputs();
+        for (int frame = 0; frame < 30 && !IsWindowVisible(app.taskEdit); ++frame)
+            PumpFor(8);
         RequireLive(IsWindowVisible(app.taskEdit), "native fields are available during panel motion");
         auto savedTasks = app.tasks;
         while (app.tasks.size() < 20)
@@ -215,10 +230,12 @@ int wmain(int argc, wchar_t **argv) {
         app.FilterApps(false);
         for (Tab primary : PrimaryTabs) {
             app.SetTab(primary);
-            RequireLive(app.SurfaceHeight() == 400, "all seven tabs share the polished fixed surface height");
+            const float heights[]{368, 416, 320, 424, 400, 304, 400};
+            RequireLive(app.SurfaceHeight() == heights[static_cast<int>(primary)],
+                        "all seven tabs use their owner-reference content proportions");
         }
         app.SetTab(Tab::Today);
-        report << "twenty_task_keyboard_scroll_delete=PASS\nfixed_seven_tab_height=PASS\n";
+        report << "twenty_task_keyboard_scroll_delete=PASS\nreference_seven_tab_geometry=PASS\n";
         RequireLive(app.HitAt(app.PanelX() - 8, app.PanelY() + 100) == -1,
                     "transparent envelope cannot intercept a control hit");
         app.SetTab(Tab::Wallpaper);
@@ -296,7 +313,50 @@ int wmain(int argc, wchar_t **argv) {
         app.FinishChrome(IDCANCEL);
         RequireLive(!app.ChromeActive() && !app.modalOpen && !IsWindowVisible(app.chromeEdit),
                     "closed chrome releases modal state and hides the reusable native EDIT");
+        app.BeginChrome(Island::ChromeKind::Menu, L"Fixture menu", L"");
+        app.chrome.items = {{L"Checked", 41, true, true, {}}, {L"Submenu", 0, true, false, {{L"Child", 42}}}};
+        app.RebuildLayout();
+        for (int slot = 0; slot < 2; ++slot) {
+            int index = app.IndexForKey(app.StableKey(Island::ChromeRow + slot));
+            RequireLive(index >= 0, "popover exposes every visible item");
+            VARIANT child{}, state{};
+            child.vt = VT_I4;
+            child.lVal = app.hits[index].child;
+            Check(app.accessible->get_accState(child, &state));
+            RequireLive((state.lVal & (slot ? STATE_SYSTEM_HASPOPUP : STATE_SYSTEM_CHECKED)) != 0,
+                        "popover exposes checked and submenu states through MSAA");
+        }
+        app.FinishChrome(IDCANCEL);
         report << "in_island_confirm_editor_menu_focus_cancel=PASS\n";
+        for (float screenDpi : {96.0f, 120.0f, 144.0f, 192.0f})
+            for (float text : {1.0f, 1.5f, 2.0f})
+                for (auto edge : {anchor::Edge::Top, anchor::Edge::Bottom}) {
+                    app.dpi = screenDpi;
+                    app.textScale = text;
+                    app.envelopeWidth = 600;
+                    app.envelopeHeight = 760;
+                    app.edge = edge;
+                    app.RetargetLayout();
+                    app.SnapMotion();
+                    app.BeginChrome(Island::ChromeKind::Input, L"Weather city",
+                                    L"Open-Meteo receives the city you enter.", L"Fixture");
+                    app.PositionInputs();
+                    RequireLive(IsWindowVisible(app.chromeEdit),
+                                "inline editor stays visible across DPI, text and edge tiers");
+                    int field = app.IndexForKey(app.StableKey(Island::ChromeInput));
+                    RequireLive(field >= 0 && app.hits[field].rect.bottom - app.hits[field].rect.top >= 32 &&
+                                    app.hits[field].rect.right - app.hits[field].rect.left >= 32,
+                                "inline editor retains its minimum logical hit target");
+                    app.FinishChrome(IDCANCEL);
+                }
+        app.dpi = 96;
+        app.textScale = 1;
+        app.edge = anchor::Edge::Bottom;
+        app.envelopeWidth = 900;
+        app.envelopeHeight = 760;
+        app.RetargetLayout();
+        app.SnapMotion();
+        report << "chrome_dpi_text_edge_matrix=PASS\n";
         size_t reducedFrames = app.paintTimes.size();
         app.SetExpanded(false);
         RequireLive(!app.target && !app.composition.Active(), "reduced-motion collapse releases GPU targets");
@@ -545,9 +605,12 @@ int wmain(int argc, wchar_t **argv) {
         RequireLive(app.controlState.dark, "dark fixture toggles without touching Windows");
         app.Invoke(Airplane);
         RequireLive(app.controlState.radiosOff, "radio fixture toggles without accessing hardware");
-        app.FocusAt(app.IndexForKey(app.StableKey(Brightness)));
-        app.Key(VK_RIGHT);
-        RequireLive(app.controlState.brightness == 45, "brightness supports five-percent keyboard steps in fixtures");
+        RequireLive(app.IndexForKey(app.StableKey(Brightness)) < 0,
+                    "the five-tile reference layout keeps brightness in the Menu");
+        PostMessageW(window, WM_KEYDOWN, VK_ESCAPE, 0);
+        app.Invoke(Brightness);
+        RequireLive(app.controlState.brightness == 40 && !app.ChromeActive(),
+                    "brightness Menu editor cancels without touching the fixture or Windows");
         app.controlState.brightnessSupported = false;
         app.RebuildLayout();
         RequireLive(app.IndexForKey(app.StableKey(Brightness)) < 0,
@@ -559,8 +622,9 @@ int wmain(int argc, wchar_t **argv) {
                     "audio output list keeps an explicit Windows Sound settings action");
         app.SetTab(Tab::Stats);
         Settle(app);
+        bool rankedByMemory = app.statsMemory;
         app.Invoke(StatsSort);
-        RequireLive(app.statsMemory, "process ranking can switch to memory");
+        RequireLive(app.statsMemory != rankedByMemory, "process ranking switches between CPU and memory");
         app.Invoke(StatsSort);
         app.SetTab(Tab::Wallpaper);
         Settle(app);
@@ -1037,6 +1101,27 @@ int wmain(int argc, wchar_t **argv) {
             RequireLive(EqualRect(&desktopAreasBefore[i], &desktopAreasAfter[i]),
                         "bar/notch preview switches never change a work area");
         report << "production_bar_widgets_anchor_search=PASS\npreview_bar_notch_switch_preserves_work_areas=PASS\n";
+        desktop::DockShell floating;
+        auto floatingOptions = app.dockOptions;
+        floatingOptions.edge = anchor::Edge::Bottom;
+        floating.Options(floatingOptions);
+        RequireLive(floating.Start(window, nullptr, false, 1, {}, false),
+                    "a production floating dock starts without an AppBar recovery registration");
+        MONITORINFO floatingMonitor{sizeof(floatingMonitor)};
+        GetMonitorInfoW(panelMonitor, &floatingMonitor);
+        auto floatingPill = floating.PillBounds(panelMonitor);
+        UINT floatingDpi = 96, floatingY = 96;
+        GetDpiForMonitor(panelMonitor, MDT_EFFECTIVE_DPI, &floatingDpi, &floatingY);
+        RequireLive(std::abs(floatingMonitor.rcWork.bottom - floatingPill.bottom -
+                             desktop::DipPixels(layout::Metrics::FloatingGap, floatingDpi)) <= 1,
+                    "the bottom pill floats eight DIP above the existing usable edge");
+        auto floatingAreas = workAreas();
+        RequireLive(floatingAreas.size() == desktopAreasBefore.size(), "floating preserves the monitor count");
+        for (size_t i = 0; i < floatingAreas.size(); ++i)
+            RequireLive(EqualRect(&floatingAreas[i], &desktopAreasBefore[i]),
+                        "floating never reserves browser or other application work area");
+        floating.Stop();
+        report << "floating_overlay_preserves_work_area=PASS\n";
         app.nativeControls.reset();
         app.media.reset();
         app.hardware.reset();

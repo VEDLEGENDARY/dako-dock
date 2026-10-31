@@ -25,7 +25,9 @@ try {
     & rc.exe /nologo /fo Dako.modules.res (Join-Path $projectRoot 'src\ModuleStrings.rc')
     if ($LASTEXITCODE -ne 0) { throw 'Module resource compilation failed.' }
     $allSources = @((Join-Path $projectRoot 'tests\NativeLifecycleTests.cpp')) + $sources
-    $headers = Get-ChildItem -LiteralPath (Join-Path $projectRoot 'src') -Recurse -File -Filter '*.h'
+    # The island sources include the shared root headers. The independent settings
+    # renderer has its own headers and is compiled/checked separately by test-v4.
+    $headers = Get-ChildItem -LiteralPath (Join-Path $projectRoot 'src') -File -Filter '*.h'
     $headerTime = ($headers | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1).LastWriteTimeUtc
     $compileSources = $allSources
     if ($UseProductionObjects) {

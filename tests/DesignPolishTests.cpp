@@ -92,8 +92,21 @@ int main() {
                 RequireDesign(layout.status.Height() > 0, "status toast has positive height at every viewport");
             }
     auto layout = layout::Solve({800, 760, layout::View::Controls});
-    RequireDesign(layout.panel.Height() == 400 && layout.body.Height() == 272 && layout.footer.Height() == 36,
-                  "standard layout uses the shared 400/272/36 geometry");
+    RequireDesign(layout.panel.Width() == 580 && layout.panel.Height() == 368 && layout.body.Height() == 288 &&
+                      layout.footer.Height() == 0 && layout.header.top > layout.body.bottom,
+                  "bottom navigation shares one row and leaves the reference content canvas unobstructed");
+    for (auto edge : {anchor::Edge::Top, anchor::Edge::Bottom}) {
+        desktop::DockOptions options;
+        options.edge = edge;
+        auto dock = desktop::SolveDock(1200, {}, {}, options);
+        RequireDesign(edge == anchor::Edge::Bottom ? dock.stripHeight - dock.pill.bottom == 8 : dock.pill.top == 8,
+                      "floating dock keeps its eight-DIP gap at either edge");
+        layout::Input input;
+        input.bottom = edge == anchor::Edge::Bottom;
+        auto panel = layout::Solve(input);
+        RequireDesign(input.bottom ? panel.header.top > panel.body.bottom : panel.header.bottom < panel.body.top,
+                      "navigation stays nearest its attached dock edge");
+    }
     for (auto spec : {dock::motion::Settle, dock::motion::Snappy, dock::motion::Soft, dock::motion::Lively,
                       dock::motion::Press, dock::motion::TabTrail}) {
         dock::Spring spring;
@@ -119,9 +132,13 @@ int main() {
     RequireDesign(!reveal.Moving() && !panelWidth.Moving() && !panelHeight.Moving(),
                   "height-led reveal including the width delay settles before 320 ms");
     auto center = wallpaper::Pose(0, 340), left = wallpaper::Pose(-.5f, 340), right = wallpaper::Pose(.5f, 340);
-    RequireDesign(center.scale == 1 && center.opacity == 1 && left.x == -right.x && left.skew == -right.skew &&
+    RequireDesign(center.scale == 1 && center.opacity == 1 && left.x == -right.x && left.skew == right.skew &&
                       left.scale == right.scale && left.scale < 1 && left.opacity < 1,
-                  "fractional carousel poses are continuous, mirrored and attenuated");
+                  "fractional carousel poses are continuous, share a skew and attenuate symmetrically");
+    auto strip = wallpaper::Pose(1, 300), outer = wallpaper::Pose(2, 300);
+    RequireDesign(std::abs(strip.widthScale * 300 - 64) < .01f && std::abs(strip.x - (150 + 32 + 12)) < .01f &&
+                      std::abs(outer.x - strip.x - 76) < .01f,
+                  "settled carousel neighbors are separate 64-DIP strips with 12-DIP gutters");
     std::vector<desktop::DockGroup> groups(4);
     for (size_t i = 0; i < groups.size(); ++i)
         groups[i].key = L"fixture:" + std::to_wstring(i);
@@ -154,6 +171,25 @@ int main() {
         motion.Step(1.0f / 120);
     RequireDesign(!motion.Moving(), "two-hop dock launch feedback stops within 600 ms");
     VerifyDockResources(factory.Get());
+    HWND owner = CreateWindowExW(0, L"STATIC", L"Inert shadow resource check", WS_POPUP, -10000, -10000, 400, 300,
+                                 nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+    RequireDesign(owner != nullptr, "shadow resource fixture owner");
+    graphics::AmbientShadow shadow;
+    shadow.Position(owner, {-10000, -10000, -9600, -9700}, 96, 24, anchor::Edge::Bottom, 1, true);
+    RequireDesign(shadow.Visible(), "the opaque panel's cached shadow is visible");
+    shadow.Hide();
+    DWORD gdi = GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS);
+    DWORD windows = GetGuiResources(GetCurrentProcess(), GR_USEROBJECTS);
+    for (int cycle = 0; cycle < 3; ++cycle) {
+        for (int width = 300; width <= 400; width += 10)
+            shadow.Position(owner, {-10000, -10000, -10000 + width, -9700}, 96, 24, anchor::Edge::Bottom, 1, true,
+                            {400, 300});
+        shadow.Hide();
+        RequireDesign(!shadow.Visible() && GetGuiResources(GetCurrentProcess(), GR_GDIOBJECTS) == gdi &&
+                          GetGuiResources(GetCurrentProcess(), GR_USEROBJECTS) == windows,
+                      "resized shadows release all full-size resources at collapse");
+    }
+    DestroyWindow(owner);
     std::puts("PASS: Bezier bounds, half-DIP reuse, bounded geometry LRU, continuous ring arcs and DPI sampling.");
     CoUninitialize();
 }

@@ -13,13 +13,20 @@
 #include "../SettingsCore.h"
 #include "../SettingsIdentity.h"
 #include "../CompositionSurface.h"
+#include "Visuals.h"
 
 using Microsoft::WRL::ComPtr;
 namespace {
 struct App {
     HWND window = nullptr, search = nullptr, navigation = nullptr;
     HFONT font = nullptr;
-    HBRUSH background = CreateSolidBrush(RGB(22, 22, 23));
+    HBRUSH background = nullptr;
+    settingsui::Visuals visuals;
+    int bodyTop = 80, footerTop = 620, contentLeft = 244, contentWidth = 560, viewport = 500;
+    bool discard = false;
+    int observedScroll = 0;
+    ULONGLONG scrollDeadline = 0, scrollFadeStart = 0;
+    HWND restoreFocus = nullptr;
     ComPtr<ID2D1Factory> factory;
     ComPtr<ID2D1RenderTarget> target;
     CompositionSurface composition;
@@ -53,6 +60,43 @@ struct App {
         GetWindowTextW(control, value.data(), n + 1);
         value.resize(n);
         return value;
+    }
+    void Appearance() {
+        DWORD percent = 100, bytes = sizeof(percent), light = 0;
+        RegGetValueW(HKEY_CURRENT_USER, LR"(Software\Microsoft\Accessibility)", L"TextScaleFactor", RRF_RT_REG_DWORD,
+                     nullptr, &percent, &bytes);
+        bytes = sizeof(light);
+        RegGetValueW(HKEY_CURRENT_USER, LR"(Software\Microsoft\Windows\CurrentVersion\Themes\Personalize)",
+                     L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &light, &bytes);
+        visuals.scale = std::clamp(percent / 100.0f, 1.0f, 2.25f);
+        bool paper = values.Text(L"Theme") == L"Paper" || (values.Text(L"Theme") == L"System" && light);
+        visuals.Configure(paper, values.Bool(L"ReducedMotion"));
+        if (!visuals.highContrast)
+            visuals.theme.accent = static_cast<unsigned>(wcstoul(values.Text(L"Accent").c_str(), nullptr, 16));
+        if (background)
+            DeleteObject(background);
+        background = CreateSolidBrush(settingsui::Gdi(visuals.inset));
+        if (font)
+            DeleteObject(font);
+        font = CreateFontW(
+            -static_cast<int>(std::lround(type::Sizes[type::Body] * GetDpiForWindow(window) / 96 * visuals.scale)), 0,
+            0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Rubik");
+        if (navigation)
+            SendMessageW(navigation, LB_SETITEMHEIGHT, 0,
+                         static_cast<LPARAM>(std::lround(settingsui::Metrics::Button * GetDpiForWindow(window) / 96.0f *
+                                                         visuals.scale)));
+        EnumChildWindows(
+            window,
+            [](HWND child, LPARAM context) -> BOOL {
+                SendMessageW(child, WM_SETFONT, static_cast<WPARAM>(context), TRUE);
+                InvalidateRect(child, nullptr, TRUE);
+                return TRUE;
+            },
+            reinterpret_cast<LPARAM>(font));
+        BOOL dark = !paper && !visuals.highContrast;
+        DwmSetWindowAttribute(window, 20, &dark, sizeof(dark));
+        target.Reset();
+        composition.Reset();
     }
     void Preview(const Row &row) {
         v4::Preview packet;
@@ -109,7 +153,7 @@ struct App {
                 type = TRACKBAR_CLASSW;
                 style |= TBS_HORZ | TBS_NOTICKS;
             } else
-                style |= WS_BORDER | ES_AUTOHSCROLL;
+                style |= ES_AUTOHSCROLL;
             HWND control =
                 CreateWindowExW(0, type, L"", style, 0, 0, 1, 1, window,
                                 reinterpret_cast<HMENU>(static_cast<INT_PTR>(100 + index++)), nullptr, nullptr);
@@ -131,6 +175,8 @@ struct App {
                 SendMessageW(control, EM_SETLIMITTEXT, 1024, 0);
                 SetWindowTextW(control, values.Text(s.key).c_str());
             }
+            if (s.kind == v4::Kind::Boolean)
+                settingsui::Button::Attach(control, visuals, true);
             if (accessible) {
                 accessible->SetHwndPropStr(control, static_cast<DWORD>(OBJID_CLIENT), CHILDID_SELF, PROPID_ACC_NAME,
                                            s.label);
@@ -146,36 +192,67 @@ struct App {
     void Layout() {
         RECT raw{};
         GetClientRect(window, &raw);
-        UINT dpi = GetDpiForWindow(window);
+        int dpi = static_cast<int>(std::lround(GetDpiForWindow(window) * visuals.scale));
         RECT r{0, 0, MulDiv(raw.right, 96, static_cast<int>(dpi)), MulDiv(raw.bottom, 96, static_cast<int>(dpi))};
         auto move = [&](HWND control, int x, int y, int width, int height, BOOL redraw) {
             MoveWindow(control, MulDiv(x, static_cast<int>(dpi), 96), MulDiv(y, static_cast<int>(dpi), 96),
                        MulDiv(width, static_cast<int>(dpi), 96), MulDiv(height, static_cast<int>(dpi), 96), redraw);
         };
-        move(search, 20, 24, 170, 30, TRUE);
-        move(navigation, 20, 72, 170, r.bottom - 100, TRUE);
+        using M = settingsui::Metrics;
+        bool narrow = r.right < 640;
+        contentLeft = narrow ? M::Padding : M::Sidebar + M::SectionGap;
+        contentWidth = std::max(32, std::min(M::Content, static_cast<int>(r.right) - contentLeft - M::Padding));
+        int navHeight = narrow ? std::min(108L, std::max(32L, r.bottom / 6)) : std::max(32L, r.bottom - 100);
+        bodyTop = narrow ? 88 + navHeight + 16 : 80;
+        int columns = std::max(1, std::min(7, contentWidth / 88));
+        footerTop = r.bottom - 48 - ((7 + columns - 1) / columns) * 36;
+        viewport = std::max(1, footerTop - bodyTop - 8);
+        scroll = std::clamp(scroll, 0, std::max(0, static_cast<int>(rows.size()) * M::Row - viewport));
+        int searchWidth = narrow ? contentWidth : M::Sidebar - 40;
+        move(search, M::Padding + 32, 28, std::max(32, searchWidth - 72), M::Button, TRUE);
+        move(GetDlgItem(window, 20), M::Padding + searchWidth - 36, 28, M::Button, M::Button, TRUE);
+        ShowWindow(GetDlgItem(window, 20), Text(search).empty() || discard ? SW_HIDE : SW_SHOW);
+        move(navigation, M::Padding, 76, narrow ? contentWidth : M::Sidebar - 40, navHeight, TRUE);
         for (size_t i = 0; i < rows.size(); ++i) {
-            int y = 82 + static_cast<int>(i) * 108 - scroll;
-            move(rows[i].control, r.right - 240, y + 10, 208, rows[i].setting->kind == v4::Kind::Choice ? 220 : 30,
-                 TRUE);
-            ShowWindow(rows[i].control, y >= 66 && y + 70 < r.bottom - 80 ? SW_SHOW : SW_HIDE);
+            int y = bodyTop + static_cast<int>(i) * M::Row - scroll;
+            move(rows[i].control, contentLeft + 16, y + 88,
+                 rows[i].setting->kind == v4::Kind::Boolean ? M::Button : std::max(32, contentWidth - 32),
+                 rows[i].setting->kind == v4::Kind::Choice ? 240 : M::Input, TRUE);
+            ShowWindow(rows[i].control,
+                       !discard && y + 88 >= bodyTop && y + 128 <= bodyTop + viewport ? SW_SHOW : SW_HIDE);
         }
         const int ids[]{10, 11, 12, 13, 14, 15, 17};
         for (int i = 0; i < 7; ++i)
-            move(GetDlgItem(window, ids[i]), 220 + i * 88, r.bottom - 52, 82, 30, TRUE);
+            move(GetDlgItem(window, ids[i]), contentLeft + i % columns * (contentWidth / columns),
+                 footerTop + i / columns * 36, contentWidth / columns - 4, M::Button, TRUE);
+        for (int id : {18, 19}) {
+            move(GetDlgItem(window, id), contentLeft + 16 + (id - 18) * std::max(32, (contentWidth - 44) / 2),
+                 bodyTop + 104, std::max(32, (contentWidth - 44) / 2 - 4), M::Button, TRUE);
+            ShowWindow(GetDlgItem(window, id), discard ? SW_SHOW : SW_HIDE);
+        }
+        for (int id : ids)
+            EnableWindow(GetDlgItem(window, id), !discard);
+        EnableWindow(search, !discard);
+        EnableWindow(navigation, !discard);
         SCROLLINFO info{sizeof(info),
                         SIF_RANGE | SIF_PAGE | SIF_POS,
                         0,
-                        std::max(0, static_cast<int>(rows.size()) * 108),
-                        static_cast<UINT>(std::max(1L, r.bottom - 170)),
+                        std::max(0, static_cast<int>(rows.size()) * M::Row),
+                        static_cast<UINT>(viewport),
                         scroll,
                         0};
         SetScrollInfo(window, SB_VERT, &info, TRUE);
+        if (scroll != observedScroll) {
+            observedScroll = scroll;
+            scrollDeadline = GetTickCount64() + 800;
+            scrollFadeStart = 0;
+            SetTimer(window, 8, 800, nullptr);
+        }
     }
     void Paint() {
         RECT raw{};
         GetClientRect(window, &raw);
-        UINT dpi = GetDpiForWindow(window);
+        UINT dpi = static_cast<UINT>(std::lround(GetDpiForWindow(window) * visuals.scale));
         RECT r{0, 0, MulDiv(raw.right, 96, static_cast<int>(dpi)), MulDiv(raw.bottom, 96, static_cast<int>(dpi))};
         if (!target) {
             if (FAILED(composition.Create(window, factory.Get(), static_cast<UINT>(raw.right),
@@ -191,31 +268,100 @@ struct App {
         if (!target)
             return;
         target->BeginDraw();
-        target->Clear(D2D1::ColorF(0x0B0B0C));
+        const auto &theme = visuals.theme;
+        target->Clear(settingsui::Color(theme.surface));
         ComPtr<ID2D1SolidColorBrush> brush;
-        target->CreateSolidColorBrush(D2D1::ColorF(0xF2F2F2), &brush);
-        auto text = [&](const std::wstring &value, D2D1_RECT_F rect, unsigned color = 0xF2F2F2) {
-            brush->SetColor(D2D1::ColorF(color));
-            target->DrawTextW(value.c_str(), static_cast<UINT32>(value.size()), format.Get(), rect, brush.Get());
+        target->CreateSolidColorBrush(settingsui::Color(theme.text), &brush);
+        auto text = [&](const std::wstring &value, D2D1_RECT_F rect, type::Role role, unsigned color) {
+            brush->SetColor(settingsui::Color(color));
+            target->DrawTextW(value.c_str(), static_cast<UINT32>(value.size()), visuals.typography->formats[role].Get(),
+                              rect, brush.Get());
         };
-        text(L"Dako settings", {220, 22, static_cast<float>(r.right - 25), 56}, 0xD4B35C);
-        target->PushAxisAlignedClip({212, 66, static_cast<float>(r.right - 12), static_cast<float>(r.bottom - 80)},
-                                    D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+        float left = static_cast<float>(contentLeft), right = left + contentWidth, top = static_cast<float>(bodyTop);
+        float searchRight = static_cast<float>(settingsui::Metrics::Padding +
+                                               (r.right < 640 ? contentWidth : settingsui::Metrics::Sidebar - 40));
+        brush->SetColor(settingsui::Color(visuals.inset));
+        auto searchWell = D2D1::RoundedRect({20, 24, searchRight, 64}, layout::Metrics::ControlRadius,
+                                            layout::Metrics::ControlRadius);
+        target->FillRoundedRectangle(searchWell, brush.Get());
+        text(L"\xE721", {28, 24, 48, 64}, type::Icon, theme.muted);
+        if (GetFocus() == search) {
+            brush->SetColor(settingsui::Color(theme.accent));
+            target->DrawRoundedRectangle(searchWell, brush.Get(), visuals.highContrast ? 2.0f : 1.5f);
+        }
+        if (r.right >= 640)
+            text(L"Dako settings", {left, 24, right, 56}, type::Title, theme.text);
+        target->PushAxisAlignedClip({left, top, right, top + viewport}, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         for (size_t i = 0; i < rows.size(); ++i) {
-            float y = 82 + static_cast<float>(i) * 108 - scroll;
-            brush->SetColor(D2D1::ColorF(0x161617));
-            target->FillRoundedRectangle(D2D1::RoundedRect({220, y, static_cast<float>(r.right - 20), y + 94}, 12, 12),
-                                         brush.Get());
+            float y = top + static_cast<float>(i) * settingsui::Metrics::Row - scroll;
+            auto card = D2D1::RoundedRect({left, y, right, y + settingsui::Metrics::Card}, layout::Metrics::CardRadius,
+                                          layout::Metrics::CardRadius);
+            brush->SetColor(settingsui::Color(theme.card));
+            target->FillRoundedRectangle(card, brush.Get());
+            brush->SetColor(settingsui::Color(visuals.edge, visuals.highContrast ? 1 : palette::Tokens::HairlineInner));
+            if (visuals.highContrast)
+                target->DrawRoundedRectangle(card, brush.Get(), 2);
+            else
+                target->DrawLine({left + layout::Metrics::CardRadius, y + .5f},
+                                 {right - layout::Metrics::CardRadius, y + .5f}, brush.Get(), 96.0f / dpi);
             text(std::wstring(rows[i].setting->label) +
                      (rows[i].setting->kind == v4::Kind::Integer ? L" · " + values.Text(rows[i].setting->key) : L""),
-                 {236, y + 8, static_cast<float>(r.right - 258), y + 40});
-            text(rows[i].setting->description, {236, y + 42, static_cast<float>(r.right - 258), y + 88}, 0xA0A0A6);
+                 {left + 16, y + 12, right - 16, y + 36}, type::Title, theme.text);
+            text(rows[i].setting->description, {left + 16, y + 40, right - 16, y + 80}, type::Caption, theme.muted);
+            if (rows[i].setting->kind != v4::Kind::Boolean) {
+                brush->SetColor(settingsui::Color(visuals.inset));
+                auto well = D2D1::RoundedRect({left + 12, y + 84, right - 12, y + 132}, layout::Metrics::ControlRadius,
+                                              layout::Metrics::ControlRadius);
+                target->FillRoundedRectangle(well, brush.Get());
+                if (GetFocus() == rows[i].control) {
+                    brush->SetColor(settingsui::Color(theme.accent));
+                    target->DrawRoundedRectangle(well, brush.Get(), visuals.highContrast ? 2.0f : 1.5f);
+                }
+            }
+        }
+        if (discard) {
+            brush->SetColor(settingsui::Color(theme.surface, visuals.highContrast ? 1.0f : .6f));
+            target->FillRectangle({left, top, right, top + viewport}, brush.Get());
+            brush->SetColor(settingsui::Color(theme.hover));
+            target->FillRoundedRectangle(D2D1::RoundedRect({left, top, right, top + 160}, layout::Metrics::CardRadius,
+                                                           layout::Metrics::CardRadius),
+                                         brush.Get());
+            text(L"Discard unsaved settings?", {left + 16, top + 12, right - 16, top + 44}, type::Title, theme.text);
+            text(L"Your saved settings will be kept.", {left + 16, top + 48, right - 16, top + 88}, type::Caption,
+                 theme.muted);
         }
         target->PopAxisAlignedClip();
-        text(status,
-             {220, static_cast<float>(r.bottom - 78), static_cast<float>(r.right - 20),
-              static_cast<float>(r.bottom - 54)},
-             0xD4B35C);
+        float total = static_cast<float>(rows.size() * settingsui::Metrics::Row);
+        if (!discard && total > viewport) {
+            if (!visuals.highContrast) {
+                D2D1_GRADIENT_STOP stops[]{{0, settingsui::Color(theme.surface)},
+                                           {1, settingsui::Color(theme.surface, 0)}};
+                ComPtr<ID2D1GradientStopCollection> collection;
+                ComPtr<ID2D1LinearGradientBrush> fade;
+                if (SUCCEEDED(target->CreateGradientStopCollection(stops, 2, &collection)) &&
+                    SUCCEEDED(target->CreateLinearGradientBrush(
+                        D2D1::LinearGradientBrushProperties({0, top}, {0, top + 16}), collection.Get(), &fade))) {
+                    if (scroll > 0)
+                        target->FillRectangle({left, top, right, top + 16}, fade.Get());
+                    if (scroll + viewport < total) {
+                        fade->SetStartPoint({0, top + viewport});
+                        fade->SetEndPoint({0, top + viewport - 16});
+                        target->FillRectangle({left, top + viewport - 16, right, top + viewport}, fade.Get());
+                    }
+                }
+            }
+            float opacity = visuals.highContrast ? 1.0f
+                            : scrollFadeStart
+                                ? std::clamp(1 - (GetTickCount64() - scrollFadeStart) / 200.0f, 0.0f, 1.0f)
+                            : scrollDeadline ? 1.0f
+                                             : 0;
+            float length = std::max(24.0f, viewport * viewport / total);
+            float y = top + (viewport - length) * scroll / (total - viewport);
+            brush->SetColor(settingsui::Color(theme.muted, opacity));
+            target->FillRoundedRectangle(D2D1::RoundedRect({right - 3, y, right, y + length}, 1.5f, 1.5f), brush.Get());
+        }
+        text(status, {left, static_cast<float>(r.bottom - 44), right, static_cast<float>(r.bottom - 4)}, type::Caption,
+             theme.muted);
         if (target->EndDraw() == D2DERR_RECREATE_TARGET) {
             target.Reset();
             composition.Reset();
@@ -240,6 +386,7 @@ struct App {
             values = v4::ReadValues(storePath);
             if (!v4::SaveValues(values, storePath))
                 status = L"Imported preferences, but could not apply Windows startup. Check Startup and Apply again.";
+            Appearance();
             Build();
         }
         InvalidateRect(window, nullptr, FALSE);
@@ -256,22 +403,22 @@ LRESULT CALLBACK Procedure(HWND window, UINT message, WPARAM wparam, LPARAM lpar
         return DefWindowProcW(window, message, wparam, lparam);
     switch (message) {
     case WM_CREATE: {
-        app->font = CreateFontW(-MulDiv(15, static_cast<int>(GetDpiForWindow(window)), 96), 0, 0, 0, FW_NORMAL, FALSE,
-                                FALSE, FALSE, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
         D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, app->factory.GetAddressOf());
         DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
                             reinterpret_cast<IUnknown **>(app->writer.GetAddressOf()));
-        app->writer->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
-                                      DWRITE_FONT_STRETCH_NORMAL, 14, L"en-us", &app->format);
+        app->visuals.factory = app->factory;
+        app->visuals.typography = type::Acquire(app->writer.Get());
+        app->Appearance();
         CoCreateInstance(CLSID_AccPropServices, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&app->accessible));
-        BOOL dark = TRUE;
-        DwmSetWindowAttribute(window, 20, &dark, sizeof(dark));
-        app->search =
-            CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 0, 0,
-                            1, 1, window, reinterpret_cast<HMENU>(1), nullptr, nullptr);
+        app->search = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL, 0, 0, 1, 1,
+                                      window, reinterpret_cast<HMENU>(1), nullptr, nullptr);
         SendMessageW(app->search, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(L"Search settings"));
-        app->navigation = CreateWindowExW(0, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY, 0, 0, 1,
-                                          1, window, reinterpret_cast<HMENU>(2), nullptr, nullptr);
+        if (app->accessible)
+            app->accessible->SetHwndPropStr(app->search, static_cast<DWORD>(OBJID_CLIENT), CHILDID_SELF,
+                                            PROPID_ACC_NAME, L"Search settings");
+        app->navigation = CreateWindowExW(
+            0, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS,
+            0, 0, 1, 1, window, reinterpret_cast<HMENU>(2), nullptr, nullptr);
         for (const auto &page : app->pages)
             SendMessageW(app->navigation, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(page.c_str()));
         SendMessageW(app->navigation, LB_SETCURSEL, 0, 0);
@@ -281,11 +428,26 @@ LRESULT CALLBACK Procedure(HWND window, UINT message, WPARAM wparam, LPARAM lpar
                 CreateWindowExW(0, L"BUTTON", buttons[i], WS_CHILD | WS_VISIBLE | WS_TABSTOP, 0, 0, 1, 1, window,
                                 reinterpret_cast<HMENU>(static_cast<INT_PTR>(10 + i)), nullptr, nullptr);
             SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(app->font), TRUE);
+            settingsui::Button::Attach(control, app->visuals);
         }
         HWND diagnostic = CreateWindowExW(0, L"BUTTON", L"Diagnostics", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 0, 0, 1, 1,
                                           window, reinterpret_cast<HMENU>(17), nullptr, nullptr);
         SendMessageW(diagnostic, WM_SETFONT, reinterpret_cast<WPARAM>(app->font), TRUE);
+        settingsui::Button::Attach(diagnostic, app->visuals);
+        for (int id : {18, 19, 20}) {
+            HWND control = CreateWindowExW(0, L"BUTTON",
+                                           id == 18   ? L"Cancel"
+                                           : id == 19 ? L"Discard"
+                                                      : L"Clear",
+                                           WS_CHILD | WS_TABSTOP, 0, 0, 1, 1, window,
+                                           reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), nullptr, nullptr);
+            SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(app->font), TRUE);
+            settingsui::Button::Attach(control, app->visuals);
+        }
         SendMessageW(app->navigation, WM_SETFONT, reinterpret_cast<WPARAM>(app->font), TRUE);
+        SendMessageW(app->navigation, LB_SETITEMHEIGHT, 0,
+                     static_cast<LPARAM>(std::lround(settingsui::Metrics::Button * GetDpiForWindow(window) / 96.0f *
+                                                     app->visuals.scale)));
         SendMessageW(app->search, WM_SETFONT, reinterpret_cast<WPARAM>(app->font), TRUE);
         app->Build();
         return 0;
@@ -311,7 +473,8 @@ LRESULT CALLBACK Procedure(HWND window, UINT message, WPARAM wparam, LPARAM lpar
             position = info.nTrackPos;
             break;
         }
-        app->scroll = std::clamp(position, 0, std::max(0, static_cast<int>(app->rows.size()) * 108 - 350));
+        app->scroll = std::clamp(
+            position, 0, std::max(0, static_cast<int>(app->rows.size()) * settingsui::Metrics::Row - app->viewport));
         app->Layout();
         InvalidateRect(window, nullptr, FALSE);
         return 0;
@@ -320,16 +483,42 @@ LRESULT CALLBACK Procedure(HWND window, UINT message, WPARAM wparam, LPARAM lpar
         auto rect = reinterpret_cast<RECT *>(lparam);
         SetWindowPos(window, nullptr, rect->left, rect->top, rect->right - rect->left, rect->bottom - rect->top,
                      SWP_NOZORDER | SWP_NOACTIVATE);
-        app->target.Reset();
-        app->composition.Reset();
+        app->Appearance();
         app->Layout();
         return 0;
     }
+    case WM_SETTINGCHANGE:
+    case WM_THEMECHANGED:
+        app->Appearance();
+        app->Layout();
+        InvalidateRect(window, nullptr, TRUE);
+        return 0;
     case WM_SIZE:
         app->target.Reset();
         app->composition.Reset();
         app->Layout();
         return 0;
+    case WM_TIMER:
+        if (wparam == 8) {
+            auto now = GetTickCount64();
+            KillTimer(window, 8);
+            if (now >= app->scrollDeadline) {
+                if (!app->scrollFadeStart)
+                    app->scrollFadeStart = now;
+                if (now - app->scrollFadeStart < 200 && !app->visuals.reducedMotion)
+                    SetTimer(window, 8, 16, nullptr);
+                else
+                    app->scrollDeadline = app->scrollFadeStart = 0;
+            }
+            InvalidateRect(window, nullptr, FALSE);
+        }
+        return 0;
+    case WM_GETMINMAXINFO: {
+        auto info = reinterpret_cast<MINMAXINFO *>(lparam);
+        float scale = GetDpiForWindow(window) / 96.0f * app->visuals.scale;
+        info->ptMinTrackSize = {static_cast<LONG>(360 * scale), static_cast<LONG>(420 * scale)};
+        return 0;
+    }
     case WM_PAINT: {
         PAINTSTRUCT paint{};
         BeginPaint(window, &paint);
@@ -337,18 +526,46 @@ LRESULT CALLBACK Procedure(HWND window, UINT message, WPARAM wparam, LPARAM lpar
         EndPaint(window, &paint);
         return 0;
     }
+    case WM_MEASUREITEM:
+        reinterpret_cast<MEASUREITEMSTRUCT *>(lparam)->itemHeight = static_cast<UINT>(
+            std::lround(settingsui::Metrics::Button * GetDpiForWindow(window) / 96.0f * app->visuals.scale));
+        return TRUE;
+    case WM_DRAWITEM: {
+        auto item = reinterpret_cast<DRAWITEMSTRUCT *>(lparam);
+        if (item->CtlID != 2 || item->itemID >= app->pages.size())
+            break;
+        const auto &theme = app->visuals.theme;
+        unsigned fill = item->itemState & ODS_SELECTED
+                            ? dock::Mix(theme.card, theme.accent, palette::Tokens::AccentSoft)
+                            : app->visuals.inset;
+        auto background = CreateSolidBrush(settingsui::Gdi(fill));
+        FillRect(item->hDC, &item->rcItem, background);
+        DeleteObject(background);
+        SetBkMode(item->hDC, TRANSPARENT);
+        SetTextColor(item->hDC, settingsui::Gdi(theme.text));
+        auto old = SelectObject(item->hDC, app->font);
+        RECT text = item->rcItem;
+        text.left += MulDiv(12, static_cast<int>(GetDpiForWindow(window)), 96);
+        DrawTextW(item->hDC, app->pages[item->itemID].c_str(), -1, &text,
+                  DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
+        if (item->itemState & ODS_FOCUS)
+            DrawFocusRect(item->hDC, &item->rcItem);
+        SelectObject(item->hDC, old);
+        return TRUE;
+    }
     case WM_ERASEBKGND:
         return 1;
     case WM_CTLCOLOREDIT:
     case WM_CTLCOLORLISTBOX:
     case WM_CTLCOLORBTN:
     case WM_CTLCOLORSTATIC:
-        SetTextColor(reinterpret_cast<HDC>(wparam), RGB(242, 242, 242));
-        SetBkColor(reinterpret_cast<HDC>(wparam), RGB(22, 22, 23));
+        SetTextColor(reinterpret_cast<HDC>(wparam), settingsui::Gdi(app->visuals.theme.text));
+        SetBkColor(reinterpret_cast<HDC>(wparam), settingsui::Gdi(app->visuals.inset));
         return reinterpret_cast<LRESULT>(app->background);
     case WM_MOUSEWHEEL:
-        app->scroll = std::clamp(app->scroll - GET_WHEEL_DELTA_WPARAM(wparam) / 120 * 72, 0,
-                                 std::max(0, static_cast<int>(app->rows.size()) * 108 - 350));
+        app->scroll =
+            std::clamp(app->scroll - GET_WHEEL_DELTA_WPARAM(wparam) / 120 * 72, 0,
+                       std::max(0, static_cast<int>(app->rows.size()) * settingsui::Metrics::Row - app->viewport));
         app->Layout();
         InvalidateRect(window, nullptr, FALSE);
         return 0;
@@ -376,6 +593,25 @@ LRESULT CALLBACK Procedure(HWND window, UINT message, WPARAM wparam, LPARAM lpar
         if (app->rebuilding)
             return 0;
         int id = LOWORD(wparam), notification = HIWORD(wparam);
+        if (id == 20 && !app->discard) {
+            SetWindowTextW(app->search, L"");
+            SetFocus(app->search);
+            return 0;
+        }
+        if (app->discard) {
+            if (id == 18) {
+                app->discard = false;
+                SetWindowTextW(window, L"Dako settings");
+                app->Layout();
+                if (IsWindow(app->restoreFocus))
+                    SetFocus(app->restoreFocus);
+                InvalidateRect(window, nullptr, FALSE);
+            } else if (id == 19) {
+                app->dirty = false;
+                SendMessageW(window, WM_CLOSE, 0, 0);
+            }
+            return 0;
+        }
         if (id == 1 && notification == EN_CHANGE) {
             app->Collect();
             app->scroll = 0;
@@ -400,6 +636,11 @@ LRESULT CALLBACK Procedure(HWND window, UINT message, WPARAM wparam, LPARAM lpar
                 app->values.data[row.setting->key] = value;
                 app->dirty = true;
                 app->Preview(row);
+                if (wcscmp(row.setting->key, L"Theme") == 0 || wcscmp(row.setting->key, L"ReducedMotion") == 0 ||
+                    wcscmp(row.setting->key, L"Accent") == 0) {
+                    app->Appearance();
+                    app->Layout();
+                }
             }
             return 0;
         }
@@ -416,6 +657,7 @@ LRESULT CALLBACK Procedure(HWND window, UINT message, WPARAM wparam, LPARAM lpar
                     app->values.data[s.key] = s.value;
             app->dirty = true;
             app->status = L"Reset staged. Choose Apply to save.";
+            app->Appearance();
             app->Build();
         }
         if (id == 17) {
@@ -445,9 +687,16 @@ LRESULT CALLBACK Procedure(HWND window, UINT message, WPARAM wparam, LPARAM lpar
         return 0;
     }
     case WM_CLOSE:
-        if (app->dirty &&
-            MessageBoxW(window, L"Discard unsaved settings?", L"Dako settings", MB_YESNO | MB_DEFBUTTON2) != IDYES)
+        if (app->dirty) {
+            app->restoreFocus = GetFocus();
+            app->discard = true;
+            SetWindowTextW(window, L"Discard unsaved settings? — Dako settings");
+            NotifyWinEvent(EVENT_SYSTEM_ALERT, window, OBJID_CLIENT, CHILDID_SELF);
+            app->Layout();
+            SetFocus(GetDlgItem(window, 18));
+            InvalidateRect(window, nullptr, FALSE);
             return 0;
+        }
         {
             v4::Preview rollback;
             rollback.command = 1;
@@ -499,11 +748,16 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command, int show) {
     if (window) {
         ShowWindow(window, show);
         MSG message{};
-        while (GetMessageW(&message, nullptr, 0, 0) > 0)
-            if (!IsDialogMessageW(window, &message)) {
+        while (GetMessageW(&message, nullptr, 0, 0) > 0) {
+            if (app.discard && message.message == WM_KEYDOWN && message.wParam == VK_ESCAPE)
+                SendMessageW(window, WM_COMMAND, MAKEWPARAM(18, BN_CLICKED), 0);
+            else if (app.discard && message.message == WM_KEYDOWN && message.wParam == VK_RETURN)
+                SendMessageW(window, WM_COMMAND, MAKEWPARAM(GetDlgCtrlID(GetFocus()) == 19 ? 19 : 18, BN_CLICKED), 0);
+            else if (!IsDialogMessageW(window, &message)) {
                 TranslateMessage(&message);
                 DispatchMessageW(&message);
             }
+        }
     }
     ReleaseMutex(singleton);
     CloseHandle(singleton);

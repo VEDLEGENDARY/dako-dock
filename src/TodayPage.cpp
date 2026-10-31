@@ -240,8 +240,8 @@ void Island::TodayAction(int id) {
 }
 void Island::Today() {
     auto columns = layout::TodayColumns(Layout());
-    auto leftRows = layout::Rows(columns[0], {140, 120});
-    auto centerRows = layout::Rows(columns[1], {124, columns[1].Height() - 136});
+    auto leftRows = layout::Rows(columns[0], {188, 120});
+    auto centerRows = layout::Rows(columns[1], {164, columns[1].Height() - 176});
     auto clock = leftRows[0], weatherCard = leftRows[1], week = centerRows[0], focus = centerRows[1];
     auto task = TaskCard();
     SYSTEMTIME now{};
@@ -255,25 +255,35 @@ void Island::Today() {
     {
         PaintGroup reveal(*this, 0);
         Card(R(clock));
-        Text(time, {clock.left + 12, clock.top + 32, clock.right - 12, clock.top + 88}, type::Display, theme::Text,
+        wchar_t hours[8]{}, minutes[8]{};
+        swprintf_s(hours, L"%02u", hour);
+        swprintf_s(minutes, L"%02u", now.wMinute);
+        float center = clock.CenterX(), middle = clock.top + (clock.Height() - 28) / 2;
+        Text(hours, {clock.left + 12, clock.top + 12, clock.right - 12, middle - 12}, type::Display, theme::Text,
+             DWRITE_TEXT_ALIGNMENT_CENTER);
+        if (!layoutOnly) {
+            brush->SetColor(Color(theme::Accent));
+            for (int i = -1; i <= 1; ++i)
+                target->FillEllipse(D2D1::Ellipse({center + i * 10, middle}, 3, 3), brush.Get());
+        }
+        Text(minutes, {clock.left + 12, middle + 12, clock.right - 12, clock.bottom - 36}, type::Display, theme::Text,
              DWRITE_TEXT_ALIGNMENT_CENTER);
         Text(std::wstring(now.wHour < 12 ? L"AM · " : L"PM · ") + date,
-             {clock.left + 12, clock.top + 96, clock.right - 12, clock.bottom - 16}, type::Caption, theme::Muted,
+             {clock.left + 12, clock.bottom - 32, clock.right - 12, clock.bottom - 8}, type::Caption, theme::Muted,
              DWRITE_TEXT_ALIGNMENT_CENTER);
         AddHit(2001, R(clock), std::wstring(time) + L". " + date, false);
-        SmallButton(TodayOptions, {clock.right - 40, clock.top + 4, clock.right - 8, clock.top + 36}, L"\xE713",
-                    L"Today settings");
     }
     {
         PaintGroup reveal(*this, 1);
         Card(R(weatherCard));
         Text(weather.available && weather.code < 2 ? L"\xE706" : L"\xE753",
              {weatherCard.left + 12, weatherCard.top + 12, weatherCard.right - 12, weatherCard.top + 44},
-             type::LargeIcon, theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
+             type::LargeIcon, theme::Accent, DWRITE_TEXT_ALIGNMENT_CENTER);
         auto weatherText = weather.available ? Number(weather.temperature) + L"°C" : L"—";
         Text(weatherText, {weatherCard.left + 12, weatherCard.top + 44, weatherCard.right - 12, weatherCard.top + 80},
              type::Metric, theme::Text, DWRITE_TEXT_ALIGNMENT_CENTER);
-        Text(weather.available ? WeatherService::Condition(weather.code) : L"Weather is off",
+        Text(weather.available ? (weather.code == 1 ? L"Mostly clear" : WeatherService::Condition(weather.code))
+                               : L"Weather is off",
              {weatherCard.left + 12, weatherCard.top + 84, weatherCard.right - 12, weatherCard.bottom - 12},
              type::Caption, theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
         AddHit(2004, R(weatherCard), weatherText, false);
@@ -281,9 +291,16 @@ void Island::Today() {
     {
         PaintGroup reveal(*this, 2);
         Card(R(week));
-        Text(L"This week", {week.left + 12, week.top + 8, week.right - 12, week.top + 28}, type::Label);
+        Text(L"This week", {week.left + 12, week.top + 8, week.right - 144, week.top + 28}, type::Label);
         auto today = calendar::Days(std::chrono::year(now.wYear) / now.wMonth / now.wDay);
         auto monday = today - std::chrono::days((std::chrono::weekday(today).c_encoding() + 6) % 7);
+        auto first = calendar::SystemTime(monday), last = calendar::SystemTime(monday + std::chrono::days(6));
+        wchar_t firstDate[32]{}, lastDate[32]{};
+        GetDateFormatEx(LOCALE_NAME_USER_DEFAULT, 0, &first, L"MMM d", firstDate, 32, nullptr);
+        GetDateFormatEx(LOCALE_NAME_USER_DEFAULT, 0, &last, L"MMM d", lastDate, 32, nullptr);
+        Text(std::wstring(firstDate) + L" – " + lastDate,
+             {week.right - 144, week.top + 8, week.right - 12, week.top + 28}, type::Caption, theme::Muted,
+             DWRITE_TEXT_ALIGNMENT_TRAILING);
         float pitch = (week.Width() - 24) / 7;
         for (int i = 0; i < 7; ++i) {
             auto day = calendar::SystemTime(monday + std::chrono::days(i));
@@ -299,41 +316,63 @@ void Island::Today() {
             Text(Number(day.wDay), pill, type::Label, selected ? theme::AccentInk : theme::Text,
                  DWRITE_TEXT_ALIGNMENT_CENTER);
         }
-        std::wstring next = calendarEvents.empty() ? L"No upcoming events" : calendarEvents.front().title;
-        Text(next, {week.left + 12, week.top + 92, week.right - 12, week.bottom - 12}, type::Caption, theme::Muted);
+        auto upcoming = std::find_if(calendarEvents.begin(), calendarEvents.end(),
+                                     [&](const auto &event) { return event.start >= calendar::FromSystemTime(now); });
+        std::wstring next = upcoming == calendarEvents.end() ? L"No upcoming events" : upcoming->title;
+        std::wstring nextTime = L"Next event";
+        if (upcoming != calendarEvents.end()) {
+            auto eventTime = calendar::SystemTime(upcoming->start);
+            wchar_t value[48]{};
+            GetTimeFormatEx(LOCALE_NAME_USER_DEFAULT, TIME_NOSECONDS, &eventTime, nullptr, value, 48);
+            nextTime = std::wstring(L"Next · ") + value;
+        }
+        D2D1_RECT_F event{week.left + 12, week.bottom - 64, week.right - 12, week.bottom - 12};
+        Fill(event, theme::CardHover, layout::ControlRadius);
+        Fill({event.left + 8, event.top + 10, event.left + 12, event.bottom - 10},
+             highContrast ? theme::Text : palette::Tokens::CalendarEvent, 2);
+        TwoLine({event.left + 24, event.top + 4, event.right - 8, event.bottom - 4}, nextTime, next);
         AddHit(2005, R(week), L"This week. " + next, false);
     }
     {
         PaintGroup reveal(*this, 3);
         Card(R(focus));
-        float cx = focus.left + 48, cy = focus.top + 44;
-        if (focus.Width() >= 200) {
-            DrawRing(cx, cy, 28, focusDuration ? static_cast<float>(focusSeconds) / focusDuration : 0, theme::Accent,
-                     8);
-            Text(L"\xE916", {cx - 16, cy - 16, cx + 16, cy + 16}, type::TileIcon, theme::Muted,
-                 DWRITE_TEXT_ALIGNMENT_CENTER);
+        float cx = focus.left + 52, cy = (focus.top + focus.bottom) / 2;
+        bool wide = focus.Width() >= 280;
+        if (wide) {
+            DrawRing(cx, cy, 36, focusDuration ? static_cast<float>(focusSeconds) / focusDuration : 0, theme::Accent,
+                     4);
+            Text((focusSeconds < 600 ? L"0" : L"") + Clock(focusSeconds), {cx - 32, cy - 16, cx + 32, cy + 16},
+                 type::Label, theme::Text, DWRITE_TEXT_ALIGNMENT_CENTER);
         }
-        float textLeft = focus.left + (focus.Width() >= 200 ? 92.0f : 12.0f);
-        Text(Clock(focusSeconds), {textLeft, focus.top + 4, focus.right - 12, focus.top + 40}, type::Metric,
-             theme::Text, DWRITE_TEXT_ALIGNMENT_CENTER);
+        float textLeft = focus.left + (wide ? 104.0f : 12.0f);
+        if (!wide)
+            Text(Clock(focusSeconds), {textLeft, focus.top + 4, focus.right - 12, focus.top + 40}, type::Metric,
+                 theme::Text, DWRITE_TEXT_ALIGNMENT_CENTER);
         float mid = (textLeft + focus.right - 12) / 2;
         bool stacked = focus.Width() < 104;
-        TextButton(8970, {textLeft, focus.top + 44, stacked ? focus.right - 12 : mid - 2, focus.top + 76},
+        float fieldTop = focus.top + (wide ? 12.0f : 44.0f);
+        TextButton(8970, {textLeft, fieldTop, stacked ? focus.right - 12 : mid - 2, fieldTop + 32},
                    std::to_wstring(focusDuration / 3600) + L"h");
         TextButton(8971,
-                   {stacked ? textLeft : mid + 2, focus.top + (stacked ? 80.0f : 44.0f), focus.right - 12,
-                    focus.top + (stacked ? 112.0f : 76.0f)},
+                   {stacked ? textLeft : mid + 2, fieldTop + (stacked ? 36.0f : 0.0f), focus.right - 12,
+                    fieldTop + (stacked ? 68.0f : 32.0f)},
                    std::to_wstring(focusDuration / 60 % 60) + L"m");
         const int actions[]{FocusOne, FocusShort, FocusTen, FocusMedium, FocusTwenty, FocusStart, FocusReset};
         const wchar_t *labels[]{L"1m", L"5m", L"10m", L"15m", L"20m"};
-        int perRow = std::max(1, std::min(7, static_cast<int>((focus.Width() - 24) / 32)));
-        float cell = (focus.Width() - 24) / perRow;
+        int perRow = std::max(1, std::min(wide ? 5 : 7, static_cast<int>((focus.right - 12 - textLeft) / 32)));
+        float cell = (focus.right - 12 - textLeft) / perRow;
         for (int i = 0; i < 7; ++i) {
-            float x = focus.left + 12 + i % perRow * cell;
-            float y = focus.top + (stacked ? 124.0f : 88.0f) + i / perRow * 36.0f;
+            float x = textLeft + i % perRow * cell;
+            float y = focus.top + (wide ? 52.0f : stacked ? 124.0f : 88.0f) + i / perRow * 36.0f;
             D2D1_RECT_F rect{x, y, x + cell, y + 32};
-            if (i < 5)
-                TextButton(actions[i], rect, labels[i]);
+            if (wide && i >= 5) {
+                float split = (textLeft + focus.right - 12) / 2;
+                TextButton(actions[i],
+                           {i == 5 ? textLeft : split + 2, focus.bottom - 44, i == 5 ? split - 2 : focus.right - 12,
+                            focus.bottom - 12},
+                           i == 5 ? (focusRunning ? L"Pause" : L"Start") : L"Reset", i == 5);
+            } else if (i < 5)
+                TextButton(actions[i], rect, labels[i], focusDuration == (i == 0 ? 60 : i * 300));
             else
                 SmallButton(actions[i], rect, i == 5 ? (focusRunning ? L"\xE769" : L"\xE768") : L"\xE777",
                             i == 5 ? (focusRunning ? L"Pause focus" : L"Start focus") : L"Reset focus");
@@ -344,6 +383,8 @@ void Island::Today() {
     Card(task);
     Text(L"Today", {task.left + 16, task.top + 8, task.right - 64, task.top + 36}, type::Title);
     size_t done = static_cast<size_t>(std::count_if(tasks.begin(), tasks.end(), [](const auto &t) { return t.done; }));
+    DrawRing(task.right - 30, task.top + 24, 12,
+             tasks.empty() ? 0 : static_cast<float>(done) / static_cast<float>(tasks.size()), theme::Tertiary, 3);
     Text(std::to_wstring(done) + L"/" + std::to_wstring(tasks.size()),
          {task.right - 60, task.top + 8, task.right - 16, task.top + 36}, type::Caption, theme::Muted,
          DWRITE_TEXT_ALIGNMENT_TRAILING);
@@ -365,17 +406,21 @@ void Island::Today() {
         if (!layoutOnly) {
             auto layer = D2D1::LayerParameters();
             layer.opacity = highContrast ? 1.0f : 1 - .4f * progress;
-            target->PushLayer(layer, nullptr);
+            if (!highContrast && progress > 0)
+                target->PushLayer(layer, nullptr);
         }
         AddHit(id, row, tasks[i].title);
         hits.back().clip = R(layout::Intersection(
             {hits.back().clip.left, hits.back().clip.top, hits.back().clip.right, hits.back().clip.bottom},
             {list.left, list.top - scroll, list.right, list.bottom - scroll}));
-        Fill(row, dock::Mix(theme::Card, theme::CardHover, HoverAmount(id)), layout::ControlRadius);
+        Fill(row, dock::Mix(tasks[i].done ? theme::CardHover : theme::Card, theme::CardHover, HoverAmount(id)),
+             layout::ControlRadius);
         if (!layoutOnly) {
-            brush->SetColor(Color(tasks[i].done ? theme::Accent : theme::Muted));
+            brush->SetColor(Color(tasks[i].done ? theme::Tertiary : theme::Muted));
             target->DrawEllipse(D2D1::Ellipse({row.left + 16, y + 20}, 8, 8), brush.Get(), 1.5f);
             if (progress > 0) {
+                target->FillEllipse(D2D1::Ellipse({row.left + 16, y + 20}, 8, 8), brush.Get());
+                brush->SetColor(Color(theme::AccentInk));
                 float first = std::min(1.0f, progress * 2), second = std::max(0.0f, progress * 2 - 1);
                 target->DrawLine({row.left + 12, y + 20}, {row.left + 12 + 3 * first, y + 20 + 3 * first}, brush.Get(),
                                  1.5f);
@@ -392,9 +437,14 @@ void Island::Today() {
             Line(row.left + 32, y + 20, row.left + 32 + length * progress, y + 20, theme::Muted);
         }
         FocusRing(id, row);
-        SmallButton(220 + static_cast<int>(i), {list.right - 32, y + 4, list.right, y + 36}, L"\xE711",
-                    L"Delete " + tasks[i].title);
-        if (!layoutOnly)
+        int remove = 220 + static_cast<int>(i);
+        D2D1_RECT_F removeRect{list.right - 32, y + 4, list.right, y + 36};
+        AddHit(remove, removeRect, L"Delete " + tasks[i].title);
+        if (HoverAmount(id) > 0 || HoverAmount(remove) > 0 || focusedKey == StableKey(remove) || highContrast) {
+            Text(L"\xE711", removeRect, type::Icon, theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
+            FocusRing(remove, removeRect);
+        }
+        if (!layoutOnly && !highContrast && progress > 0)
             target->PopLayer();
     }
     if (!layoutOnly)

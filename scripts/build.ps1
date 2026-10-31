@@ -36,7 +36,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Accessibility GUID compilation failed.' }
     & lib.exe /nologo /OUT:dako_core.lib SettingsCore.obj AccessibilityGuids.obj
     if ($LASTEXITCODE -ne 0) { throw 'Shared settings library failed.' }
-    & cl.exe /nologo /std:c++20 /EHsc /W4 /WX /permissive- /utf-8 /DUNICODE /D_UNICODE /DNOMINMAX /O2 /MT (Join-Path $projectRoot 'src\settings\main.cpp') /Fo:DakoSettings.obj Dako.version.res "/Fe:$(Join-Path $buildDir 'DakoSettings.exe')" /link dako_core.lib /SUBSYSTEM:WINDOWS /DYNAMICBASE /NXCOMPAT d3d11.lib dcomp.lib dxgi.lib oleacc.lib user32.lib gdi32.lib shell32.lib ole32.lib oleaut32.lib advapi32.lib d2d1.lib dwrite.lib dwmapi.lib comdlg32.lib comctl32.lib uuid.lib
+    & cl.exe /nologo /std:c++20 /EHsc /W4 /WX /permissive- /utf-8 /DUNICODE /D_UNICODE /DNOMINMAX /O2 /MT (Join-Path $projectRoot 'src\settings\main.cpp') /Fo:DakoSettings.obj Dako.version.res "/Fe:$(Join-Path $buildDir 'DakoSettings.exe')" /link dako_core.lib /SUBSYSTEM:WINDOWS /DYNAMICBASE /NXCOMPAT /MANIFEST:EMBED "/MANIFESTINPUT:$manifest" d3d11.lib dcomp.lib dxgi.lib oleacc.lib user32.lib gdi32.lib shell32.lib ole32.lib oleaut32.lib advapi32.lib d2d1.lib dwrite.lib dwmapi.lib comdlg32.lib comctl32.lib uuid.lib
     if ($LASTEXITCODE -ne 0) { throw 'Settings application compilation failed.' }
     $headersChanged = (Get-ChildItem -LiteralPath (Join-Path $projectRoot 'src') -Filter '*.h' -File | Measure-Object -Property LastWriteTimeUtc -Maximum).Maximum
     $optionsFile = Join-Path $objectDir 'compile-options.txt'

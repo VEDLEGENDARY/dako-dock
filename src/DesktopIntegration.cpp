@@ -75,12 +75,12 @@ void Island::StartDesktop() {
         };
         docks = std::make_unique<desktop::DockShell>();
         docks->Options(dockOptions);
-        if (!docks->Start(window, &shell, previewMode, textScale, std::move(callbacks), desktopRequested)) {
+        if (!docks->Start(window, &shell, previewMode, textScale, std::move(callbacks), false)) {
             docks.reset();
             shell.Stop();
             dockMode = false;
             desktopRequested = false;
-            note = L"The dock could not reserve space safely. Dako is using the top notch for this session.";
+            note = L"The floating dock could not start. Dako is using the notch for this session.";
         }
     }
     if (!DockEnabled() && !previewMode) {
@@ -284,8 +284,8 @@ void Island::FilterRunning() {
 }
 float Island::AppsListTop() const {
     auto b = Body();
-    return b.top + (CompactApps() ? 40.0f : 56.0f) + (ShowAppRail() ? 76.0f : 0.0f) +
-           (b.bottom - b.top >= 224 && !runningIndices.empty() ? 100.0f : 0.0f);
+    return b.top + 48 + (ShowAppRail() ? 76.0f : 0.0f) +
+           (b.bottom - b.top >= 248 && !runningIndices.empty() ? 128.0f : 0.0f);
 }
 
 void Island::ConfirmDesktopChoice() {
@@ -295,8 +295,8 @@ void Island::ConfirmDesktopChoice() {
     if (!desktopRequested) {
         ModalGuard guard(modalOpen);
         desktopRequested = MessageBoxW(window,
-                                       L"Use Dako as my taskbar?\n\nDako will hide Explorer's taskbar and reserve "
-                                       L"space for the floating dock. You can restore Explorer from Dako's menu.",
+                                       L"Use Dako as my taskbar?\n\nDako will hide Explorer's taskbar and float "
+                                       L"over your apps without reserving space. Restore Explorer from Dako's menu.",
                                        L"Dako", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) == IDYES;
     }
     if (!SaveSettings())

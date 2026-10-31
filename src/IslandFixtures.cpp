@@ -40,33 +40,43 @@ void Island::AssertScene() {
     RebuildLayout();
     auto l = Layout();
     if (SurfaceWidth() > envelopeWidth + 0.1f || SurfaceHeight() > envelopeHeight - PanelY() + 0.1f)
-        winrt::throw_hresult(E_UNEXPECTED);
+        throw winrt::hresult_error(E_UNEXPECTED, L"Surface exceeds its monitor envelope");
+    if (expanded && envelopeWidth >= layout::Metrics::MinWidth * textScale + 2 * layout::PanelRadius &&
+        SurfaceWidth() + 2 * layout::PanelRadius > envelopeWidth + .1f)
+        throw winrt::hresult_error(E_UNEXPECTED, L"Attached shoulders exceed their monitor envelope");
     if (expanded && !miniMode && l.emergency && !ChromeActive()) {
         bool actions = false;
         for (const auto &h : hits)
             if (h.id == 1901 && VisibleHit(h))
                 actions = true;
         if (!actions)
-            winrt::throw_hresult(E_UNEXPECTED);
+            throw winrt::hresult_error(E_UNEXPECTED, L"Emergency navigation is not reachable");
     }
     if (flyout == Flyout::Audio && l.emergency && IndexForKey(StableKey(FlyoutBack)) < 0)
         winrt::throw_hresult(E_UNEXPECTED);
     for (const auto &h : hits) {
+        if (expanded && h.enabled && h.id != Expand && VisibleHit(h) &&
+            (h.rect.right - h.rect.left < layout::Metrics::MinHit - .01f ||
+             h.rect.bottom - h.rect.top < layout::Metrics::MinHit - .01f)) {
+            wchar_t detail[128]{};
+            swprintf_s(detail, L"Hit %d is below the minimum target size", h.id);
+            throw winrt::hresult_error(E_UNEXPECTED, detail);
+        }
         if (h.key.empty() || h.child <= 0)
-            winrt::throw_hresult(E_UNEXPECTED);
+            throw winrt::hresult_error(E_UNEXPECTED, L"Hit target has no stable accessible identity");
         if (h.clip.left < 0 || h.clip.top < 0 || h.clip.right > LayoutWidth() + 0.1f ||
             h.clip.bottom > LayoutHeight() + 0.1f)
-            winrt::throw_hresult(E_UNEXPECTED);
+            throw winrt::hresult_error(E_UNEXPECTED, L"Hit rectangle escapes the logical panel");
     }
     for (size_t i = 0; i < hits.size(); ++i)
         for (size_t j = i + 1; j < hits.size(); ++j) {
             if (hits[i].key == hits[j].key)
-                winrt::throw_hresult(E_UNEXPECTED);
+                throw winrt::hresult_error(E_UNEXPECTED, L"Hit targets have duplicate stable identities");
         }
     if (tab == Tab::Apps && !filteredApps.empty() && flyout == Flyout::None && !Layout().emergency && !ChromeActive()) {
         auto first = std::find_if(hits.begin(), hits.end(), [](const Hit &h) { return h.id == 300; });
         if (first == hits.end() || first->rect.bottom > Body().bottom + 0.1f)
-            winrt::throw_hresult(E_UNEXPECTED);
+            throw winrt::hresult_error(E_UNEXPECTED, L"First installed application row does not fit its viewport");
     }
     if (flyout == Flyout::None && !miniMode && expanded && !Layout().emergency && !ChromeActive()) {
         for (Tab primary : PrimaryTabs) {
@@ -74,7 +84,7 @@ void Island::AssertScene() {
             auto rect = TabRect(i);
             int index = HitAt((rect.left + rect.right) / 2 * textScale, (rect.top + rect.bottom) / 2 * textScale);
             if (index < 0 || hits[index].id != 100 + i)
-                winrt::throw_hresult(E_UNEXPECTED);
+                throw winrt::hresult_error(E_UNEXPECTED, L"Primary navigation is covered by another hit target");
         }
     }
 }
@@ -95,6 +105,7 @@ void Island::RenderSuite(const std::wstring &directory) {
     hardwareState.vramGiB = 8;
     hardwareState.totalGiB = 32;
     hardwareState.processes = 229;
+    hardwareState.cpuBaseMHz = 4200;
     hardwareState.top = {
         {L"Browser", 1400, 101}, {L"Browser", 820, 102}, {L"Music", 410, 103}, {L"Terminal", 300, 104}};
     system.cpuValid = system.memoryValid = system.diskValid = system.networkValid = true;
@@ -873,6 +884,7 @@ void Island::RenderSuite(const std::wstring &directory) {
     textScale = 1;
     envelopeWidth = 900;
     envelopeHeight = 760;
+    envelopeWidth = 1000;
     auto v4SavedTasks = tasks;
     tasks = {{L"Review today's plan", true, nextTask++}};
     currentMedia.available = currentMedia.playing = currentMedia.canPlay = currentMedia.canPrevious =
@@ -894,6 +906,7 @@ void Island::RenderSuite(const std::wstring &directory) {
     system.wifi = L"Home 5G";
     controlState.dark = true;
     focusSeconds = focusDuration = 300;
+    statsMemory = true;
     weather.available = true;
     weather.temperature = 32;
     weather.code = 1;
@@ -908,6 +921,21 @@ void Island::RenderSuite(const std::wstring &directory) {
         SetExpanded(true);
         capture(L"v4-" + TabTitle());
     }
+    moduleRegistry.ApplyPreset(modules::Preset::Taskbar);
+    if (!moduleRegistry.Grant(L"clipboard") || !moduleRegistry.Enable(L"clipboard"))
+        throw winrt::hresult_error(E_UNEXPECTED, L"Inert clipboard reference fixture could not start");
+    tab = Tab::Clipboard;
+    clipboardFilter = 0;
+    clipboardSelected = 0;
+    for (const auto &item : moduleRegistry.ClipboardRecords())
+        if (item.kind == clipboard::Kind::Text) {
+            clipboardSelected = item.id;
+            break;
+        }
+    capture(L"v4-Clipboard-enabled");
+    if (clipboardRecords.size() < 2 || IndexForKey(StableKey(8750)) < 0 || IndexForKey(StableKey(8755)) < 0)
+        throw winrt::hresult_error(E_UNEXPECTED, L"Enabled clipboard fixture must expose history and its actions");
+    moduleRegistry.ApplyPreset(modules::Preset::Minimal);
     tab = Tab::Controls;
     miniMode = true;
     SetExpanded(true);

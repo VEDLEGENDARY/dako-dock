@@ -171,5 +171,5 @@ inline unsigned Accent = Signal, AccentHover = 0xFF633B, AccentInk = Ink, Accent
 inline float Radius = layout::Metrics::SurfaceRadius;
 constexpr float SmallRadius = layout::Metrics::SmallRadius;
 constexpr float InsetSize = layout::Metrics::Padding, Gap = layout::Metrics::Gap;
-constexpr float DockWidth = 216, DockHeight = 18, TopRail = 0, EnvelopeWidth = 900, EnvelopeHeight = 760;
+constexpr float DockWidth = 216, DockHeight = 18, TopRail = 0, EnvelopeWidth = 1000, EnvelopeHeight = 760;
 } // namespace theme

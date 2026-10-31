@@ -26,7 +26,8 @@ static HWND Find(DWORD pid) {
     return search.result;
 }
 int wmain(int argc, wchar_t **argv) {
-    assert(argc == 3);
+    assert(argc >= 3);
+    bool inspect = argc > 3 && std::wstring_view(argv[3]) == L"--inspect";
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     auto directory = std::filesystem::path(argv[2]);
     std::filesystem::create_directories(directory);
@@ -44,6 +45,11 @@ int wmain(int argc, wchar_t **argv) {
         window = Find(child.dwProcessId);
     }
     assert(window);
+    if (inspect) {
+        ShowWindow(window, SW_SHOWNOACTIVATE);
+        std::puts("Isolated Midnight settings preview. Enter continues the test.");
+        std::getchar();
+    }
     HWND nav = GetDlgItem(window, 2);
     assert(nav);
     SendMessageW(nav, LB_SETCURSEL, 4, 0);
@@ -54,6 +60,10 @@ int wmain(int argc, wchar_t **argv) {
     SendMessageW(window, WM_COMMAND, MAKEWPARAM(100, CBN_SELCHANGE), reinterpret_cast<LPARAM>(theme));
     SendMessageW(window, WM_COMMAND, MAKEWPARAM(10, BN_CLICKED), reinterpret_cast<LPARAM>(GetDlgItem(window, 10)));
     assert(v4::ReadValues(path).Text(L"Theme") == L"Paper");
+    if (inspect) {
+        std::puts("Isolated Paper settings preview. Enter continues the test.");
+        std::getchar();
+    }
     IAccessible *accessible = nullptr;
     assert(SUCCEEDED(AccessibleObjectFromWindow(theme, static_cast<DWORD>(OBJID_CLIENT), IID_IAccessible,
                                                 reinterpret_cast<void **>(&accessible))));
@@ -80,6 +90,20 @@ int wmain(int argc, wchar_t **argv) {
     SendMessageW(window, WM_COMMAND, MAKEWPARAM(102, BN_CLICKED), reinterpret_cast<LPARAM>(playingOnly));
     SendMessageW(window, WM_COMMAND, MAKEWPARAM(10, BN_CLICKED), reinterpret_cast<LPARAM>(GetDlgItem(window, 10)));
     assert(!v4::ReadValues(path).Bool(L"PeekPlayingOnly"));
+    // A staged edit must use the in-window discard sheet, default to Cancel,
+    // preserve staged values after cancellation, and save through the existing ID.
+    SendMessageW(playingOnly, BM_SETCHECK, BST_CHECKED, 0);
+    SendMessageW(window, WM_COMMAND, MAKEWPARAM(102, BN_CLICKED), reinterpret_cast<LPARAM>(playingOnly));
+    SendMessageW(window, WM_CLOSE, 0, 0);
+    // This process is intentionally hidden: inspect child visibility styles,
+    // since IsWindowVisible includes its hidden ancestor and focus cannot move there.
+    auto shown = [](HWND control) { return (GetWindowLongPtrW(control, GWL_STYLE) & WS_VISIBLE) != 0; };
+    assert(IsWindow(window) && shown(GetDlgItem(window, 18)) && !shown(playingOnly));
+    assert(IsWindowEnabled(GetDlgItem(window, 18)) && !IsWindowEnabled(GetDlgItem(window, 10)));
+    SendMessageW(window, WM_COMMAND, MAKEWPARAM(18, BN_CLICKED), 0);
+    assert(IsWindow(window) && !shown(GetDlgItem(window, 18)));
+    SendMessageW(window, WM_COMMAND, MAKEWPARAM(10, BN_CLICKED), 0);
+    assert(v4::ReadValues(path).Bool(L"PeekPlayingOnly"));
     SendMessageW(window, WM_CLOSE, 0, 0);
     assert(WaitForSingleObject(child.hProcess, 5000) == WAIT_OBJECT_0);
     DWORD exit = 1;

@@ -42,6 +42,13 @@ Playing-only Peek defaults on, with a setting to include paused sessions. Slides
 and completion-driven one-shot deadlines; unrelated settings must not reset it. The build remains
 4.0.0-rc.1 pending acceptance, with reproducible text evidence checked in under docs/verification.
 
+## 0.7 Visual acceptance refinements — 2026-10-30
+
+The owner requires the earlier reference images to control page composition. Primary navigation and Menu
+sit at the bottom for a bottom dock. The taskbar floats 8 DIP from the usable edge and overlays applications;
+Dako does not register a production AppBar or reserve browser space, including in Replace taskbar mode.
+Explorer hiding/recovery remains explicit. This supersedes the reservation clauses above and below.
+
 ## 1. What the code already has (so we don't rebuild it)
 
 | Your ask | What exists today | Where |

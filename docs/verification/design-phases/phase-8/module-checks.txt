@@ -1,0 +1,32 @@
+PASS diagnostic registered
+PASS duplicate module rejected
+PASS undeclared capability rejected
+PASS all modules warm up and unload
+PASS builtin 50 cycles; actions removed on stop; RAM budget
+after_windows_handles=196 threads=7
+PASS builtin 50 cycles; actions removed on stop; RAM budget
+after_utilities_handles=196 threads=7
+PASS builtin 50 cycles; actions removed on stop; RAM budget
+after_clipboard_handles=196 threads=7
+PASS builtin 50 cycles; actions removed on stop; RAM budget
+after_snippets_handles=196 threads=7
+PASS builtin 50 cycles; actions removed on stop; RAM budget
+after_keep-awake_handles=196 threads=7
+PASS builtin 50 cycles; actions removed on stop; RAM budget
+after_files_handles=196 threads=7
+PASS builtin 50 cycles; actions removed on stop; RAM budget
+after_shelf_handles=196 threads=7
+PASS builtin 50 cycles; actions removed on stop; RAM budget
+after_recycle-bin_handles=196 threads=7
+PASS builtin 50 cycles; actions removed on stop; RAM budget
+after_drives_handles=196 threads=7
+PASS diagnostic 50 cycles; live hook in ledger; zero resources after stop
+after_test_handles=196 threads=7
+PASS process handles, GDI, USER objects return to baseline; no module workers remain
+before_handles=196 after_handles=196 before_gdi=0 after_gdi=0 before_user=2 after_user=2 before_threads=7 after_threads=7 before_module_threads=0 after_module_threads=0
+Windows RPC/thread-pool workers may resize independently; all owned module workers and native subscriptions must close.
+PASS hook callback work stays within its declared budget
+hook_callbacks=150 hook_max_us=0.5
+PASS preset exposes builtin Settings actions
+PASS Minimal unloads optional module
+No global input hooks, network requests or Windows settings changes were performed.

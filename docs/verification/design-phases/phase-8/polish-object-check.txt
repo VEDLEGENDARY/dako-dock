@@ -1,0 +1,1 @@
+PASS: all 46 /Zi production C++ object checksums match their current source files. SettingsCore and AccessibilityGuids use the separate shared-core build.

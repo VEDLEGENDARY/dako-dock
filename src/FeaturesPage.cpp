@@ -188,8 +188,8 @@ void Island::Features() {
         CompactHeader(true);
     else {
         auto h = l.header;
-        SmallButton(FlyoutBack, {h.left, 8, h.left + 40, 44}, L"\xE72B", String(IDS_BACK));
-        Text(String(IDS_FEATURES), {h.left + 52, 8, h.right, 44}, type::Section);
+        SmallButton(FlyoutBack, {h.left, h.top, h.left + 40, h.bottom}, L"\xE72B", String(IDS_BACK));
+        Text(String(IDS_FEATURES), {h.left + 52, h.top, h.right, h.bottom}, type::Section);
     }
     DockBodyScope body(*this);
     int reading = 6000 + featuresPage * 256;

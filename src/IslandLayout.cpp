@@ -2,7 +2,7 @@
 
 layout::Result Island::Layout() const {
     layout::Input input;
-    input.availableWidth = std::max(100.0f, (envelopeWidth - 40) / textScale);
+    input.availableWidth = std::max(layout::Metrics::MinWidth, (envelopeWidth - 2 * layout::PanelRadius) / textScale);
     input.availableHeight = (envelopeHeight - 24) / textScale;
     input.view = miniMode ? layout::View::Media : static_cast<layout::View>(tab);
     if (flyout != Flyout::None)
@@ -42,6 +42,15 @@ void Island::RebuildLayout() {
     layoutOnly = true;
     PanelContent();
     layoutOnly = saved;
+    if (scroll != observedScroll) {
+        observedScroll = scroll;
+        scrollThumb.Snap(1);
+        if (!renderMode) {
+            KillTimer(window, ScrollFadeTimer);
+            if (expanded)
+                SetTimer(window, ScrollFadeTimer, 800, nullptr);
+        }
+    }
 #ifndef NDEBUG
     if (!miniMode && flyout == Flyout::None && expanded &&
         !layout::ValidCards(Layout(), static_cast<layout::View>(tab)))
@@ -148,7 +157,6 @@ float Island::HandleY() const { return edge == anchor::Edge::Bottom ? envelopeHe
 float Island::PanelY() const {
     return renderMode                     ? 0
            : DockEnabled()                ? (edge == anchor::Edge::Top ? 0.0f : std::max(0.0f, envelopeHeight - height))
-           : browserContext               ? std::min(browserClearance, std::max(12.0f, envelopeHeight - 272.0f))
            : edge == anchor::Edge::Bottom ? std::max(0.0f, envelopeHeight - height)
                                           : 12.0f;
 }
@@ -275,9 +283,18 @@ void Island::PositionInputs() {
     position(wifiPassword, 402);
     position(clipboardEdit, 403);
     position(chromeEdit, ChromeInput);
-    if (ChromeActive() && chrome.kind == ChromeKind::Input && chromeEdit && IsWindowVisible(chromeEdit) &&
-        focusedKey == StableKey(ChromeInput) && GetFocus() != chromeEdit)
-        SetFocus(chromeEdit);
+    // Focus requested during reveal survives until the native child is visible.
+    // Only transfer from our own parent so a late frame never steals another app's focus.
+    if (GetFocus() == window)
+        for (const auto &[input, id] : {std::pair{taskEdit, 400},
+                                        {appSearch, 401},
+                                        {wifiPassword, 402},
+                                        {clipboardEdit, 403},
+                                        {chromeEdit, ChromeInput}})
+            if (input && IsWindowVisible(input) && IsWindowEnabled(input) && focusedKey == StableKey(id)) {
+                SetFocus(input);
+                break;
+            }
 }
 
 void Island::RetargetLayout() {
@@ -298,10 +315,36 @@ void Island::RetargetLayout() {
 
 D2D1_RECT_F Island::TabRect(int index) const {
     auto l = Layout();
+    auto header = l.header;
+    if (!renderMode && expanded && width > 0 && height > 0) {
+        float inset = (SurfaceWidth() - width) / (2 * textScale);
+        header.left += inset;
+        header.right -= inset;
+        if (edge == anchor::Edge::Bottom) {
+            float offset = (height - SurfaceHeight()) / textScale;
+            header.top += offset;
+            header.bottom += offset;
+        }
+    }
+    // The negative index addresses the presented navigation strip itself.
+    if (index < 0)
+        return R(header);
     const auto &tabs = visibleTabs.empty() ? std::vector<Tab>(PrimaryTabs.begin(), PrimaryTabs.end()) : visibleTabs;
     auto found = std::find(tabs.begin(), tabs.end(), static_cast<Tab>(index));
     size_t slot = found == tabs.end() ? 0 : static_cast<size_t>(found - tabs.begin());
-    float slotWidth = (l.header.Width() - 4) / static_cast<float>(tabs.size());
-    float left = l.header.left + 2 + slotWidth * static_cast<float>(slot);
-    return {left, l.header.top + 4, left + slotWidth, l.header.bottom - 4};
+    constexpr float preferred[]{76, 60, 56, 84, 56, 92, 64};
+    float total = 0;
+    for (Tab primary : tabs)
+        total += preferred[static_cast<int>(primary)];
+    float minimum = layout::Metrics::MinHit * static_cast<float>(tabs.size());
+    float available = header.Width() - 44;
+    float stretch = total > minimum ? std::clamp((available - minimum) / (total - minimum), 0.0f, 1.0f) : 0;
+    float left = header.left + std::max(0.0f, (available - minimum - (total - minimum) * stretch) / 2);
+    auto extent = [&](Tab primary) {
+        return layout::Metrics::MinHit + (preferred[static_cast<int>(primary)] - layout::Metrics::MinHit) * stretch;
+    };
+    for (size_t i = 0; i < slot; ++i)
+        left += extent(tabs[i]);
+    float slotWidth = extent(tabs[slot]);
+    return {left, header.top + 4, left + slotWidth, header.bottom - 4};
 }

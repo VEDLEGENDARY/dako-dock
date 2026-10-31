@@ -6,12 +6,29 @@
 #include <d2d1_1helper.h>
 #include <memory>
 #include <mutex>
+#include <wrl/client.h>
+#include <vector>
+#include <algorithm>
+#include <cstring>
 
 // Native premultiplied composition surface. The software fixture renderer stays
 // independent, and the caller can fall back to the opaque HWND renderer.
 class CompositionSurface {
     struct SharedGpu {
         Microsoft::WRL::ComPtr<ID3D11Device> device;
+        ~SharedGpu() {
+            if (!device)
+                return;
+            // The last surface has gone idle. Finish deferred destruction and
+            // return driver scratch buffers without adding a resting timer.
+            Microsoft::WRL::ComPtr<ID3D11DeviceContext> immediate;
+            device->GetImmediateContext(&immediate);
+            immediate->ClearState();
+            immediate->Flush();
+            Microsoft::WRL::ComPtr<IDXGIDevice3> dxgi;
+            if (SUCCEEDED(device.As(&dxgi)))
+                dxgi->Trim();
+        }
     };
     std::shared_ptr<SharedGpu> sharedGpu_;
     Microsoft::WRL::ComPtr<ID3D11Device> gpu_;
@@ -168,6 +185,8 @@ class CompositionSurface {
             context_->SetTarget(nullptr);
         if (visual_)
             visual_->SetContent(nullptr);
+        if (destination_)
+            destination_->SetRoot(nullptr);
         if (composition_)
             composition_->Commit();
         visual_.Reset();
@@ -175,6 +194,8 @@ class CompositionSurface {
         composition_.Reset();
         swap_.Reset();
         context_.Reset();
+        if (device_)
+            device_->ClearResources(0);
         device_.Reset();
         gpu_.Reset();
         sharedGpu_.reset();
