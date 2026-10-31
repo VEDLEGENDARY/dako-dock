@@ -19,7 +19,7 @@ void Island::Power() {
              DWRITE_TEXT_ALIGNMENT_CENTER);
         Text(hints[i], {rect.left + 12, rect.top + 92, rect.right - 12, rect.bottom - 12}, type::Caption, theme::Muted,
              DWRITE_TEXT_ALIGNMENT_CENTER);
-        FocusRing(actions[i], R(r), layout::CardRadius);
+        FocusRing(actions[i], R(r), shape::Card);
     }
 }
 
