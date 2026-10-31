@@ -78,11 +78,11 @@ void Island::Stats() {
             float mid = (badge.left + badge.right) / 2;
             D2D1_RECT_F frequency{badge.left, badge.top, mid - 3, badge.bottom};
             badge.left = mid + 3;
-            Fill(frequency, theme::CardHover, layout::Metrics::SmallRadius);
+            Fill(frequency, theme::CardHover, shape::Chip);
             Text(hardwareState.cpuBaseMHz ? Number(hardwareState.cpuBaseMHz / 1000.0, 1) + L" GHz" : L"— GHz",
                  frequency, type::Caption, theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
         }
-        Fill(badge, theme::CardHover, layout::Metrics::SmallRadius);
+        Fill(badge, theme::CardHover, shape::Chip);
         Text(chip, badge, type::Caption, theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
         if (r.Height() >= 200)
             Sparkline({r.left + 12, r.bottom - 18, r.right - 12, r.bottom - 10}, i, colors[i]);
@@ -138,7 +138,7 @@ void Island::Stats() {
             AddHit(2040 + static_cast<int>(i), {top.left + 12, y, top.right - 12, y + rowHeight},
                    entry.name + L". PID " + std::to_wstring(entry.identity), false);
             D2D1_RECT_F icon{top.left + 12, y + 2, top.left + 28, y + 18};
-            Fill(icon, theme::CardHover, layout::Metrics::SmallRadius);
+            Fill(icon, theme::CardHover, shape::Chip);
             Text(entry.name.substr(0, 1), icon, type::Caption, theme::Text, DWRITE_TEXT_ALIGNMENT_CENTER);
             Text(entry.name, {top.left + 40, y, top.right - 72, y + rowHeight - 2}, type::Caption);
             Text(statsMemory      ? Number(entry.workingMiB) + L" MB"
@@ -164,7 +164,7 @@ void Island::Stats() {
     Text(L"Mbps up", {middle + 12, r.top + 48, r.right - 12, r.top + 64}, type::Caption, theme::Muted);
     D2D1_RECT_F button{r.left + 12, r.bottom - 40, r.right - 12, r.bottom - 8};
     AddHit(2980, button, L"Run speed test", !speed.busy);
-    Fill(Tactile(2980, button), theme::Accent, layout::ControlRadius);
+    Fill(Tactile(2980, button), theme::Accent, shape::Control);
     if (speed.busy)
         Shimmer(button);
     Text(speed.busy ? L"Testing…" : L"Run speed test", button, type::Label, theme::AccentInk,
