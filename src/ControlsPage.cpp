@@ -21,7 +21,7 @@ void Island::MediaCard(bool compact) {
     float artSize = compactLayout ? 40.0f : 48.0f;
     float artLeft = rect.left + (compact ? 0.0f : 16.0f), artTop = rect.top + (compactLayout ? 12.0f : 32.0f);
     D2D1_RECT_F art{artLeft, artTop, artLeft + artSize, artTop + artSize};
-    Fill(art, theme::Inset, layout::Metrics::SmallRadius);
+    Fill(art, theme::Inset, shape::Chip);
     Text(L"\xE8D6", art, type::LargeIcon, theme::Muted, DWRITE_TEXT_ALIGNMENT_CENTER);
     if (!layoutOnly && currentMedia.artwork) {
         if (mediaPixels != currentMedia.artwork || !mediaBitmap) {
