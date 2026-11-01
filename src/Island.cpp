@@ -109,6 +109,7 @@ void Island::ReadTextScale() {
 }
 
 void Island::ConfigureAppearance(bool forceHighContrast) {
+    surfaceShadow.Reset();
     scrollFade.Reset();
     HIGHCONTRASTW contrast{sizeof(contrast)};
     SystemParametersInfoW(SPI_GETHIGHCONTRAST, sizeof(contrast), &contrast, 0);
@@ -283,6 +284,15 @@ void Island::Initialize() {
 }
 
 void Island::ReleaseGraphics() {
+    surfaceShadow.Reset();
+    if (!expanded) {
+        surfaceGroup = {};
+        hoverGroup = {};
+    }
+    if (docks) {
+        docks->Joined(panelMonitor, false);
+        docks->ReleaseJoined();
+    }
     scrollFade.Reset();
     textLayouts.clear();
     frameClock.Stop();
@@ -305,7 +315,7 @@ void Island::ReleaseGraphics() {
     composition.Reset();
     if (scheduler.active && !renderMode && !reducedMotion)
         SetTimer(window, TransitionTimer, motionInterval, nullptr);
-    if (!renderMode)
+    if (!renderMode && !DockEnabled())
         SetWindowLongPtrW(window, GWL_EXSTYLE, GetWindowLongPtrW(window, GWL_EXSTYLE) & ~WS_EX_NOREDIRECTIONBITMAP);
 }
 
@@ -319,6 +329,9 @@ void Island::EnsureEditResources() {
 }
 
 Island::~Island() {
+    if (surfaceDeadline)
+        surfaceDeadline->Cancel();
+    ClearSurfaceThumbnails();
     RemovePropW(window, nativechrome::Property);
     speedTest.reset();
     settingsWatch.reset();

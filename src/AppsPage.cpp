@@ -146,7 +146,7 @@ void Island::Apps() {
     if (!appQuery.empty())
         SmallButton(9500, {b.right - 36, b.top + 4, b.right - 4, b.top + 36}, L"\xE711", L"Clear search");
     EnsureAppSearch();
-    if (renderMode)
+    if (capturingPane || renderMode || (DockEnabled() && (paneBlend.value <= .98f || contentBlend.value <= .98f)))
         Text(appQuery.empty() ? L"Search installed apps…" : appQuery, SearchRect(), type::Body, theme::Muted);
     float nextY = b.top + 48;
     if (ShowAppRail()) {

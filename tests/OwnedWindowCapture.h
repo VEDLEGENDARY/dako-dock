@@ -17,7 +17,8 @@ struct CapturePixels {
     unsigned center = 0, corner = 0;
 };
 // Test-only: capture an HWND created in this process, never the desktop/another app.
-inline CapturePixels CaptureOwnedWindow(HWND window, DWORD timeout = 4000) {
+inline CapturePixels CaptureOwnedWindow(HWND window, DWORD timeout = 4000, POINT first = {-1, -1},
+                                        POINT second = {-1, -1}) {
     DWORD process = 0;
     GetWindowThreadProcessId(window, &process);
     if (!window || process != GetCurrentProcessId())
@@ -52,7 +53,7 @@ inline CapturePixels CaptureOwnedWindow(HWND window, DWORD timeout = 4000) {
             interop->CreateForWindow(window, winrt::guid_of<Capture::GraphicsCaptureItem>(), winrt::put_abi(item)));
         auto pool = Capture::Direct3D11CaptureFramePool::CreateFreeThreaded(
             device, winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized, 1, item.Size());
-        auto token = pool.FrameArrived([state](const auto &sender, const auto &) {
+        auto token = pool.FrameArrived([state, first, second](const auto &sender, const auto &) {
             std::scoped_lock lock(state->mutex);
             if (state->done)
                 return;
@@ -78,8 +79,10 @@ inline CapturePixels CaptureOwnedWindow(HWND window, DWORD timeout = 4000) {
                     auto row = static_cast<const BYTE *>(mapped.pData) + static_cast<size_t>(y) * mapped.RowPitch;
                     return reinterpret_cast<const unsigned *>(row)[x];
                 };
-                state->pixels.center = sample(description.Width / 2, description.Height / 2);
-                state->pixels.corner = sample(20, 20);
+                state->pixels.center = sample(first.x < 0 ? description.Width / 2 : static_cast<UINT>(first.x),
+                                              first.y < 0 ? description.Height / 2 : static_cast<UINT>(first.y));
+                state->pixels.corner = sample(second.x < 0 ? 20 : static_cast<UINT>(second.x),
+                                              second.y < 0 ? 20 : static_cast<UINT>(second.y));
                 state->context->Unmap(staging.Get(), 0);
                 state->pixels.status = S_OK;
             } catch (const winrt::hresult_error &error) {

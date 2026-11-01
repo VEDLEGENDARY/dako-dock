@@ -52,31 +52,55 @@ std::vector<POINT> Island::AttachedPixels(float scale) const {
 }
 
 void Island::IslandSurface() {
-    auto *path = geometryCache.Surface(factory.Get(), false, 0, 0, width, height, theme::Radius, edge);
+    auto *path = SurfacePath();
     if (!path)
         return;
-    float pixel = 96 / dpi, x = std::round((envelopeWidth - width) / 2 / pixel) * pixel;
-    float y = std::round(PanelY() / pixel) * pixel;
-    D2D1::Matrix3x2F saved;
-    target->GetTransform(&saved);
-    target->SetTransform(D2D1::Matrix3x2F::Translation(x, y) * saved);
+    if (DockEnabled() && !highContrast) {
+        ComPtr<ID2D1DeviceContext> context;
+        if (SUCCEEDED(target.As(&context))) {
+            ComPtr<ID2D1Image> destination;
+            ComPtr<ID2D1CommandList> mask;
+            context->GetTarget(&destination);
+            if (SUCCEEDED(context->CreateCommandList(&mask))) {
+                context->SetTarget(mask.Get());
+                context->Clear(D2D1::ColorF(0, 0.0f));
+                brush->SetColor(D2D1::ColorF(0, 1));
+                context->FillGeometry(path, brush.Get());
+                context->SetTarget(destination.Get());
+                if (SUCCEEDED(mask->Close())) {
+                    if (!surfaceShadow) {
+                        // CLSID_D2D1Shadow, from the Windows SDK d2d1effects.h.
+                        constexpr GUID shadowId{
+                            0xC67EA361, 0x1863, 0x4e69, {0x89, 0xDB, 0x69, 0x5D, 0x3E, 0x9A, 0x5B, 0x6B}};
+                        context->CreateEffect(shadowId, &surfaceShadow);
+                    }
+                    if (surfaceShadow) {
+                        surfaceShadow->SetInput(0, mask.Get());
+                        surfaceShadow->SetValue(D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION, 12.0f);
+                        surfaceShadow->SetValue(D2D1_SHADOW_PROP_COLOR, D2D1::Vector4F(0, 0, 0, .28f));
+                        context->DrawImage(surfaceShadow.Get(), {0, 6 * anchor::Grow(edge)});
+                    }
+                }
+            }
+        }
+    }
     brush->SetColor(Color(theme::Surface, backdropAvailable && !opaqueMaterial && !highContrast ? .94f : 1.0f));
+    brush->SetOpacity(surfaceRequest.kind == surface::Kind::Tooltip ? contentBlend.value : 1.0f);
     target->FillGeometry(path, brush.Get());
-    target->SetTransform(D2D1::Matrix3x2F::Scale((width - pixel) / width, (height - pixel) / height) *
-                         D2D1::Matrix3x2F::Translation(x + pixel / 2, y + pixel / 2) * saved);
     brush->SetColor(
         Color(highContrast ? theme::Border : theme::Edge, highContrast ? 1.0f : palette::Tokens::HairlineOuter));
-    target->DrawGeometry(path, brush.Get(), highContrast ? 2.0f : pixel);
-    target->SetTransform(saved);
-    if (!highContrast) {
-        float freeY = edge == anchor::Edge::Bottom ? y + pixel * 1.5f : y + height - pixel * 1.5f;
-        brush->SetColor(Color(theme::Edge, palette::Tokens::HairlineInner));
-        target->DrawLine({x + theme::Radius, freeY}, {x + width - theme::Radius, freeY}, brush.Get(), pixel);
+    target->DrawGeometry(path, brush.Get(), highContrast ? 2.0f : 96 / dpi);
+    brush->SetOpacity(1);
+    if (DockEnabled() && docks && surfaceRequest.kind != surface::Kind::Tooltip) {
+        RECT host{};
+        GetWindowRect(window, &host);
+        docks->Joined(panelMonitor, true);
+        docks->PaintJoined(target.Get(), panelMonitor, {host.left, host.top}, dpi);
     }
 }
 
 void Island::PositionShadow() {
-    if (renderMode) {
+    if (renderMode || DockEnabled()) {
         shadow.Hide();
         return;
     }
@@ -113,6 +137,27 @@ void Island::PositionBackdrop() {
         return;
     if (!expanded || dockReveal.value < 0.01f || opaqueMaterial || highContrast || !backdropAvailable) {
         ShowWindow(backdropWindow, SW_HIDE);
+        return;
+    }
+    if (DockEnabled() && docks) {
+        RECT host{};
+        GetWindowRect(window, &host);
+        D2D1_RECT_F bounds{};
+        auto *path = SurfacePath();
+        if (!path || FAILED(path->GetBounds(nullptr, &bounds)))
+            return;
+        float scale = dpi / 96;
+        int left = static_cast<int>(std::floor(bounds.left * scale));
+        int top = static_cast<int>(std::floor(bounds.top * scale));
+        int widthPx = static_cast<int>(std::ceil(bounds.right * scale)) - left;
+        int heightPx = static_cast<int>(std::ceil(bounds.bottom * scale)) - top;
+        auto transform = D2D1::Matrix3x2F::Scale(scale, scale) *
+                         D2D1::Matrix3x2F::Translation(-static_cast<float>(left), -static_cast<float>(top));
+        HRGN region = shape::Region(path, transform);
+        if (!SetWindowRgn(backdropWindow, region, FALSE))
+            DeleteObject(region);
+        SetWindowPos(backdropWindow, window, host.left + left, host.top + top, widthPx, heightPx,
+                     SWP_NOACTIVATE | SWP_SHOWWINDOW);
         return;
     }
     RECT host{};
@@ -212,7 +257,8 @@ void Island::Graphics() {
 D2D1_COLOR_F Island::Color(unsigned rgb, float alpha) { return D2D1::ColorF(rgb, alpha); }
 
 Island::PaintGroup::PaintGroup(Island &island, int index) : app(island) {
-    if (app.layoutOnly || app.renderMode || app.reducedMotion || app.highContrast || app.paneClock >= .37f)
+    if (app.DockEnabled() || app.layoutOnly || app.renderMode || app.reducedMotion || app.highContrast ||
+        app.paneClock >= .37f)
         return;
     float delay = std::min(.15f, index * .028f);
     float amount = std::clamp((app.paneClock - delay) / .22f, 0.0f, 1.0f);
@@ -378,9 +424,11 @@ D2D1_RECT_F PresentedBody(const Island &app) {
     auto body = app.Body();
     if (app.renderMode || !app.expanded || app.miniMode || app.ChromeActive())
         return body;
-    float left = (app.SurfaceWidth() - app.width) / (2 * app.textScale);
+    float presentedWidth =
+        app.DockEnabled() && app.docks ? app.DockExtension(app.width, app.height).Width() : app.width;
+    float left = (app.LayoutWidth() * app.textScale - presentedWidth) / (2 * app.textScale);
     body.left = std::clamp(left, body.left, body.right);
-    body.right = std::max(body.left, std::min(body.right, left + app.width / app.textScale));
+    body.right = std::max(body.left, std::min(body.right, left + presentedWidth / app.textScale));
     body.bottom = std::max(body.top, std::min(body.bottom, app.height / app.textScale));
     if (app.flyout == Flyout::None) {
         auto navigation = app.TabRect(-1);
@@ -406,6 +454,13 @@ void Island::AddHit(int id, D2D1_RECT_F rect, std::wstring name, bool enabled) {
     if (expanded && !miniMode && flyout == Flyout::None && !ChromeActive() &&
         ((id >= 100 && id < 107) || id == 1900 || id == 1901))
         clip = TabRect(-1);
+    if (DockEnabled()) {
+        float offset = bodyDirection * 8 * (1 - std::clamp(paneBlend.value, 0.0f, 1.0f));
+        rect.left += offset;
+        rect.right += offset;
+        clip.left = std::max(0.0f, clip.left + offset);
+        clip.right = std::min(LayoutWidth(), clip.right + offset);
+    }
     auto visible = layout::Intersection({rect.left, rect.top, rect.right, rect.bottom},
                                         {clip.left, clip.top, clip.right, clip.bottom});
     (void)visible;
@@ -745,6 +800,11 @@ void Island::PageContent(bool header) {
         ConnectionView();
         return;
     }
+    if (surfaceRequest.kind != surface::Kind::FullIsland && surfaceRequest.kind != surface::Kind::Apps &&
+        surfaceRequest.kind != surface::Kind::Palette) {
+        UnifiedContent();
+        return;
+    }
     auto b = Body();
     scroll = std::clamp(scroll, 0.0f, std::max(0.0f, Layout().contentHeight - (b.bottom - b.top)));
     D2D1::Matrix3x2F saved;
@@ -752,11 +812,12 @@ void Island::PageContent(bool header) {
         target->GetTransform(&saved);
         target->PushAxisAlignedClip(PresentedBody(*this), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         auto layer = D2D1::LayerParameters();
-        layer.opacity = std::clamp(paneBlend.value, 0.0f, 1.0f);
-        if (paneBlend.value < 1)
+        layer.opacity = DockEnabled() ? 1.0f : std::clamp(paneBlend.value, 0.0f, 1.0f);
+        if (layer.opacity < 1)
             target->PushLayer(layer, nullptr);
-        target->SetTransform(D2D1::Matrix3x2F::Translation(bodyDirection * 12 * (1 - paneBlend.value), -scroll) *
-                             saved);
+        target->SetTransform(
+            D2D1::Matrix3x2F::Translation(DockEnabled() ? 0 : bodyDirection * 12 * (1 - paneBlend.value), -scroll) *
+            saved);
     }
     buildingBody = true;
     switch (tab) {
@@ -785,12 +846,18 @@ void Island::PageContent(bool header) {
     buildingBody = false;
     if (!layoutOnly) {
         target->SetTransform(saved);
-        if (paneBlend.value < 1)
+        if (!DockEnabled() && paneBlend.value < 1)
             target->PopLayer();
         target->PopAxisAlignedClip();
     }
-    if (header)
-        Tabs();
+    if (header) {
+        if (surfaceRequest.kind == surface::Kind::Apps) {
+            auto h = TabRect(-1);
+            Text(L"Apps", {h.left, h.top, h.right - 80, h.bottom}, type::Control);
+            SmallButton(9100, {h.right - 76, h.top + 4, h.right - 40, h.bottom - 4}, L"\xE740", L"Open full Dako");
+        } else
+            Tabs();
+    }
     if (!Layout().emergency) {
         auto r = TabRect(-1);
         layout::Rect h{r.left, r.top, r.right, r.bottom};
@@ -806,7 +873,7 @@ void Island::DrawToast() {
         return;
     rect.top = body.bottom - 32;
     rect.bottom = body.bottom;
-    rect.right = std::min(rect.right, rect.left + 520);
+    rect.right = std::min(rect.right, rect.left + surface::Compact);
     for (const auto &hit : hits)
         if (hit.input && layout::Intersects({rect.left, rect.top, rect.right, rect.bottom},
                                             {hit.rect.left, hit.rect.top, hit.rect.right, hit.rect.bottom})) {
@@ -899,24 +966,50 @@ void Island::Draw() {
             DrawNotch();
         if (dockReveal.value > 0.003f) {
             IslandSurface();
-            float left = (envelopeWidth - width) / 2;
-            target->PushAxisAlignedClip({left, PanelY(), left + width, PanelY() + height},
+            float left = DockEnabled() && docks ? DockExtension(width, height).left : (envelopeWidth - width) / 2;
+            float clipWidth = DockEnabled() && docks ? DockExtension(width, height).Width() : width;
+            target->PushAxisAlignedClip({left, PanelY(), left + clipWidth, PanelY() + height},
                                         D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-            if ((dockReveal.value > .6f || collapsePending) && contentBlend.value > .001f) {
+            if ((dockReveal.value > .6f || surfaceMotion.phase == surface::SurfaceMotion::Phase::Closing) &&
+                contentBlend.value > .001f) {
                 float blend = std::clamp(contentBlend.value, 0.0f, 1.0f);
                 float scale = .98f + .02f * blend;
                 auto layer = D2D1::LayerParameters();
                 layer.opacity = blend;
                 if (blend < 1)
                     target->PushLayer(layer, nullptr);
-                auto origin = D2D1::Point2F(LayoutWidth() / 2, edge == anchor::Edge::Bottom ? LayoutHeight() : 0);
+                auto origin = D2D1::Point2F(
+                    LayoutWidth() / 2,
+                    edge == anchor::Edge::Bottom ? (DockEnabled() ? height / textScale : LayoutHeight()) : 0);
                 target->SetTransform(D2D1::Matrix3x2F::Scale(scale, scale, origin) *
                                      D2D1::Matrix3x2F::Translation(0, -anchor::Grow(edge) * 8 * (1 - blend)) *
                                      D2D1::Matrix3x2F::Scale(textScale, textScale) *
                                      D2D1::Matrix3x2F::Translation(PanelX(), PanelY()));
+                if (previousPane && paneBlend.value < .999f) {
+                    auto size = previousPane->GetSize();
+                    float oldX = (LayoutWidth() - size.width) / 2;
+                    float oldY = edge == anchor::Edge::Bottom
+                                     ? (DockEnabled() ? height / textScale : LayoutHeight()) - size.height
+                                     : 0;
+                    target->DrawBitmap(previousPane.Get(), {oldX, oldY, oldX + size.width, oldY + size.height},
+                                       1 - std::clamp(paneBlend.value, 0.0f, 1.0f));
+                } else if (paneBlend.value >= .999f)
+                    previousPane.Reset();
+                auto incoming = D2D1::LayerParameters();
+                incoming.opacity = DockEnabled() ? std::clamp(paneBlend.value, 0.0f, 1.0f) : 1.0f;
+                if (incoming.opacity < 1)
+                    target->PushLayer(incoming, nullptr);
+                D2D1::Matrix3x2F incomingTransform;
+                target->GetTransform(&incomingTransform);
+                if (DockEnabled())
+                    target->SetTransform(D2D1::Matrix3x2F::Translation(bodyDirection * 8 * (1 - paneBlend.value), 0) *
+                                         incomingTransform);
                 paintClosing = !expanded;
                 PanelContent();
+                target->SetTransform(incomingTransform);
                 paintClosing = false;
+                if (incoming.opacity < 1)
+                    target->PopLayer();
                 if (blend < 1)
                     target->PopLayer();
                 if (!expanded)
@@ -952,4 +1045,5 @@ void Island::Draw() {
         }
     }
     PositionInputs();
+    UpdateSurfaceThumbnails();
 }

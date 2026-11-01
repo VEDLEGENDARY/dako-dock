@@ -31,7 +31,7 @@ struct Resources {
         bool positioned = false;
     };
     std::map<std::wstring, Visual> visuals;
-    std::map<int, dock::Spring> actionHover;
+    std::map<int, dock::Spring> actionHover, actionPress;
     dock::Spring focusOpacity{1};
     int previousFocus = -1;
     std::wstring pulseKey, clockText;
@@ -52,8 +52,12 @@ struct Resources {
         depth.Reset();
     }
     void Synchronize(const desktop::DockLayout &layout, const std::vector<desktop::DockGroup> &groups, int hovered,
-                     int dragged, bool animated) {
+                     int dragged, bool animated, int pressed = -1) {
         for (const auto &hit : layout.hits) {
+            auto &press = actionPress[hit.action];
+            press.goal = hit.action == pressed ? 1.0f : 0.0f;
+            if (!animated)
+                press.Snap(press.goal);
             if (hit.action < desktop::DockGroupFirst) {
                 auto &spring = actionHover[hit.action];
                 spring.goal = hit.action == hovered ? 1.0f : 0.0f;
@@ -89,6 +93,11 @@ struct Resources {
     bool Moving() const {
         if (focusOpacity.Moving())
             return true;
+        for (const auto &[id, spring] : actionPress) {
+            (void)id;
+            if (spring.Moving())
+                return true;
+        }
         for (const auto &[id, spring] : actionHover) {
             (void)id;
             if (spring.Moving())
@@ -104,6 +113,10 @@ struct Resources {
     }
     void Step(float seconds, float speed = 1) {
         focusOpacity.Step(seconds, dock::motion::Focus, speed);
+        for (auto &[id, spring] : actionPress) {
+            (void)id;
+            spring.Step(seconds, {34, 1, .12f}, speed);
+        }
         for (auto &[id, spring] : actionHover) {
             (void)id;
             spring.Step(seconds, dock::motion::Snappy, speed);
@@ -202,11 +215,11 @@ inline HRESULT Paint(ID2D1RenderTarget *target, IDWriteFactory *writer, Resource
                      const std::vector<desktop::DockGroup> &groups, const desktop::DockStatus &status, int hovered = -1,
                      int focused = -1, float flash = 1, desktop::DockOptions options = {}, size_t first = 0,
                      float pointer = -1000, float strength = 0, bool contrast = false, bool animated = false,
-                     int dragged = -1) {
+                     int dragged = -1, bool base = true, bool clear = true, int pressed = -1) {
     if (!resources.Initialize(writer))
         return E_FAIL;
     auto geometry = desktop::SolveDock(width, groups, status, options, first, pointer, strength);
-    resources.Synchronize(geometry, groups, hovered, dragged, animated);
+    resources.Synchronize(geometry, groups, hovered, dragged, animated, pressed);
     if (resources.previousFocus != focused) {
         resources.previousFocus = focused;
         resources.focusOpacity.Snap(animated ? 0.0f : 1.0f);
@@ -229,7 +242,8 @@ inline HRESULT Paint(ID2D1RenderTarget *target, IDWriteFactory *writer, Resource
         brush->SetColor(D2D1::ColorF(color, alpha));
         graphics::Rounded(target, shapeFactory.Get(), resources.geometryCache, Rect(r), radius, brush.Get());
     };
-    target->Clear(D2D1::ColorF(0, 0.0f));
+    if (clear)
+        target->Clear(D2D1::ColorF(0, 0.0f));
     bool translucent = !contrast && options.opacity < .999f;
     if (translucent) {
         auto layer = D2D1::LayerParameters();
@@ -237,14 +251,14 @@ inline HRESULT Paint(ID2D1RenderTarget *target, IDWriteFactory *writer, Resource
         target->PushLayer(layer, nullptr);
     }
     auto pill = geometry.pill;
-    {
+    if (base) {
         fill(pill, theme::Surface, shape::Pill(pill.Height()));
         brush->SetColor(
             D2D1::ColorF(contrast ? theme::Border : theme::Edge, contrast ? 1.0f : palette::Tokens::HairlineOuter));
         graphics::Rounded(target, shapeFactory.Get(), resources.geometryCache, Rect(pill), shape::Pill(pill.Height()),
                           brush.Get(), contrast ? 2.0f : pixel);
     }
-    if (!contrast) {
+    if (base && !contrast) {
         float y = options.edge == anchor::Edge::Bottom ? pill.top + pixel * 1.5f : pill.bottom - pixel * 1.5f;
         brush->SetColor(D2D1::ColorF(theme::Edge, palette::Tokens::HairlineInner));
         target->DrawLine({pill.left + shape::Surface, y}, {pill.right - shape::Surface, y}, brush.Get(), pixel);
@@ -258,6 +272,11 @@ inline HRESULT Paint(ID2D1RenderTarget *target, IDWriteFactory *writer, Resource
         bool isGroup = hit.action >= desktop::DockGroupFirst;
         const desktop::DockGroup *app = isGroup ? &groups[hit.action - desktop::DockGroupFirst] : nullptr;
         auto r = hit.rect;
+        D2D1::Matrix3x2F savedHit;
+        target->GetTransform(&savedHit);
+        float press = resources.actionPress[hit.action].value;
+        auto center = D2D1::Point2F(r.CenterX(), (r.top + r.bottom) / 2);
+        target->SetTransform(D2D1::Matrix3x2F::Scale(1 - .03f * press, 1 - .03f * press, center) * savedHit);
         float opacity = 1, hover = 0, running = 1;
         if (app) {
             auto &v = resources.visuals[app->key];
@@ -277,9 +296,12 @@ inline HRESULT Paint(ID2D1RenderTarget *target, IDWriteFactory *writer, Resource
                                       options.edge);
         } else
             hover = resources.actionHover[hit.action].value;
-        if (hover > 0 || hit.active || hit.action == focused)
-            fill(r, hit.active ? theme::AccentSoft : theme::CardHover, layout::ControlRadius,
+        if (hover > 0 || hit.active || hit.action == focused) {
+            layout::Rect highlight{std::max(r.left, pill.left + 4), pill.top + 4, std::min(r.right, pill.right - 4),
+                                   pill.bottom - 4};
+            fill(highlight, hit.active ? theme::AccentSoft : theme::CardHover, shape::Control,
                  contrast || hit.active ? 1.0f : hover * .6f);
+        }
         auto bitmap = app ? resources.Icon(target, *app, r.Height() > 42, scale) : nullptr;
         if (bitmap) {
             float size = std::min(r.Height(), options.iconSize * r.Height() / 40);
@@ -327,6 +349,7 @@ inline HRESULT Paint(ID2D1RenderTarget *target, IDWriteFactory *writer, Resource
         }
         if (app)
             target->PopLayer();
+        target->SetTransform(savedHit);
     }
     if (translucent)
         target->PopLayer();

@@ -100,6 +100,16 @@ class GeometryCache {
                 path->Stream(sink);
         });
     }
+    ID2D1PathGeometry *RoundedAt(ID2D1Factory *factory, shape::Rect rect, float radius) {
+        auto q = [](float n) { return static_cast<int>(std::lround(n * 2)); };
+        std::array<int, 16> key{5, q(rect.left), q(rect.top), q(rect.right), q(rect.bottom), q(radius)};
+        return Get(factory, key, [=](ID2D1GeometrySink *sink) {
+            auto path = shape::RoundedPath(factory, {key[1] / 2.0f, key[2] / 2.0f, key[3] / 2.0f, key[4] / 2.0f},
+                                           key[5] / 2.0f);
+            if (path)
+                path->Stream(sink);
+        });
+    }
     ID2D1PathGeometry *Union(ID2D1Factory *factory, shape::Rect pill, shape::Rect extension, shape::Edge edge,
                              float dpi = 96) {
         auto q = [](float n) { return static_cast<int>(std::lround(n * 2)); };

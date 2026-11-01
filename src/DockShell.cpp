@@ -13,8 +13,8 @@
 namespace desktop {
 using Microsoft::WRL::ComPtr;
 namespace {
-constexpr UINT_PTR ClockTimer = 1, FlashTimer = 2, PreviewTimer = 3, MotionTimer = 4, AutoHideTimer = 5;
-constexpr wchar_t DockClass[] = L"Dako.Native.Dock", PreviewClass[] = L"Dako.Native.WindowPreview";
+constexpr UINT_PTR ClockTimer = 1, FlashTimer = 2, MotionTimer = 4, AutoHideTimer = 5, HudTimer = 6;
+constexpr wchar_t DockClass[] = L"Dako.Native.Dock";
 DockStatus ReadClock(DockStatus status) {
     SYSTEMTIME now{};
     GetLocalTime(&now);
@@ -34,7 +34,7 @@ DockStatus ReadClock(DockStatus status) {
 struct DockShell::Impl {
     struct DockSurface {
         Impl *shell = nullptr;
-        HWND window = nullptr, tooltip = nullptr;
+        HWND window = nullptr;
         HMONITOR monitor = nullptr;
         UINT dpi = 96;
         RECT bounds{};
@@ -42,7 +42,6 @@ struct DockShell::Impl {
         HWND fullscreenOwner = nullptr;
         std::vector<DockGroup> groups;
         std::vector<DockHit> hits;
-        std::vector<UINT_PTR> tools;
         std::map<std::wstring, LONG> children;
         LONG nextChild = 1000;
         int hover = -1, focus = -1, pressed = -1, drag = -1;
@@ -53,6 +52,7 @@ struct DockShell::Impl {
         dock::Spring magnify{0}, pointer{-1000};
         ULONGLONG motionTime = 0;
         int hideOffset = 0;
+        bool volumeHud = false;
         size_t first = 0;
         DockLayout geometry;
         dockview::Resources resources;
@@ -62,7 +62,7 @@ struct DockShell::Impl {
         float Scale() const { return dpi / 96.0f * shell->textScale; }
         float Width() const { return (bounds.right - bounds.left) / Scale(); }
     };
-    HWND owner = nullptr, previewWindow = nullptr;
+    HWND owner = nullptr;
     Shell *recovery = nullptr;
     bool reserve = false, preview = false, reduced = false, contrast = false, stopping = false, updating = false;
     float textScale = 1;
@@ -76,19 +76,9 @@ struct DockShell::Impl {
     std::set<HWND> flashing;
     ComPtr<ID2D1Factory> factory;
     ComPtr<IDWriteFactory> writer;
-    HTHUMBNAIL thumbnail = nullptr;
-    DockGroup previewGroup;
-    DockSurface *previewDock = nullptr;
-    size_t previewIndex = 0;
-    HRESULT previewResult = E_PENDING;
-    ComPtr<ID2D1HwndRenderTarget> previewTarget;
-    dockview::Resources previewResources;
-    std::vector<DockHit> previewHits;
-    int previewFocus = 0;
-    ComPtr<IAccessible> previewAccessible;
-    DockAccessible *previewProvider = nullptr;
-    HMONITOR activeMonitor = nullptr;
-    float previewWidth = 320, previewHeight = 252;
+    HMONITOR activeMonitor = nullptr, joinedMonitor = nullptr;
+    int returnAction = -1;
+    dockview::Resources joinedResources;
 
     void Error(const std::wstring &message) {
         if (callbacks.error)
@@ -111,27 +101,9 @@ struct DockShell::Impl {
             return DefWindowProcW(window, message, wparam, lparam);
         return bar->shell->Message(*bar, message, wparam, lparam);
     }
-    static LRESULT CALLBACK PreviewProcedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
-        auto *self = reinterpret_cast<Impl *>(GetWindowLongPtrW(window, GWLP_USERDATA));
-        if (message == WM_NCCREATE) {
-            self = static_cast<Impl *>(reinterpret_cast<CREATESTRUCTW *>(lparam)->lpCreateParams);
-            self->previewWindow = window;
-            SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self));
-        }
-        if (!self)
-            return DefWindowProcW(window, message, wparam, lparam);
-        return self->PreviewMessage(message, wparam, lparam);
-    }
     void Rebuild(DockSurface &bar) {
         if (!bar.window)
             return;
-        for (auto tool : bar.tools) {
-            TOOLINFOW info{sizeof(info)};
-            info.hwnd = bar.window;
-            info.uId = tool;
-            SendMessageW(bar.tooltip, TTM_DELTOOLW, 0, reinterpret_cast<LPARAM>(&info));
-        }
-        bar.tools.clear();
         auto oldFocus = bar.focus;
         std::wstring focusKey =
             oldFocus >= DockGroupFirst && oldFocus - DockGroupFirst < static_cast<int>(bar.groups.size())
@@ -146,6 +118,12 @@ struct DockShell::Impl {
         bar.first = geometry.firstGroup;
         bar.geometry = geometry;
         bar.hits = std::move(geometry.hits);
+        for (auto it = bar.resources.actionPress.begin(); it != bar.resources.actionPress.end();)
+            if (std::none_of(bar.hits.begin(), bar.hits.end(),
+                             [&](const auto &hit) { return hit.action == it->first; }))
+                it = bar.resources.actionPress.erase(it);
+            else
+                ++it;
         auto pill = bar.geometry.pill;
         float pixels = bar.Scale();
         auto silhouette = shape::RoundedPath(factory.Get(), {pill.left, pill.top, pill.right, pill.bottom},
@@ -188,22 +166,6 @@ struct DockShell::Impl {
                 else
                     ++it;
             }
-        }
-        for (auto &hit : bar.hits) {
-            if (!options.labels)
-                continue;
-            if (hit.action >= DockGroupFirst && !bar.groups[hit.action - DockGroupFirst].windows.empty())
-                continue;
-            TOOLINFOW info{sizeof(info)};
-            info.uFlags = TTF_SUBCLASS;
-            info.hwnd = bar.window;
-            info.uId = hit.child;
-            float scale = bar.Scale();
-            info.rect = {static_cast<LONG>(hit.rect.left * scale), static_cast<LONG>(hit.rect.top * scale),
-                         static_cast<LONG>(hit.rect.right * scale), static_cast<LONG>(hit.rect.bottom * scale)};
-            info.lpszText = hit.name.data();
-            SendMessageW(bar.tooltip, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&info));
-            bar.tools.push_back(info.uId);
         }
         InvalidateRect(bar.window, nullptr, FALSE);
     }
@@ -320,8 +282,6 @@ struct DockShell::Impl {
             ShowWindow(bar->window, hide ? SW_HIDE : SW_SHOWNOACTIVATE);
             SetWindowPos(bar->window, hide ? HWND_BOTTOM : HWND_TOPMOST, 0, 0, 0, 0,
                          SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-            if (hide && previewDock == bar.get())
-                HidePreview();
             if (hide && owner && bar->monitor == activeMonitor)
                 PostMessageW(owner, DockChanged, 1, 0);
         }
@@ -340,6 +300,41 @@ struct DockShell::Impl {
             SetTimer(bar.window, MotionTimer, 16, nullptr);
         }
     }
+    void ShowVolumeHud(DockSurface &bar) {
+        bar.volumeHud = true;
+        SetTimer(bar.window, HudTimer, 900, nullptr);
+        InvalidateRect(bar.window, nullptr, FALSE);
+    }
+    void PaintVolumeHud(ID2D1RenderTarget *target, DockSurface &bar) {
+        if (!bar.volumeHud)
+            return;
+        auto found =
+            std::find_if(bar.hits.begin(), bar.hits.end(), [](const DockHit &hit) { return hit.action == DockVolume; });
+        if (found == bar.hits.end())
+            return;
+        ComPtr<ID2D1SolidColorBrush> brush;
+        if (FAILED(target->CreateSolidColorBrush(D2D1::ColorF(theme::CardHover), &brush)))
+            return;
+        ComPtr<ID2D1Factory> targetFactory;
+        target->GetFactory(&targetFactory);
+        auto rect = dockview::Rect(found->rect);
+        auto &geometry = target == bar.target.Get() ? bar.resources.geometryCache : joinedResources.geometryCache;
+        graphics::Rounded(target, targetFactory.Get(), geometry, rect, shape::Control, brush.Get());
+        auto value = status.volume;
+        auto space = value.find(L' ');
+        if (space != std::wstring::npos)
+            value = value.substr(0, space) + L"%";
+        brush->SetColor(D2D1::ColorF(theme::Text));
+        bar.resources.Initialize(writer.Get());
+        bool muted = value == L"Muted";
+        if (muted)
+            value = L"\xE74F";
+        auto format = bar.resources.typography->formats[muted ? type::InlineIcon : type::Caption];
+        auto alignment = format->GetTextAlignment();
+        format->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+        target->DrawTextW(value.c_str(), static_cast<UINT32>(value.size()), format.Get(), rect, brush.Get());
+        format->SetTextAlignment(alignment);
+    }
     void Paint(DockSurface &bar) {
         PAINTSTRUCT paint{};
         BeginPaint(bar.window, &paint);
@@ -353,9 +348,18 @@ struct DockShell::Impl {
             }
             bar.target->SetTransform(D2D1::Matrix3x2F::Scale(textScale, textScale) *
                                      D2D1::Matrix3x2F::Translation(0, bar.hideOffset * textScale));
-            dockview::Paint(bar.target.Get(), writer.Get(), bar.resources, bar.Width(), bar.groups, status, bar.hover,
-                            GetFocus() == bar.window ? bar.focus : -1, pulse, options, bar.first, bar.pointer.value,
-                            reduced ? 0 : bar.magnify.value, contrast, !reduced, bar.drag);
+            if (joinedMonitor == bar.monitor) {
+                bar.resources.Synchronize(bar.geometry, bar.groups, bar.hover, bar.drag, !reduced, bar.pressed);
+                bar.target->Clear(D2D1::ColorF(0, 0.0f));
+                InvalidateRect(owner, nullptr, FALSE);
+            } else {
+                dockview::Paint(bar.target.Get(), writer.Get(), bar.resources, bar.Width(), bar.groups, status,
+                                bar.hover, GetFocus() == bar.window ? bar.focus : -1, pulse, options, bar.first,
+                                bar.pointer.value, reduced ? 0 : bar.magnify.value, contrast, !reduced, bar.drag, true,
+                                true, bar.pressed);
+            }
+            if (joinedMonitor != bar.monitor)
+                PaintVolumeHud(bar.target.Get(), bar);
             if (SUCCEEDED(bar.target->EndDraw()))
                 bar.composition.Present();
             if (!reduced && bar.resources.Moving())
@@ -371,7 +375,7 @@ struct DockShell::Impl {
                      bounds.top + static_cast<LONG>(std::lround(pill.bottom * scale))};
         bool fits = (pill.Width() + 96) * scale <= bounds.right - bounds.left;
         bar.shadow.Position(bar.window, surface, bar.dpi * textScale, shape::Surface, options.edge, 1,
-                            fits && !contrast && !bar.hidden && !bar.hideOffset);
+                            fits && !contrast && !bar.hidden && !bar.hideOffset && joinedMonitor != bar.monitor);
         EndPaint(bar.window, &paint);
     }
     int Hit(const DockSurface &bar, float x, float y) const {
@@ -419,42 +423,73 @@ struct DockShell::Impl {
                 callbacks.launch(group.launchKey);
             return;
         }
+        if (group.windows.size() > 1) {
+            Popover(bar, DockGroupFirst + static_cast<int>(index), surface::Trigger::Click);
+            return;
+        }
         auto active = std::find_if(group.windows.begin(), group.windows.end(),
                                    [](const WindowEntry &entry) { return entry.window == GetForegroundWindow(); });
-        if (group.windows.size() == 1 && active != group.windows.end())
-            ShowWindowAsync(active->window, SW_MINIMIZE);
-        else {
+        {
             size_t selected = active == group.windows.end()
                                   ? 0
                                   : (static_cast<size_t>(active - group.windows.begin()) + 1) % group.windows.size();
             if (!WindowList::Activate(group.windows[selected].window))
                 Error(L"Windows did not allow activation. Elevated windows may require an elevated Dako.");
+            else
+                PostMessageW(owner, WM_SYSCOMMAND, SC_CLOSE, 0);
         }
+    }
+    void Popover(DockSurface &bar, int action, surface::Trigger trigger, bool forcePreview = false) {
+        if (!callbacks.popover)
+            return;
+        if (trigger != surface::Trigger::Hover)
+            returnAction = action;
+        auto control = action == DockApps         ? surface::Control::Apps
+                       : action == DockSearch     ? surface::Control::Search
+                       : action == DockWifi       ? surface::Control::Wifi
+                       : action == DockVolume     ? surface::Control::Volume
+                       : action == DockBattery    ? surface::Control::Battery
+                       : action == DockClock      ? surface::Control::Clock
+                       : action == DockWeather    ? surface::Control::Weather
+                       : action == DockDesktop    ? surface::Control::Desktop
+                       : action == DockTaskView   ? surface::Control::TaskView
+                       : action >= DockGroupFirst ? surface::Control::App
+                                                  : surface::Control::More;
+        DockGroup group;
+        if (action >= DockGroupFirst && action - DockGroupFirst < static_cast<int>(bar.groups.size()))
+            group = bar.groups[action - DockGroupFirst];
+        auto request = surface::Describe(control, trigger, group.windows.size());
+        if (forcePreview) {
+            request.kind = surface::Kind::Preview;
+            request.width = surface::Width::Compact;
+            request.behavior = surface::Behavior::Panel;
+        }
+        request.control = action;
+        request.group = group.key;
+        if (action == DockOverflow) {
+            request.kind = surface::Kind::Overflow;
+            request.width = surface::Width::Compact;
+        }
+        callbacks.popover(std::move(request), std::move(group), bar.monitor);
     }
     void Overflow(DockSurface &bar) {
         if (bar.geometry.visibleGroups) {
             bar.first = bar.first + bar.geometry.visibleGroups >= bar.groups.size()
                             ? 0
                             : bar.first + bar.geometry.visibleGroups;
-            HidePreview();
             bar.magnify.Snap(0);
             Rebuild(bar);
-            return;
-        }
-        HMENU menu = CreatePopupMenu();
-        for (size_t i = 0; i < bar.groups.size(); ++i)
-            AppendMenuW(menu, MF_STRING, 100 + i, bar.groups[i].name.c_str());
-        POINT point{};
-        GetCursorPos(&point);
-        SetForegroundWindow(bar.window);
-        int command = callbacks.menu ? callbacks.menu(menu, point, bar.monitor)
-                                     : TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, 0,
-                                                      bar.window, nullptr);
-        DestroyMenu(menu);
-        if (command >= 100)
-            ActivateGroup(bar, static_cast<size_t>(command - 100));
+        } else
+            Popover(bar, DockOverflow, surface::Trigger::Click);
     }
     void Invoke(DockSurface &bar, int action, bool launch = false) {
+        returnAction = action;
+        if (action >= 0 && !contrast && !reduced) {
+            auto &press = bar.resources.actionPress[action];
+            press.Snap(1);
+            press.goal = 0;
+            ArmMotion(bar);
+        }
         activeMonitor = bar.monitor;
         if (action >= DockGroupFirst) {
             ActivateGroup(bar, static_cast<size_t>(action - DockGroupFirst), launch);
@@ -466,6 +501,7 @@ struct DockShell::Impl {
         }
         HidePreview();
         if (action == DockDesktop || action == DockTaskView) {
+            PostMessageW(owner, WM_SYSCOMMAND, SC_CLOSE, 0);
             WORD key = action == DockDesktop ? 'D' : VK_TAB;
             INPUT input[4]{};
             for (auto &value : input)
@@ -487,248 +523,10 @@ struct DockShell::Impl {
         if (action < DockGroupFirst) {
             if (callbacks.context)
                 callbacks.context();
-            return;
-        }
-        size_t index = static_cast<size_t>(action - DockGroupFirst);
-        if (index >= bar.groups.size())
-            return;
-        auto group = bar.groups[index];
-        HMENU menu = CreatePopupMenu();
-        AppendMenuW(menu, MF_STRING | (group.launchKey.empty() ? MF_GRAYED : 0), 1, L"Open another instance");
-        AppendMenuW(menu, MF_STRING, 2, group.pinned ? L"Unpin" : L"Pin to dock");
-        if (!group.windows.empty())
-            AppendMenuW(menu, MF_STRING, 3, L"Close window");
-        if (!group.appId.empty())
-            AppendMenuW(menu, MF_STRING, 4, L"Recent and frequent documents…");
-        POINT point{};
-        GetCursorPos(&point);
-        SetForegroundWindow(bar.window);
-        int command = callbacks.menu ? callbacks.menu(menu, point, bar.monitor)
-                                     : TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, 0,
-                                                      bar.window, nullptr);
-        DestroyMenu(menu);
-        if (command == 1)
-            ActivateGroup(bar, index, true);
-        if (command == 2 && callbacks.pin) {
-            if (group.pinned)
-                for (const auto &key : group.pinKeys)
-                    callbacks.pin(key, false);
-            else
-                callbacks.pin(group.launchKey, true);
-        }
-        if (command == 4 && callbacks.recent)
-            callbacks.recent(group.appId, bar.monitor);
-        if (command == 3 && !WindowList::Close(group.windows.front().window))
-            Error(L"Windows did not allow closing this window. Elevated windows may require an elevated Dako.");
+        } else
+            Popover(bar, action, surface::Trigger::Context);
     }
-    void HidePreview() {
-        if (thumbnail) {
-            DwmUnregisterThumbnail(thumbnail);
-            thumbnail = nullptr;
-        }
-        if (previewWindow) {
-            KillTimer(previewWindow, PreviewTimer);
-            ShowWindow(previewWindow, SW_HIDE);
-        }
-        previewGroup = {};
-        previewDock = nullptr;
-    }
-    void UpdateThumbnail() {
-        if (thumbnail) {
-            DwmUnregisterThumbnail(thumbnail);
-            thumbnail = nullptr;
-        }
-        previewResult = E_FAIL;
-        if (!previewDock || previewIndex >= previewGroup.windows.size())
-            return;
-        HWND source = previewGroup.windows[previewIndex].window;
-        previewResult = DwmRegisterThumbnail(previewWindow, source, &thumbnail);
-        if (SUCCEEDED(previewResult)) {
-            SIZE size{};
-            DwmQueryThumbnailSourceSize(thumbnail, &size);
-            float scale = previewDock->Scale();
-            RECT content{static_cast<LONG>(12 * scale), static_cast<LONG>(42 * scale),
-                         static_cast<LONG>((previewWidth - 12) * scale),
-                         static_cast<LONG>((previewHeight - 48) * scale)};
-            float ratio = std::min((content.right - content.left) / static_cast<float>(std::max(1L, size.cx)),
-                                   (content.bottom - content.top) / static_cast<float>(std::max(1L, size.cy)));
-            LONG width = static_cast<LONG>(size.cx * ratio), height = static_cast<LONG>(size.cy * ratio);
-            LONG x = content.left + (content.right - content.left - width) / 2,
-                 y = content.top + (content.bottom - content.top - height) / 2;
-            DWM_THUMBNAIL_PROPERTIES properties{};
-            properties.dwFlags =
-                DWM_TNP_RECTDESTINATION | DWM_TNP_VISIBLE | DWM_TNP_OPACITY | DWM_TNP_SOURCECLIENTAREAONLY;
-            properties.rcDestination = {x, y, x + width, y + height};
-            properties.fVisible = TRUE;
-            properties.opacity = 255;
-            properties.fSourceClientAreaOnly = FALSE;
-            previewResult = DwmUpdateThumbnailProperties(thumbnail, &properties);
-        }
-        InvalidateRect(previewWindow, nullptr, FALSE);
-    }
-    void ShowPreview(DockSurface &bar, size_t group) {
-        if (group >= bar.groups.size() || bar.groups[group].windows.empty())
-            return;
-        if (!previewWindow) {
-            CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST, PreviewClass, L"Dako window preview",
-                            WS_POPUP | WS_CLIPCHILDREN, 0, 0, 1, 1, owner, nullptr, GetModuleHandleW(nullptr), this);
-            if (!previewWindow)
-                return;
-        }
-        HidePreview();
-        previewDock = &bar;
-        previewGroup = bar.groups[group];
-        previewIndex = 0;
-        previewFocus = 0;
-        MONITORINFO info{sizeof(info)};
-        GetMonitorInfoW(bar.monitor, &info);
-        float scale = bar.Scale();
-        LONG width = static_cast<LONG>(320 * scale), height = static_cast<LONG>(252 * scale);
-        width = std::min(width, info.rcMonitor.right - info.rcMonitor.left);
-        height = std::min(height, std::max(80L, bar.bounds.top - info.rcMonitor.top - 8));
-        previewWidth = width / scale;
-        previewHeight = height / scale;
-        if (previewTarget)
-            previewTarget->SetDpi(static_cast<float>(bar.dpi), static_cast<float>(bar.dpi));
-        LONG left = std::clamp((bar.bounds.left + bar.bounds.right - width) / 2, info.rcMonitor.left,
-                               std::max(info.rcMonitor.left, info.rcMonitor.right - width));
-        SetWindowPos(previewWindow, HWND_TOPMOST, left, bar.bounds.top - height - 6, width, height,
-                     SWP_NOACTIVATE | SWP_SHOWWINDOW);
-        UpdateThumbnail();
-        SetTimer(previewWindow, PreviewTimer, 100, nullptr);
-    }
-    void PreviewAction(int action) {
-        if (!previewDock || previewGroup.windows.empty())
-            return;
-        if (action == 1 || action == 2) {
-            size_t count = previewGroup.windows.size();
-            previewIndex = (previewIndex + (action == 1 ? count - 1 : 1)) % count;
-            UpdateThumbnail();
-            return;
-        }
-        HWND window = previewGroup.windows[previewIndex].window;
-        if (action == 3) {
-            if (!WindowList::Activate(window))
-                Error(L"Windows did not allow window activation.");
-        }
-        if (action == 4 && !WindowList::Close(window))
-            Error(L"Windows did not allow closing this window.");
-        HidePreview();
-    }
-    void PaintPreview() {
-        PAINTSTRUCT paint{};
-        BeginPaint(previewWindow, &paint);
-        if (!previewDock) {
-            EndPaint(previewWindow, &paint);
-            return;
-        }
-        if (!previewTarget) {
-            RECT rect{};
-            GetClientRect(previewWindow, &rect);
-            factory->CreateHwndRenderTarget(
-                D2D1::RenderTargetProperties(D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1::PixelFormat(),
-                                             static_cast<float>(previewDock->dpi),
-                                             static_cast<float>(previewDock->dpi)),
-                D2D1::HwndRenderTargetProperties(previewWindow, D2D1::SizeU(rect.right, rect.bottom)), &previewTarget);
-        }
-        if (previewTarget) {
-            previewTarget->BeginDraw();
-            previewTarget->SetTransform(D2D1::Matrix3x2F::Scale(textScale, textScale));
-            if (previewIndex < previewGroup.windows.size()) {
-                dockview::PaintPreview(previewTarget.Get(), writer.Get(), previewResources, previewWidth, previewHeight,
-                                       previewGroup.windows[previewIndex].title, FAILED(previewResult), previewFocus);
-                previewHits = dockview::PreviewHits(previewWidth, previewHeight);
-            }
-            if (FAILED(previewTarget->EndDraw()))
-                previewTarget.Reset();
-        }
-        EndPaint(previewWindow, &paint);
-    }
-    LRESULT PreviewMessage(UINT message, WPARAM wparam, LPARAM lparam) {
-        switch (message) {
-        case WM_PAINT:
-            PaintPreview();
-            return 0;
-        case WM_ERASEBKGND:
-            return 1;
-        case WM_SIZE:
-            if (previewTarget)
-                previewTarget->Resize(D2D1::SizeU(LOWORD(lparam), HIWORD(lparam)));
-            return 0;
-        case WM_GETOBJECT:
-            if (static_cast<LONG>(lparam) == OBJID_CLIENT) {
-                if (!previewAccessible) {
-                    previewProvider = new DockAccessible(
-                        previewWindow, [this] { return previewHits; },
-                        [this] { return previewDock ? previewDock->Scale() : 1.0f; }, L"Dako window preview");
-                    previewProvider->Focus(previewFocus + 1);
-                    previewAccessible.Attach(previewProvider);
-                }
-                return LresultFromObject(IID_IAccessible, wparam, previewAccessible.Get());
-            }
-            break;
-        case DockInvoke:
-            if (lparam) {
-                previewFocus = static_cast<int>(wparam) - 1;
-                InvalidateRect(previewWindow, nullptr, FALSE);
-            } else
-                PreviewAction(static_cast<int>(wparam));
-            return 0;
-        case WM_TIMER: {
-            POINT point{};
-            GetCursorPos(&point);
-            RECT previewBounds{};
-            GetWindowRect(previewWindow, &previewBounds);
-            bool inside = PtInRect(&previewBounds, point) != FALSE;
-            if (previewDock) {
-                auto bar = previewDock->bounds;
-                bar.top -= 8;
-                inside |= PtInRect(&bar, point) != FALSE;
-            }
-            if (!inside && GetFocus() != previewWindow)
-                HidePreview();
-            return 0;
-        }
-        case WM_LBUTTONUP: {
-            float scale = previewDock ? previewDock->Scale() : 1;
-            for (const auto &hit : previewHits)
-                if (hit.rect.Contains(GET_X_LPARAM(lparam) / scale, GET_Y_LPARAM(lparam) / scale)) {
-                    PreviewAction(hit.action);
-                    break;
-                }
-            return 0;
-        }
-        case WM_KEYDOWN:
-            if (wparam == VK_ESCAPE) {
-                HidePreview();
-                return 0;
-            }
-            if (wparam == VK_TAB || wparam == VK_RIGHT)
-                previewFocus = (previewFocus + 1) % 4;
-            if (wparam == VK_LEFT)
-                previewFocus = (previewFocus + 3) % 4;
-            if (wparam == VK_RETURN || wparam == VK_SPACE)
-                PreviewAction(previewFocus + 1);
-            if (wparam == VK_DELETE)
-                PreviewAction(4);
-            if (previewProvider)
-                previewProvider->Focus(previewFocus + 1);
-            NotifyWinEvent(EVENT_OBJECT_FOCUS, previewWindow, OBJID_CLIENT, previewFocus + 1);
-            InvalidateRect(previewWindow, nullptr, FALSE);
-            return 0;
-        case WM_CLOSE:
-            HidePreview();
-            return 0;
-        case WM_DESTROY:
-            if (previewProvider)
-                previewProvider->Disconnect();
-            previewProvider = nullptr;
-            previewAccessible.Reset();
-            previewTarget.Reset();
-            return 0;
-        }
-        return DefWindowProcW(previewWindow, message, wparam, lparam);
-    }
+    void HidePreview() {}
     LRESULT Message(DockSurface &bar, UINT message, WPARAM wparam, LPARAM lparam) {
         switch (message) {
         case DockCallback:
@@ -744,6 +542,12 @@ struct DockShell::Impl {
                 return 0;
             }
             return 0;
+        case WM_SYSCOMMAND:
+            if ((wparam & 0xFFF0) == SC_CLOSE) {
+                PostMessageW(owner, WM_SYSCOMMAND, SC_CLOSE, 0);
+                return 0;
+            }
+            break;
         case WM_NCHITTEST: {
             POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
             ScreenToClient(bar.window, &point);
@@ -802,6 +606,12 @@ struct DockShell::Impl {
             Fullscreen();
             return 0;
         case WM_TIMER:
+            if (wparam == HudTimer) {
+                KillTimer(bar.window, HudTimer);
+                bar.volumeHud = false;
+                InvalidateRect(bar.window, nullptr, FALSE);
+                return 0;
+            }
             if (wparam == AutoHideTimer) {
                 KillTimer(bar.window, AutoHideTimer);
                 if (panelOpen)
@@ -843,10 +653,8 @@ struct DockShell::Impl {
                 Rebuild(bar);
             }
             if (callbacks.pointer)
-                callbacks.pointer(panelOpen || DockDwellContains(bar.geometry, GET_X_LPARAM(lparam) / bar.Scale(),
-                                                                 GET_Y_LPARAM(lparam) / bar.Scale()),
-                                  bar.monitor);
-            TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE | TME_HOVER, bar.window, 250};
+                callbacks.pointer(true, bar.monitor);
+            TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, bar.window, 0};
             TrackMouseEvent(&track);
             float mouse = GET_X_LPARAM(lparam) / bar.Scale();
             bar.pointer.goal = mouse;
@@ -856,9 +664,9 @@ struct DockShell::Impl {
                 ArmMotion(bar);
             int hit = Hit(bar, mouse, GET_Y_LPARAM(lparam) / bar.Scale());
             if (hit != bar.hover) {
-                if (hit < DockGroupFirst && previewDock == &bar)
-                    HidePreview();
                 bar.hover = hit;
+                if (hit >= 0 && (GetMessageExtraInfo() & 0xFFFFFF00) != 0xFF515700)
+                    Popover(bar, hit, surface::Trigger::Hover);
                 InvalidateRect(bar.window, nullptr, FALSE);
             }
             if (bar.pressed >= DockGroupFirst && bar.pressed - DockGroupFirst < static_cast<int>(bar.groups.size()) &&
@@ -872,14 +680,15 @@ struct DockShell::Impl {
             }
             return 0;
         }
-        case WM_MOUSEHOVER:
-            if (bar.hover >= DockGroupFirst)
-                ShowPreview(bar, bar.hover - DockGroupFirst);
-            return 0;
         case WM_MOUSEWHEEL:
         case WM_MOUSEHWHEEL: {
             POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
             ScreenToClient(bar.window, &point);
+            if (Hit(bar, point.x / bar.Scale(), point.y / bar.Scale()) == DockVolume && callbacks.volume) {
+                callbacks.volume(GET_WHEEL_DELTA_WPARAM(wparam), bar.monitor);
+                ShowVolumeHud(bar);
+                return 0;
+            }
             auto intent =
                 ResolveDockWheel(bar.geometry, options, point.x / bar.Scale(), point.y / bar.Scale() - bar.hideOffset,
                                  GET_WHEEL_DELTA_WPARAM(wparam), message == WM_MOUSEHWHEEL);
@@ -933,6 +742,12 @@ struct DockShell::Impl {
             bar.pressed = bar.drag = -1;
             return 0;
         case WM_MBUTTONUP:
+            if (Hit(bar, GET_X_LPARAM(lparam) / bar.Scale(), GET_Y_LPARAM(lparam) / bar.Scale()) == DockVolume &&
+                callbacks.volume) {
+                callbacks.volume(0, bar.monitor);
+                ShowVolumeHud(bar);
+                return 0;
+            }
             Invoke(bar, Hit(bar, GET_X_LPARAM(lparam) / bar.Scale(), GET_Y_LPARAM(lparam) / bar.Scale()), true);
             return 0;
         case WM_CONTEXTMENU: {
@@ -973,6 +788,13 @@ struct DockShell::Impl {
                     callbacks.reorder(bar.groups[first].pinIndex, bar.groups[next].pinIndex);
                 return 0;
             }
+            if (wparam == VK_TAB && panelOpen && !GetPropW(owner, L"Dako.SurfaceLabel") &&
+                !(GetKeyState(VK_SHIFT) & 0x8000)) {
+                SetForegroundWindow(owner);
+                SetFocus(owner);
+                PostMessageW(owner, WM_KEYDOWN, VK_TAB, 0);
+                return 0;
+            }
             if ((wparam == VK_RIGHT || wparam == VK_LEFT || wparam == VK_TAB) && !bar.hits.empty()) {
                 int step = wparam == VK_LEFT || (wparam == VK_TAB && (GetKeyState(VK_SHIFT) & 0x8000)) ? -1 : 1;
                 index = (index + step + static_cast<int>(bar.hits.size())) % static_cast<int>(bar.hits.size());
@@ -981,14 +803,12 @@ struct DockShell::Impl {
             if (wparam == VK_RETURN || wparam == VK_SPACE)
                 Invoke(bar, bar.focus, (GetKeyState(VK_SHIFT) & 0x8000) != 0);
             if (wparam == VK_UP && bar.focus >= DockGroupFirst) {
-                ShowPreview(bar, bar.focus - DockGroupFirst);
-                if (previewWindow)
-                    SetFocus(previewWindow);
+                Popover(bar, bar.focus, surface::Trigger::Click, true);
             }
             if (wparam == VK_APPS)
                 AppMenu(bar, bar.focus);
             if (wparam == VK_ESCAPE)
-                HidePreview();
+                PostMessageW(owner, WM_KEYDOWN, VK_ESCAPE, 0);
             return 0;
         }
         case WM_DESTROY:
@@ -1018,8 +838,6 @@ struct DockShell::Impl {
             bar->shadow.Hide();
             bar->composition.Reset();
             bar->resources.ResetBitmaps();
-            if (bar->tooltip)
-                DestroyWindow(bar->tooltip);
             if (bar->window)
                 DestroyWindow(bar->window);
         }
@@ -1079,10 +897,6 @@ struct DockShell::Impl {
                 }
                 bar->registered = true;
             }
-            bar->tooltip =
-                CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP, 0,
-                                0, 0, 0, window, nullptr, GetModuleHandleW(nullptr), nullptr);
-            SendMessageW(bar->tooltip, TTM_SETMAXTIPWIDTH, 0, 300);
             surfaces.push_back(std::move(bar));
             if (!Position(*surfaces.back())) {
                 success = false;
@@ -1126,9 +940,6 @@ bool DockShell::Start(HWND owner, Shell *recovery, bool preview, float textScale
     type.lpfnWndProc = Impl::Procedure;
     type.lpszClassName = DockClass;
     RegisterClassW(&type);
-    type.lpfnWndProc = Impl::PreviewProcedure;
-    type.lpszClassName = PreviewClass;
-    RegisterClassW(&type);
     self.status = ReadClock({});
     return self.Monitors();
 }
@@ -1136,14 +947,6 @@ void DockShell::Stop() {
     auto &self = *impl_;
     self.stopping = true;
     self.StopDocks();
-    if (self.previewWindow) {
-        DestroyWindow(self.previewWindow);
-        self.previewWindow = nullptr;
-    }
-    self.previewTarget.Reset();
-    self.previewResources = {};
-    self.previewAccessible.Reset();
-    self.previewHits.clear();
     self.pins.clear();
     self.windows.clear();
     self.flashing.clear();
@@ -1162,25 +965,6 @@ void DockShell::SetData(std::vector<PinEntry> pins, std::vector<WindowEntry> win
     self.pins = std::move(pins);
     self.windows = std::move(windows);
     self.status = ReadClock(std::move(status));
-    if (self.previewDock && self.previewIndex < self.previewGroup.windows.size()) {
-        HWND source = self.previewGroup.windows[self.previewIndex].window;
-        bool exists = std::any_of(self.windows.begin(), self.windows.end(), [&](const WindowEntry &entry) {
-            return entry.window == source && entry.monitor == self.previewDock->monitor;
-        });
-        if (!exists)
-            self.HidePreview();
-    }
-    for (const auto &window : self.windows)
-        if (window.active)
-            self.flashing.erase(window.window);
-    for (auto it = self.flashing.begin(); it != self.flashing.end();) {
-        bool alive = std::any_of(self.windows.begin(), self.windows.end(),
-                                 [&](const WindowEntry &entry) { return entry.window == *it; });
-        if (!alive)
-            it = self.flashing.erase(it);
-        else
-            ++it;
-    }
     for (auto &bar : self.surfaces)
         self.Rebuild(*bar);
     self.Fullscreen();
@@ -1216,6 +1000,39 @@ RECT DockShell::PillBounds(HMONITOR monitor) const {
             dock->bounds.top + static_cast<LONG>(std::lround(pill.top * scale)),
             dock->bounds.left + static_cast<LONG>(std::lround(pill.right * scale)),
             dock->bounds.top + static_cast<LONG>(std::lround(pill.bottom * scale))};
+}
+void DockShell::Joined(HMONITOR monitor, bool visible) {
+    auto &self = *impl_;
+    HMONITOR next = visible ? monitor : nullptr;
+    if (self.joinedMonitor == next)
+        return;
+    self.joinedMonitor = next;
+    for (auto &bar : self.surfaces)
+        InvalidateRect(bar->window, nullptr, FALSE);
+}
+void DockShell::ReleaseJoined() { impl_->joinedResources = {}; }
+void DockShell::PaintJoined(ID2D1RenderTarget *target, HMONITOR monitor, POINT origin, float dpi) {
+    auto &self = *impl_;
+    auto *bar = self.Find(monitor);
+    if (!bar || !target)
+        return;
+    D2D1::Matrix3x2F saved;
+    target->GetTransform(&saved);
+    float scale = dpi / 96;
+    target->SetTransform(
+        D2D1::Matrix3x2F::Scale(self.textScale, self.textScale) *
+        D2D1::Matrix3x2F::Translation((bar->bounds.left - origin.x) / scale, (bar->bounds.top - origin.y) / scale));
+    self.joinedResources.visuals = bar->resources.visuals;
+    self.joinedResources.actionHover = bar->resources.actionHover;
+    self.joinedResources.actionPress = bar->resources.actionPress;
+    self.joinedResources.focusOpacity = bar->resources.focusOpacity;
+    self.joinedResources.previousFocus = bar->resources.previousFocus;
+    dockview::Paint(target, self.writer.Get(), self.joinedResources, bar->Width(), bar->groups, self.status, bar->hover,
+                    GetFocus() == bar->window ? bar->focus : -1, 1, self.options, bar->first, bar->pointer.value,
+                    self.reduced ? 0 : bar->magnify.value, self.contrast, !self.reduced, bar->drag, false, false,
+                    bar->pressed);
+    self.PaintVolumeHud(target, *bar);
+    target->SetTransform(saved);
 }
 POINT DockShell::Anchor(HMONITOR monitor, int action) const {
     auto *dock = impl_->Find(monitor);
@@ -1271,6 +1088,8 @@ void DockShell::Flash(HWND window) {
 }
 void DockShell::Focus(HMONITOR monitor) {
     if (auto bar = impl_->Find(monitor)) {
+        if (impl_->returnAction >= 0)
+            impl_->Select(*bar, impl_->returnAction);
         SetForegroundWindow(bar->window);
         SetFocus(bar->window);
     }
@@ -1287,11 +1106,9 @@ RECT DockShell::Bounds(HMONITOR monitor) const {
 }
 HMONITOR DockShell::ActiveMonitor() const { return impl_->activeMonitor; }
 size_t DockShell::Count() const { return impl_->surfaces.size(); }
-bool DockShell::PreviewAvailable() const { return impl_->thumbnail && SUCCEEDED(impl_->previewResult); }
+bool DockShell::PreviewAvailable() const { return false; }
 
 bool DockShell::Contains(HWND window) const {
-    if (window == impl_->previewWindow)
-        return true;
     for (const auto &bar : impl_->surfaces)
         if (bar->window == window)
             return true;

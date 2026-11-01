@@ -6,14 +6,11 @@ void Island::SnapMotion() {
         chrome.result = chrome.cancel;
         CloseChrome();
     }
-    if (!expanded) {
-        dockReveal.goal = contentBlend.goal = 0;
-        dockWidth.goal = theme::DockWidth;
-        dockHeight.goal = theme::DockHeight;
-    } else
-        contentBlend.goal = 1;
-    collapsePending = false;
-    revealClock = paneClock = 1;
+    if (expanded)
+        surfaceMotion.Open(surfaceMotion.anchor.goal, SurfaceWidth(), SurfaceHeight(), true);
+    else
+        surfaceMotion.Close(true);
+    paneClock = 1;
     for (auto *v : {&dockReveal, &dockWidth, &dockHeight, &paneBlend, &wallpaperFocus, &tabLeft, &tabRight,
                     &railPointer, &railStrength, &paletteBlend, &contentBlend, &togglePosition, &wallpaperParallax,
                     &volumeMotion, &composerFocus, &toastBlend, &focusBlend, &chrome.blend, &scrollThumb})
@@ -132,7 +129,17 @@ void Island::ArmMotion() {
 }
 
 void Island::SetExpanded(bool value, bool deliberate) {
+    if (value && DockEnabled() && surfaceRequest.behavior == surface::Behavior::Panel) {
+        surfaceHover.Close();
+        surfaceHover.pinned = true;
+        if (surfaceDeadline)
+            surfaceDeadline->Cancel();
+    }
     if (!value) {
+        surfaceHover.Close();
+        if (surfaceDeadline)
+            surfaceDeadline->Cancel();
+        ClearSurfaceThumbnails();
         KillTimer(window, ScrollFadeTimer);
         scrollThumb.Snap(0);
     }
@@ -154,18 +161,6 @@ void Island::SetExpanded(bool value, bool deliberate) {
         else
             interaction.OnDismiss(deliberate);
     }
-    bool opening = value && !expanded, closing = !value && expanded;
-    if (opening) {
-        revealClock = 0;
-        contentBlend.Snap(0);
-    }
-    if (closing) {
-        collapseClock = 0;
-        collapsePending = !reducedMotion && !renderMode;
-        contentBlend.goal = 0;
-    }
-    if (value)
-        collapsePending = false;
     expanded = value;
     if (docks)
         docks->PanelVisible(value);
@@ -182,21 +177,26 @@ void Island::SetExpanded(bool value, bool deliberate) {
         pressedKey.clear();
         focused = -1;
     }
+    bool controlsView =
+        tab == Tab::Controls && flyout == Flyout::None &&
+        (surfaceRequest.kind == surface::Kind::FullIsland || surfaceRequest.kind == surface::Kind::QuickPanel);
+    bool mediaView = controlsView || surfaceRequest.kind == surface::Kind::Media;
     if (value) {
-        if (tab == Tab::Controls)
+        if (controlsView)
             RefreshControls();
         system.RefreshVolume();
-        if (!renderMode && !fixtureGeometry && tab == Tab::Controls && flyout == Flyout::None) {
+        if (!renderMode && !fixtureGeometry && controlsView) {
             if (!connectivity)
                 connectivity = std::make_unique<Connectivity>(window);
-            connectivity->RefreshWifi(false);
+            connectivity->RefreshWifi(!previewMode && surfaceRequest.kind == surface::Kind::QuickPanel &&
+                                      surfaceRequest.section == surface::Section::Wifi);
             connectivity->RefreshBluetooth(false);
         }
-        if (!renderMode && !fixtureGeometry && !media && tab == Tab::Controls && flyout == Flyout::None)
+        if (!renderMode && !fixtureGeometry && !media && mediaView)
             media = std::make_unique<MediaService>(window);
     }
     if (media)
-        media->SetVisible(value && tab == Tab::Controls && flyout == Flyout::None);
+        media->SetVisible(value && mediaView);
     if (!value) {
         clipboardReadTask.Cancel();
         paletteItems.clear();
@@ -218,11 +218,13 @@ void Island::SetExpanded(bool value, bool deliberate) {
         if (connectivity)
             connectivity->CancelDiscovery();
     }
-    dockReveal.goal = value || collapsePending ? 1.0f : 0.0f;
-    dockWidth.goal = value || collapsePending ? SurfaceWidth() : theme::DockWidth;
-    dockHeight.goal = value || collapsePending ? SurfaceHeight() : theme::DockHeight;
-    if (value && (reducedMotion || renderMode || !opening))
-        contentBlend.goal = 1;
+    if (DockEnabled())
+        surfaceMotion.Rest(surface::Compact, 0);
+    if (value)
+        surfaceMotion.Open(static_cast<float>(dockAnchor.x), SurfaceWidth(), SurfaceHeight(),
+                           reducedMotion || renderMode);
+    else
+        surfaceMotion.Close(reducedMotion || renderMode);
     transitioning = !reducedMotion && !renderMode;
     if (transitioning)
         ArmMotion();
@@ -237,6 +239,8 @@ void Island::SetExpanded(bool value, bool deliberate) {
         if (!value && !renderMode)
             ReleaseGraphics();
     }
+    if (!value && docks && GetForegroundWindow() == window)
+        docks->Focus(panelMonitor);
     RebuildLayout();
     UpdateTimers();
     UpdateInteractionTimer();
@@ -266,30 +270,7 @@ void Island::Transition() {
         }
         moving |= spring.Moving();
     };
-    float previousReveal = revealClock;
-    if (expanded)
-        revealClock += dt;
-    if (collapsePending) {
-        collapseClock += dt;
-        advance(contentBlend, dock::motion::Collapse, dt);
-        if (collapseClock >= .12f / speed || contentBlend.value <= .001f) {
-            collapsePending = false;
-            dockReveal.goal = 0;
-            dockWidth.goal = theme::DockWidth;
-            dockHeight.goal = theme::DockHeight;
-        }
-        moving |= collapsePending;
-    }
-    advance(dockReveal, dock::motion::Settle, dt);
-    advance(dockHeight, highContrast ? dock::motion::Settle : dock::motion::Height, dt);
-    float widthElapsed =
-        expanded ? std::max(0.0f, revealClock - .04f / speed) - std::max(0.0f, previousReveal - .04f / speed) : dt;
-    advance(dockWidth, dock::motion::Width, widthElapsed);
-    if (expanded && dockReveal.value > .6f)
-        contentBlend.goal = 1;
-    if (!collapsePending)
-        advance(contentBlend, dock::motion::Fade, dt);
-    advance(paneBlend, dock::motion::Settle, dt);
+    moving |= surfaceMotion.Step(dt, speed);
     advance(wallpaperFocus, dock::motion::Carousel, dt);
     advance(tabLeft, bodyDirection > 0 ? dock::motion::TabTrail : dock::motion::Snappy, dt);
     advance(tabRight, bodyDirection > 0 ? dock::motion::Snappy : dock::motion::TabTrail, dt);
@@ -332,6 +313,8 @@ void Island::Transition() {
         (void)key;
         advance(spring, dock::motion::Settle, dt);
     }
+    if (DockEnabled())
+        paneClock = 1;
     if (paneClock < .37f && !highContrast) {
         paneClock = std::min(.37f, paneClock + dt * speed);
         moving |= paneClock < .37f;
@@ -348,7 +331,7 @@ void Island::Transition() {
             ++it;
     width = std::clamp(dockWidth.value, 1.0f, envelopeWidth);
     height = std::clamp(dockHeight.value, 1.0f, envelopeHeight);
-    transitioning = collapsePending || dockReveal.Moving() || dockWidth.Moving() || dockHeight.Moving();
+    transitioning = surfaceMotion.Moving();
     ApplyAccent(dock::Mix(previousAccent, targetAccent, paletteBlend.value));
     if (paneBlend.value == 1)
         previousPane.Reset();
@@ -373,7 +356,7 @@ void Island::Transition() {
 void Island::UpdateInteractionTimer() {
     if (renderMode || fixtureGeometry)
         return;
-    bool needed = interaction.NeedsTick();
+    bool needed = !DockEnabled() && interaction.NeedsTick();
     if (needed && !interactionTicking) {
         lastInteraction = steady_clock::now();
         SetTimer(window, InteractionTimer, 16, nullptr);
@@ -409,6 +392,10 @@ void Island::UpdateInteractionMedia() {
 }
 
 void Island::InteractionPointer(bool inside) {
+    if (DockEnabled()) {
+        SurfacePointer(inside);
+        return;
+    }
     if (renderMode || fixtureGeometry || previewMode)
         return;
     if (!interaction.NeedsTick())
@@ -465,8 +452,10 @@ void Island::UpdateTimers() {
     if (stats && !statsTicking)
         SampleStats();
     timer(StatsTimer, stats, 1000, statsTicking);
-    timer(MediaTimer, currentMedia.playing && expanded && tab == Tab::Controls && flyout == Flyout::None, 1000,
-          mediaTicking);
+    bool mediaView = tab == Tab::Controls && flyout == Flyout::None &&
+                     (surfaceRequest.kind == surface::Kind::FullIsland ||
+                      surfaceRequest.kind == surface::Kind::QuickPanel || surfaceRequest.kind == surface::Kind::Media);
+    timer(MediaTimer, currentMedia.playing && expanded && mediaView, 1000, mediaTicking);
     timer(FocusTimer, focusRunning || (expanded && !miniMode && tab == Tab::Today && flyout == Flyout::None), 1000,
           focusTicking);
     timer(ConnectivityTimer, expanded && (flyout == Flyout::Wifi || flyout == Flyout::Bluetooth), 2500,
@@ -474,8 +463,14 @@ void Island::UpdateTimers() {
 }
 
 void Island::SetTab(Tab value) {
+    bool changedSurface = surfaceRequest.kind != surface::Kind::FullIsland;
+    if (changedSurface) {
+        CapturePane();
+        surfaceRequest = {};
+        surfaceMotion.label = false;
+    }
     bool fromPalette = flyout == Flyout::Palette;
-    if (expanded && !miniMode && flyout == Flyout::None && tab == value)
+    if (!changedSurface && expanded && !miniMode && flyout == Flyout::None && tab == value)
         return;
     modulePanel = {};
     moduleView.clear();
@@ -484,7 +479,7 @@ void Island::SetTab(Tab value) {
     previousPane.Reset();
     paneBlend.Snap(reducedMotion || renderMode || highContrast ? 1.0f : 0.0f);
     paneBlend.goal = 1;
-    paneClock = reducedMotion || renderMode || highContrast ? 1.0f : 0.0f;
+    paneClock = DockEnabled() || reducedMotion || renderMode || highContrast ? 1.0f : 0.0f;
     if (connectivity)
         connectivity->CancelDiscovery();
     flyout = Flyout::None;

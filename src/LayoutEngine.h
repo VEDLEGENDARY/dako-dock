@@ -56,6 +56,7 @@ inline float ReferenceBodyHeight(View view) {
 struct Input {
     float availableWidth = 900, availableHeight = 748;
     View view = View::Controls;
+    float preferredWidth = 0, preferredBodyHeight = 0;
     size_t items = 0;
     size_t active = 0, events = 0;
     int page = 0;
@@ -75,13 +76,16 @@ inline float StatsLeftHeight(float width) { return width < 240 ? 840.0f : Metric
 inline Result Solve(Input in) {
     Result r;
     bool flyout = in.view == View::Wireless || in.view >= View::Features;
-    float preferred = in.view == View::Media       ? Metrics::MediaWidth
-                      : in.view == View::Controls  ? Metrics::ControlsWidth
-                      : in.view == View::Wallpaper ? Metrics::WallpaperWidth
-                      : flyout                     ? Metrics::WirelessWidth
-                                                   : Metrics::MainWidth;
+    float preferred = in.view == View::Media                                      ? Metrics::MediaWidth
+                      : in.view == View::Controls                                 ? Metrics::ControlsWidth
+                      : in.view == View::Wallpaper                                ? Metrics::WallpaperWidth
+                      : flyout || in.view == View::Apps || in.view == View::Power ? Metrics::WirelessWidth
+                                                                                  : Metrics::MainWidth;
+    if (in.preferredWidth > 0)
+        preferred = in.preferredWidth;
     float w = std::min(preferred, std::max(Metrics::MinWidth, in.availableWidth));
-    float h = std::min(ReferenceBodyHeight(in.view) + 80, std::max(Metrics::MinHeight, in.availableHeight));
+    float reference = in.preferredBodyHeight > 0 ? in.preferredBodyHeight : ReferenceBodyHeight(in.view);
+    float h = std::min(reference + 80, std::max(Metrics::MinHeight, in.availableHeight));
     r.narrow = w < (in.view == View::Controls ? Metrics::ControlsNarrowWidth : Metrics::NarrowWidth);
     r.emergency = h < Metrics::EmergencyExtent || w < 7 * Metrics::MinHit + 2 * Metrics::PanelInset + 44;
     r.padding = r.emergency ? Metrics::Space12 : Metrics::PanelInset;
@@ -105,7 +109,7 @@ inline Result Solve(Input in) {
     }
     if (in.view == View::Media)
         r.body = {r.padding, Metrics::Space8, w - r.padding, h - Metrics::Space8};
-    float content = ReferenceBodyHeight(in.view);
+    float content = reference;
     switch (in.view) {
     case View::Controls:
         content = r.narrow ? Metrics::ControlsStackHeight : ReferenceBodyHeight(in.view);
@@ -148,6 +152,8 @@ inline Result Solve(Input in) {
     default:
         break;
     }
+    if (in.preferredBodyHeight > 0)
+        content = in.preferredBodyHeight;
     r.contentHeight = std::max(content, r.body.Height());
     // A transient status overlays the viewport; it never consumes the footer or changes the layout.
     float toast = std::min(32.0f, r.body.Height());

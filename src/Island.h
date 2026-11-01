@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <windowsx.h>
 #include <d2d1.h>
+#include <d2d1effects.h>
 #include <dwrite.h>
 #include <shcore.h>
 #include <dwmapi.h>
@@ -37,6 +38,7 @@
 #include <thread>
 #include <vector>
 #include "DockMotion.h"
+#include "SurfaceMotion.h"
 #include "Anchor.h"
 #include "IslandState.h"
 #include "SettingsSchema.h"
@@ -285,6 +287,26 @@ class Island {
     void ToggleDesktopMode();
     void UpdateDocks();
     void OpenFromDock(int action, HMONITOR monitor);
+    surface::Request surfaceRequest;
+    surface::HoverPolicy surfaceHover;
+    desktop::DockGroup surfaceGroup;
+    std::unique_ptr<OneShotDeadline> surfaceDeadline;
+    static constexpr UINT SurfaceDue = WM_APP + 100;
+    HMONITOR hoverMonitor = nullptr;
+    desktop::DockGroup hoverGroup;
+    std::array<HTHUMBNAIL, 3> surfaceThumbnails{};
+    std::array<D2D1_RECT_F, 3> thumbnailSlots{};
+    void RequestSurface(surface::Request request, desktop::DockGroup group, HMONITOR monitor);
+    void PresentSurface(surface::Request request, desktop::DockGroup group, HMONITOR monitor);
+    void SurfacePointer(bool inside);
+    void SurfaceDeadline(WPARAM token);
+    void UnifiedContent();
+    bool UnifiedAction(int id);
+    float UnifiedHeight() const;
+    void CapturePane();
+    void UpdateSurfaceThumbnails();
+    void ClearSurfaceThumbnails();
+    ComPtr<ID2D1Effect> surfaceShadow;
     void LaunchPin(const std::wstring &key);
     void ReorderPin(size_t from, size_t to);
     void PinToDock(const std::wstring &key, bool pinned);
@@ -395,8 +417,8 @@ class Island {
     std::wstring paintedFocus;
     std::map<std::wstring, dock::Spring> pressMotion;
     std::map<unsigned, dock::Spring> taskMotion;
-    float revealClock = 1, paneClock = 1, collapseClock = 0, loadingClock = 0;
-    bool collapsePending = false, paintClosing = false, tabMotionReady = false;
+    float paneClock = 1, loadingClock = 0;
+    bool paintClosing = false, tabMotionReady = false;
     bool VisibleLoading() const;
     void Shimmer(D2D1_RECT_F rect);
     ComPtr<ID2D1LinearGradientBrush> shimmerBrush;
@@ -412,8 +434,7 @@ class Island {
     std::wstring diagnosticsPath;
     std::vector<double> frameIntervals, paintTimes;
     std::function<void()> beforePresent;
-    dock::Spring tabLeft{20}, tabRight{100}, railPointer{-10000}, railStrength{0}, paletteBlend{1}, contentBlend{1},
-        togglePosition{0};
+    dock::Spring tabLeft{20}, tabRight{100}, railPointer{-10000}, railStrength{0}, paletteBlend{1}, togglePosition{0};
     std::array<dock::Spring, 4> rings{dock::Spring(0), dock::Spring(0), dock::Spring(0), dock::Spring(0)};
     std::map<std::wstring, dock::Feedback> feedback;
     std::map<std::wstring, dock::Spring> rowPositions;
@@ -455,7 +476,10 @@ class Island {
     bool expanded = false, transitioning = false, tracking = false, draggingVolume = false;
     Tab tab = Tab::Today;
     Flyout flyout = Flyout::None;
-    dock::Spring dockReveal{0}, dockWidth{theme::DockWidth}, dockHeight{theme::DockHeight}, paneBlend{1};
+    surface::SurfaceMotion surfaceMotion;
+    dock::Spring &dockReveal = surfaceMotion.reveal, &dockWidth = surfaceMotion.width,
+                 &dockHeight = surfaceMotion.height, &paneBlend = surfaceMotion.blend,
+                 &contentBlend = surfaceMotion.content;
     dock::Spring wallpaperFocus{0};
     island::Machine interaction;
     bool applyingInteraction = false, interactionTicking = false;
@@ -579,6 +603,9 @@ class Island {
     float SurfaceHeight() const;
     float ContentWidth() const;
     float PanelX() const;
+    shape::Rect DockPill() const;
+    shape::Rect DockExtension(float w, float h) const;
+    ID2D1PathGeometry *SurfacePath() const;
     float HandleY() const;
     float PanelY() const;
     float browserClearance = 112;

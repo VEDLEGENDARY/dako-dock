@@ -208,12 +208,12 @@ int main() {
                 RequireFoundation(layout::Solve({800, height, view, 20}).panel.Height() <= height,
                                   "reference proportions clamp to short monitor envelopes");
         }
-        const float widths[]{580, 800, 800, 800, 800, 944, 800};
+        const float widths[]{480, 800, 800, 800, 480, 800, 480};
         const float heights[]{368, 416, 320, 424, 400, 304, 400};
         for (int view = 0; view < 7; ++view) {
             auto reference = layout::Solve({1100, 760, static_cast<layout::View>(view)});
             RequireFoundation(reference.panel.Width() == widths[view] && reference.panel.Height() == heights[view],
-                              "primary pages preserve the owner-reference proportions before viewport clamping");
+                              "primary pages use the unified width classes before viewport clamping");
         }
         std::puts("PASS: versioned settings migration/atomic merge, 20 tasks, ICS recurrence/time zones, window "
                   "filter, bar DPI math and reference page proportions.");

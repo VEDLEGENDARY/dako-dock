@@ -44,7 +44,7 @@ void Island::AssertScene() {
     if (expanded && envelopeWidth >= layout::Metrics::MinWidth * textScale + 2 * layout::PanelRadius &&
         SurfaceWidth() + 2 * layout::PanelRadius > envelopeWidth + .1f)
         throw winrt::hresult_error(E_UNEXPECTED, L"Attached shoulders exceed their monitor envelope");
-    if (expanded && !miniMode && l.emergency && !ChromeActive()) {
+    if (surfaceRequest.kind == surface::Kind::FullIsland && expanded && !miniMode && l.emergency && !ChromeActive()) {
         bool actions = false;
         for (const auto &h : hits)
             if (h.id == 1901 && VisibleHit(h))
@@ -55,7 +55,7 @@ void Island::AssertScene() {
     if (flyout == Flyout::Audio && l.emergency && IndexForKey(StableKey(FlyoutBack)) < 0)
         winrt::throw_hresult(E_UNEXPECTED);
     for (const auto &h : hits) {
-        if (expanded && h.enabled && h.id != Expand && VisibleHit(h) &&
+        if (expanded && h.enabled && h.id != Expand && h.id != 9110 && VisibleHit(h) &&
             (h.rect.right - h.rect.left < layout::Metrics::MinHit - .01f ||
              h.rect.bottom - h.rect.top < layout::Metrics::MinHit - .01f)) {
             wchar_t detail[128]{};
@@ -78,7 +78,8 @@ void Island::AssertScene() {
         if (first == hits.end() || first->rect.bottom > Body().bottom + 0.1f)
             throw winrt::hresult_error(E_UNEXPECTED, L"First installed application row does not fit its viewport");
     }
-    if (flyout == Flyout::None && !miniMode && expanded && !Layout().emergency && !ChromeActive()) {
+    if (surfaceRequest.kind == surface::Kind::FullIsland && flyout == Flyout::None && !miniMode && expanded &&
+        !Layout().emergency && !ChromeActive()) {
         for (Tab primary : PrimaryTabs) {
             int i = static_cast<int>(primary);
             auto rect = TabRect(i);
@@ -979,6 +980,71 @@ void Island::RenderSuite(const std::wstring &directory) {
     }
     edge = anchor::Edge::Bottom;
     lightAppearance = false;
+    ConfigureAppearance();
+    envelopeWidth = 1200;
+    envelopeHeight = 900;
+    textScale = 1;
+    note.clear();
+    miniMode = false;
+    flyout = Flyout::None;
+    const surface::Control unifiedControls[]{
+        surface::Control::Apps,    surface::Control::Search, surface::Control::Wifi,    surface::Control::Volume,
+        surface::Control::Battery, surface::Control::Clock,  surface::Control::Weather, surface::Control::More,
+        surface::Control::App,     surface::Control::Dako,   surface::Control::Media};
+    for (int appearance = 0; appearance < 3; ++appearance) {
+        lightAppearance = appearance == 1;
+        ConfigureAppearance(appearance == 2);
+        for (int edgeIndex = 0; edgeIndex < 2; ++edgeIndex) {
+            edge = edgeIndex ? anchor::Edge::Bottom : anchor::Edge::Top;
+            for (UINT scale : {100U, 125U, 150U, 200U}) {
+                dpi = scale * 96.0f / 100;
+                for (int control = 0; control < 19; ++control) {
+                    surfaceRequest =
+                        control < 11    ? surface::Describe(unifiedControls[control], surface::Trigger::Click, 3)
+                        : control == 11 ? surface::Describe(surface::Control::App, surface::Trigger::Context, 3)
+                        : control == 13 ? surface::Describe(surface::Control::Apps, surface::Trigger::Hover)
+                        : control >= 14 ? surface::Describe(unifiedControls[control - 12], surface::Trigger::Hover)
+                                        : surface::Request{};
+                    if (control == 12) {
+                        surfaceRequest.kind = surface::Kind::Overflow;
+                        surfaceRequest.width = surface::Width::Compact;
+                    }
+                    surfaceRequest.control = control;
+                    if (surfaceRequest.kind == surface::Kind::Tooltip)
+                        surfaceRequest.control = desktop::DockApps;
+                    surfaceGroup = {};
+                    if (surfaceRequest.kind == surface::Kind::Preview ||
+                        surfaceRequest.kind == surface::Kind::AppContext)
+                        surfaceGroup.name = L"Fixture application";
+                    for (int i = 0; i < 3 && (surfaceRequest.kind == surface::Kind::Preview ||
+                                              surfaceRequest.kind == surface::Kind::AppContext);
+                         ++i) {
+                        desktop::WindowEntry entry;
+                        entry.title = L"Fixture document " + std::to_wstring(i + 1);
+                        surfaceGroup.windows.push_back(entry);
+                    }
+                    tab = surfaceRequest.kind == surface::Kind::Apps || surfaceRequest.kind == surface::Kind::Palette
+                              ? Tab::Apps
+                          : surfaceRequest.kind == surface::Kind::FullIsland ? Tab::Today
+                                                                             : Tab::Controls;
+                    flyout = surfaceRequest.kind == surface::Kind::Palette ? Flyout::Palette : Flyout::None;
+                    scroll = 0;
+                    SetExpanded(true);
+                    capture(L"unified-control-" + std::to_wstring(control) + L"-" + std::to_wstring(appearance) + L"-" +
+                            std::to_wstring(edgeIndex) + L"-" + std::to_wstring(scale));
+                    if (surfaceRequest.kind == surface::Kind::QuickPanel && IndexForKey(StableKey(Volume)) < 0)
+                        throw winrt::hresult_error(E_UNEXPECTED, L"Every Quick Panel must retain volume");
+                    if (control == 2 && connections.networks.size() && IndexForKey(StableKey(1000)) < 0)
+                        throw winrt::hresult_error(E_UNEXPECTED, L"Wi-Fi must expose network selection inline");
+                }
+            }
+        }
+    }
+    surfaceRequest = {};
+    surfaceGroup = {};
+    dpi = 96;
+    edge = anchor::Edge::Bottom;
+    lightAppearance = highContrast = false;
     ConfigureAppearance();
     tasks = std::move(v4SavedTasks);
     report << "PASS captures=" << captures

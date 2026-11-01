@@ -1,6 +1,26 @@
 #include "Island.h"
 
 void Island::OpenFlyout(Flyout next) {
+    if (surfaceRequest.kind == surface::Kind::QuickPanel &&
+        (next == Flyout::Wifi || next == Flyout::Audio || next == Flyout::Bluetooth)) {
+        CapturePane();
+        surfaceRequest.section = next == Flyout::Wifi    ? surface::Section::Wifi
+                                 : next == Flyout::Audio ? surface::Section::Audio
+                                                         : surface::Section::Bluetooth;
+        if (!renderMode && !fixtureGeometry && next != Flyout::Audio) {
+            if (!connectivity)
+                connectivity = std::make_unique<Connectivity>(window);
+            if (next == Flyout::Wifi)
+                connectivity->RefreshWifi(true);
+            else
+                connectivity->RefreshBluetooth();
+        }
+        surfaceMotion.Open(surfaceMotion.anchor.goal, SurfaceWidth(), SurfaceHeight(), reducedMotion || renderMode);
+        ArmMotion();
+        RebuildLayout();
+        InvalidateRect(window, nullptr, FALSE);
+        return;
+    }
     previousPane.Reset();
     paneBlend.Snap(1);
     flyout = next;
@@ -77,10 +97,11 @@ void Island::ConnectionView() {
         target->GetTransform(&saved);
         target->PushAxisAlignedClip(b, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
         auto layer = D2D1::LayerParameters();
-        layer.opacity = std::clamp(paneBlend.value, 0.0f, 1.0f);
+        layer.opacity = DockEnabled() ? 1.0f : std::clamp(paneBlend.value, 0.0f, 1.0f);
         target->PushLayer(layer, nullptr);
-        target->SetTransform(D2D1::Matrix3x2F::Translation(bodyDirection * 12 * (1 - paneBlend.value), -scroll) *
-                             saved);
+        target->SetTransform(
+            D2D1::Matrix3x2F::Translation(DockEnabled() ? 0 : bodyDirection * 12 * (1 - paneBlend.value), -scroll) *
+            saved);
     }
     buildingBody = true;
     const auto &message = wifi ? connections.wifiMessage : connections.bluetoothMessage;
@@ -188,7 +209,14 @@ void Island::RefreshConnectionsView() {
     std::wstring deviceKey = selectedBluetooth >= 0 && selectedBluetooth < static_cast<int>(connections.devices.size())
                                  ? BluetoothKey(connections.devices[selectedBluetooth])
                                  : L"";
-    connections = connectivity->Snapshot();
+    auto next = connectivity->Snapshot();
+    bool resize =
+        expanded && surfaceRequest.kind == surface::Kind::QuickPanel &&
+        ((surfaceRequest.section == surface::Section::Wifi && next.networks.size() != connections.networks.size()) ||
+         (surfaceRequest.section == surface::Section::Bluetooth && next.devices.size() != connections.devices.size()));
+    if (resize)
+        CapturePane();
+    connections = std::move(next);
     selectedWifi = selectedBluetooth = -1;
     for (size_t i = 0; i < connections.networks.size(); ++i)
         if (WifiKey(connections.networks[i]) == networkKey)
@@ -220,6 +248,8 @@ void Island::RefreshConnectionsView() {
     else if (connectionPage * slots >= count)
         connectionPage = 0;
     UpdateDocks();
+    if (resize)
+        surfaceMotion.Open(surfaceMotion.anchor.goal, SurfaceWidth(), SurfaceHeight(), reducedMotion || renderMode);
     RebuildLayout();
     PositionInputs();
     if (expanded) {

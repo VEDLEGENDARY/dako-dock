@@ -104,6 +104,13 @@ void Island::MediaCard(bool compact) {
 }
 
 D2D1_RECT_F Island::VolumeRect() const {
+    if (surfaceRequest.kind == surface::Kind::QuickPanel) {
+        auto b = Body();
+        float y = b.top + 68 + 76 + 152;
+        if (surfaceRequest.section == surface::Section::Wifi)
+            y += 48 * static_cast<float>(std::max(size_t{1}, connections.networks.size()));
+        return {b.left, y, b.right, y + 32};
+    }
     auto left = layout::ControlsColumns(Layout())[0];
     return {left.left, left.bottom - 32, left.right, left.bottom};
 }

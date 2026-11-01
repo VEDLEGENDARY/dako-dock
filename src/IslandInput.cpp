@@ -22,6 +22,22 @@ int Island::IndexForChild(LONG child) const {
 }
 
 std::wstring Island::StableKey(int id) const {
+    if (id >= 10000 && id < 20000 && static_cast<size_t>(id - 10000) < runningWindows.size()) {
+        const auto &entry = runningWindows[id - 10000];
+        return L"overflow:" + std::to_wstring(entry.process) + L":" +
+               (entry.window ? std::to_wstring(reinterpret_cast<UINT_PTR>(entry.window)) : std::to_wstring(id));
+    }
+    if (id >= 20000 && id < 30000 && static_cast<size_t>(id - 20000) < surfaceGroup.windows.size()) {
+        const auto &entry = surfaceGroup.windows[id - 20000];
+        return L"preview:" + surfaceGroup.key + L":" + std::to_wstring(entry.process) + L":" +
+               (entry.window ? std::to_wstring(reinterpret_cast<UINT_PTR>(entry.window)) : std::to_wstring(id));
+    }
+    if (id >= 30000 && id < 30003 && static_cast<size_t>(id - 30000) < surfaceGroup.windows.size()) {
+        const auto &entry = surfaceGroup.windows[id - 30000];
+        return L"preview-close:" + surfaceGroup.key + L":" + std::to_wstring(entry.process) + L":" +
+               (entry.window ? std::to_wstring(reinterpret_cast<UINT_PTR>(entry.window)) : std::to_wstring(id));
+    }
+
     if (id >= 2040 && id < 2044 && tab == Tab::Stats) {
         const auto &ranked =
             statsMemory && !hardwareState.memoryTop.empty() ? hardwareState.memoryTop : hardwareState.top;
@@ -90,8 +106,7 @@ bool Island::VisibleHit(const Hit &h) const {
 bool Island::PresentedContains(float x, float y) const {
     if (renderMode)
         return x >= 0 && x <= width && y >= 0 && y <= height;
-    float left = (envelopeWidth - width) / 2;
-    auto *path = geometryCache.Surface(factory.Get(), false, left, PanelY(), width, height, shape::Surface, edge);
+    auto *path = SurfacePath();
     return dockReveal.value > .003f && shape::Contains(path, {x, y});
 }
 
@@ -108,6 +123,12 @@ int Island::HitAt(float x, float y, bool accessibleHit) {
         return -1;
     x = (x - PanelX()) / textScale;
     y = (y - PanelY()) / textScale;
+    if (DockEnabled()) {
+        float blend = std::clamp(contentBlend.value, 0.0f, 1.0f), zoom = .98f + .02f * blend;
+        float center = LayoutWidth() / 2, base = edge == anchor::Edge::Bottom ? height / textScale : 0;
+        x = center + (x - center) / zoom;
+        y = base + (y + anchor::Grow(edge) * 8 * (1 - blend) - base) / zoom;
+    }
     auto navigation = TabRect(-1);
     bool overNavigation = flyout == Flyout::None && !miniMode && x >= navigation.left && x <= navigation.right &&
                           y >= navigation.top && y <= navigation.bottom;
@@ -126,7 +147,8 @@ int Island::HitAt(float x, float y, bool accessibleHit) {
 
 void Island::SetVolumeAt(int x) {
     auto rect = VolumeTrack();
-    SetSystemVolume(((x * 96.0f / dpi - PanelX()) / textScale - rect.left) / (rect.right - rect.left));
+    float axis = DockEnabled() ? bodyDirection * 8 * (1 - std::clamp(paneBlend.value, 0.0f, 1.0f)) : 0;
+    SetSystemVolume(((x * 96.0f / dpi - PanelX()) / textScale - rect.left - axis) / (rect.right - rect.left));
     volumeMotion.goal = system.volume;
     ArmMotion();
     InvalidateRect(window, nullptr, FALSE);
@@ -314,6 +336,8 @@ void Island::Invoke(int id) {
         TodayAction(id);
         return;
     }
+    if (UnifiedAction(id))
+        return;
     if (id == 1900 || id == 1901) {
         OpenCompactMenu(id == 1900);
         return;
@@ -379,6 +403,10 @@ void Island::Invoke(int id) {
         return;
     }
     if (id >= 1000 && id < 1128 && id - 1000 < static_cast<int>(connections.networks.size())) {
+        if (surfaceRequest.kind == surface::Kind::QuickPanel) {
+            UnifiedAction(id);
+            return;
+        }
         selectedWifi = id - 1000;
         connectionPage = static_cast<size_t>(selectedWifi) / ConnectionSlots();
         if (wifiPassword)
@@ -422,6 +450,17 @@ void Island::Invoke(int id) {
             SetExpanded(true);
             break;
         case Wifi:
+            if (surfaceRequest.kind == surface::Kind::QuickPanel) {
+                CapturePane();
+                surfaceRequest.section =
+                    surfaceRequest.section == surface::Section::Wifi ? surface::Section::None : surface::Section::Wifi;
+                surfaceMotion.Open(surfaceMotion.anchor.goal, SurfaceWidth(), SurfaceHeight(),
+                                   reducedMotion || renderMode);
+                ArmMotion();
+                RebuildLayout();
+                InvalidateRect(window, nullptr, FALSE);
+                break;
+            }
             OpenFlyout(Flyout::Wifi);
             break;
         case Bluetooth:
@@ -521,6 +560,13 @@ void Island::Invoke(int id) {
             PowerAction(id);
             break;
         case FlyoutBack:
+            if (DockEnabled() && flyout == Flyout::Recent && !surfaceGroup.key.empty()) {
+                auto request = surfaceRequest;
+                request.kind = surface::Kind::AppContext;
+                request.width = surface::Width::Compact;
+                RequestSurface(request, surfaceGroup, panelMonitor);
+                break;
+            }
             SetTab(flyout == Flyout::Palette || flyout == Flyout::Recent ? Tab::Apps : Tab::Controls);
             break;
         case FlyoutRefresh:
@@ -712,6 +758,21 @@ void Island::FocusAt(int index) {
 void Island::Key(WPARAM key) {
     if (ChromeKey(key))
         return;
+    if (key == VK_TAB && DockEnabled() && (GetKeyState(VK_SHIFT) & 0x8000)) {
+        if (docks)
+            docks->Focus(panelMonitor);
+        return;
+    }
+    if (key == VK_TAB && DockEnabled() && expanded && surfaceRequest.behavior == surface::Behavior::Peek) {
+        auto request = surfaceRequest;
+        request.behavior = surface::Behavior::Panel;
+        if (request.kind == surface::Kind::Status) {
+            request.kind = surface::Kind::QuickPanel;
+            request.width = surface::Width::Standard;
+        }
+        RequestSurface(request, surfaceGroup, panelMonitor);
+        return;
+    }
     if (tab == Tab::Clipboard && flyout == Flyout::None) {
         if (key == VK_TAB && !(GetKeyState(VK_CONTROL) & 0x8000)) {
             clipboardFilter = (clipboardFilter + ((GetKeyState(VK_SHIFT) & 0x8000) ? 3 : 1)) % 4;
@@ -752,7 +813,8 @@ void Island::Key(WPARAM key) {
         }
     }
 
-    if (key == VK_ESCAPE && DockEnabled() && expanded && flyout == Flyout::None) {
+    if (key == VK_ESCAPE && DockEnabled() && expanded &&
+        (flyout == Flyout::None || surfaceRequest.kind == surface::Kind::Palette)) {
         SetExpanded(false);
         if (docks)
             docks->Focus(panelMonitor);
@@ -772,7 +834,7 @@ void Island::Key(WPARAM key) {
     RebuildLayout();
     if (key == VK_ESCAPE) {
         if (flyout != Flyout::None)
-            SetTab(Tab::Controls);
+            Invoke(FlyoutBack);
         else
             SetExpanded(false);
         return;
@@ -1072,6 +1134,18 @@ void Island::OpenCompactMenu(bool views) {
 }
 
 void Island::ContextMenu() {
+    if (DockEnabled() && docks) {
+        surface::Request request;
+        request.kind = surface::Kind::AppContext;
+        request.width = surface::Width::Compact;
+        request.control = desktop::DockStatusMore;
+        desktop::DockGroup group;
+        group.key = L"dako:menu";
+        group.name = L"Dako";
+        RequestSurface(request, group,
+                       panelMonitor ? panelMonitor : MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST));
+        return;
+    }
     ModalGuard modal(modalOpen);
     HMENU menu = CreatePopupMenu();
     AppendMenuW(menu, MF_STRING, 2990, L"Dako settings…");
@@ -1528,10 +1602,6 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
             app->volumeMotion.goal = app->system.volume;
             if (app->media) {
                 auto next = app->media->Snapshot();
-                if (next.title != app->currentMedia.title || next.artist != app->currentMedia.artist) {
-                    app->contentBlend.Snap(app->reducedMotion ? 1.0f : 0.0f);
-                    app->contentBlend.goal = 1;
-                }
                 if (!next.transportError.empty())
                     app->note = next.transportError;
                 app->currentMedia = std::move(next);
@@ -1811,20 +1881,41 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
             if (app->railStrength.Moving())
                 app->ArmMotion();
             return 0;
+        case WM_SYSCOMMAND:
+            if ((wparam & 0xFFF0) == SC_CLOSE && app->DockEnabled()) {
+                app->SetExpanded(false);
+                return 0;
+            }
+            break;
+        case Island::SurfaceDue:
+            app->SurfaceDeadline(wparam);
+            return 0;
+        case WM_MBUTTONUP: {
+            int hit = app->HitAt(GET_X_LPARAM(lparam) * 96.0f / app->dpi, GET_Y_LPARAM(lparam) * 96.0f / app->dpi);
+            if (hit >= 0 && app->hits[hit].id >= 20000 && app->hits[hit].id < 20003)
+                app->UnifiedAction(app->hits[hit].id + 10000);
+            return 0;
+        }
         case WM_MOUSEACTIVATE:
             if (GetForegroundWindow() != window)
                 app->clipboardPasteTarget = ::clipboard::CapturePasteTarget();
-            return app->expanded ? MA_ACTIVATE : MA_NOACTIVATE;
+            return app->expanded && app->surfaceRequest.behavior != surface::Behavior::Peek ? MA_ACTIVATE
+                                                                                            : MA_NOACTIVATE;
         case WM_WINDOWPOSCHANGING:
             if (auto position = reinterpret_cast<WINDOWPOS *>(lparam); !(position->flags & SWP_NOZORDER))
                 position->hwndInsertAfter = HWND_TOPMOST;
             break;
         case WM_NCHITTEST: {
+            if (app->DockEnabled() && app->surfaceRequest.kind == surface::Kind::Tooltip)
+                return HTTRANSPARENT;
             POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
             ScreenToClient(window, &point);
             float x = point.x * 96.0f / app->dpi, y = point.y * 96.0f / app->dpi;
             bool handle = !app->YieldResting() && std::abs(x - app->envelopeWidth / 2) <= theme::DockWidth / 2 &&
                           y >= 0 && y <= theme::DockHeight;
+            auto pill = app->DockPill();
+            if (app->DockEnabled() && x >= pill.left && x <= pill.right && y >= pill.top && y <= pill.bottom)
+                return HTTRANSPARENT;
             if (!app->renderMode && !(handle || (app->expanded && app->PresentedContains(x, y))))
                 return HTTRANSPARENT;
             break;
@@ -1916,6 +2007,17 @@ LRESULT CALLBACK WindowProcedure(HWND window, UINT message, WPARAM wparam, LPARA
             InvalidateRect(window, nullptr, FALSE);
             return 0;
         case WM_MOUSEWHEEL: {
+            if (app->DockEnabled() && app->docks) {
+                POINT screen{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+                HMONITOR monitor = MonitorFromPoint(screen, MONITOR_DEFAULTTONEAREST);
+                auto pill = app->docks->PillBounds(monitor);
+                if (PtInRect(&pill, screen))
+                    for (HWND receiver = GetWindow(window, GW_HWNDFIRST); receiver;
+                         receiver = GetWindow(receiver, GW_HWNDNEXT))
+                        if (app->docks->Contains(receiver) &&
+                            MonitorFromWindow(receiver, MONITOR_DEFAULTTONEAREST) == monitor)
+                            return SendMessageW(receiver, message, wparam, lparam);
+            }
             if (app->ChromeActive()) {
                 app->ScrollChrome(-GET_WHEEL_DELTA_WPARAM(wparam) / 120.0f * 36);
                 return 0;

@@ -1,5 +1,6 @@
 #pragma once
 #include "Shape.h"
+#include "SurfaceModel.h"
 
 namespace layout {
 struct Metrics {
@@ -10,8 +11,8 @@ struct Metrics {
     static constexpr float PanelInset = Space16, AttachedInset = Space12, FreeInset = Space16;
     static constexpr float Gutter = Space12, CardPad = Space16, TilePad = Space12, RowGap = Space8, MinHit = 32;
     static constexpr float FloatingGap = Space8;
-    static constexpr float MainWidth = 800, WirelessWidth = 460, MediaWidth = 344;
-    static constexpr float ControlsWidth = 580, WallpaperWidth = 944, ControlsNarrowWidth = 480;
+    static constexpr float MainWidth = surface::Wide, WirelessWidth = surface::Standard, MediaWidth = surface::Compact;
+    static constexpr float ControlsWidth = surface::Standard, WallpaperWidth = surface::Wide, ControlsNarrowWidth = 480;
     static constexpr float MinWidth = 100, MinHeight = 80, NarrowWidth = 640, ColumnsWidth = 760;
     static constexpr float EmergencyExtent = 240, CompactHeight = 360;
     static constexpr float HeaderHeight = 40, CompactHeaderHeight = 32;

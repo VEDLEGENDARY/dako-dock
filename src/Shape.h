@@ -113,7 +113,7 @@ inline Path RoundedPath(Rect rect, float radius = Surface, float smoothing = Smo
 }
 inline Rect JoinedExtension(Rect pill, Rect extension, Edge edge) {
     float width = extension.Width();
-    if (std::abs(width - pill.Width()) < 4 * Fillet) {
+    if (std::abs(width - pill.Width()) < 2 * Fillet) {
         extension.left = pill.left;
         extension.right = pill.right;
     } else {

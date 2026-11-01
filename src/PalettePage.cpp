@@ -70,6 +70,12 @@ void Island::BuildPalette() {
         palettePage = 0;
 }
 void Island::OpenPalette() {
+    CapturePane();
+    surfaceRequest.kind = surface::Kind::Palette;
+    surfaceRequest.width = surface::Width::Standard;
+    surfaceRequest.behavior = surface::Behavior::Panel;
+    surfaceMotion.label = false;
+
     miniMode = false;
     flyout = Flyout::Palette;
     tab = Tab::Apps;
@@ -158,7 +164,7 @@ void Island::Palette() {
     if (l.emergency)
         CompactHeader(true);
     else {
-        auto h = l.header;
+        auto h = TabRect(-1);
         SmallButton(FlyoutBack, {h.left, h.top, h.left + 40, h.bottom}, L"\xE72B", L"Back to Apps");
         Text(L"Search Dako", {h.left + 52, h.top, h.right, h.bottom}, type::Section);
     }
@@ -175,7 +181,7 @@ void Island::Palette() {
         if (!paletteQuery.empty())
             SmallButton(9500, {input.right - 36, input.top + 4, input.right - 4, input.bottom - 4}, L"\xE711",
                         L"Clear search");
-        if (renderMode)
+        if (capturingPane || renderMode || (DockEnabled() && (paneBlend.value <= .98f || contentBlend.value <= .98f)))
             Text(paletteQuery.empty() ? modules::String(IDS_PALETTE_HINT) : paletteQuery, editor, type::Body,
                  theme::Muted);
         EnsureAppSearch();
@@ -202,7 +208,7 @@ void Island::DockPopover() {
     if (l.emergency)
         CompactHeader(true);
     else {
-        auto h = l.header;
+        auto h = TabRect(-1);
         SmallButton(FlyoutBack, {h.left, h.top, h.left + 40, h.bottom}, L"\xE72B", L"Back to island");
         Text(L"Status & tray", {h.left + 52, h.top, h.right, h.bottom}, type::Section);
     }
@@ -232,7 +238,10 @@ void Island::DockPopover() {
 void Island::OpenRecent(const std::wstring &appId, HMONITOR monitor) {
     if (renderMode || fixtureGeometry)
         return;
-    OpenFromDock(desktop::DockRecent, monitor);
+    CapturePane();
+    surfaceRequest.kind = surface::Kind::FullIsland;
+    surfaceRequest.width = surface::Width::Compact;
+    panelMonitor = monitor;
     flyout = Flyout::Recent;
     recentPage = 0;
     recentDocuments.clear();
@@ -252,7 +261,7 @@ void Island::RecentView() {
     if (l.emergency)
         CompactHeader(true);
     else {
-        auto h = l.header;
+        auto h = TabRect(-1);
         SmallButton(FlyoutBack, {h.left, h.top, h.left + 40, h.bottom}, L"\xE72B", L"Back to Apps");
         Text(L"Recent documents", {h.left + 52, h.top, h.right, h.bottom}, type::Section);
     }

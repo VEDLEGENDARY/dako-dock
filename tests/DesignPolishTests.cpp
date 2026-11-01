@@ -92,8 +92,9 @@ int main() {
                 RequireDesign(layout.status.Height() > 0, "status toast has positive height at every viewport");
             }
     auto layout = layout::Solve({800, 760, layout::View::Controls});
-    RequireDesign(layout.panel.Width() == 580 && layout.panel.Height() == 368 && layout.body.Height() == 288 &&
-                      layout.footer.Height() == 0 && layout.header.top > layout.body.bottom,
+    RequireDesign(layout.panel.Width() == surface::Standard && layout.panel.Height() == 368 &&
+                      layout.body.Height() == 288 && layout.footer.Height() == 0 &&
+                      layout.header.top > layout.body.bottom,
                   "bottom navigation shares one row and leaves the reference content canvas unobstructed");
     for (auto edge : {anchor::Edge::Top, anchor::Edge::Bottom}) {
         desktop::DockOptions options;

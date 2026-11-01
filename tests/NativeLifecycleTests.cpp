@@ -1042,10 +1042,10 @@ int wmain(int argc, wchar_t **argv) {
             float scale = app.dpi / 96;
             float bottom = ownerBounds.top + (app.PanelY() + app.height) * scale;
             float top = ownerBounds.top + app.PanelY() * scale;
-            float join = static_cast<float>(static_cast<int>(4 * scale));
+            float join = 0;
             RequireLive(app.edge == anchor::Edge::Bottom ? std::abs(bottom - (bar.top + join)) <= 1
                                                          : std::abs(top - (bar.bottom - join)) <= 1,
-                        "production island meets its app strip at the mirrored four-DIP shared join");
+                        "production island meets its app strip at the mirrored exact shared edge");
             RequireLive(app.SurfaceWidth() <= app.envelopeWidth + .1f,
                         "production bar island stays inside its monitor envelope");
             if (action == desktop::DockSearch) {
@@ -1074,15 +1074,10 @@ int wmain(int argc, wchar_t **argv) {
         Settle(app);
         app.OpenFromDock(desktop::DockStatusMore, panelMonitor);
         Settle(app);
-        RequireLive(app.flyout == Flyout::DockStatus, "status overflow opens its own island view");
-        RequireLive(app.IndexForKey(app.StableKey(2800)) >= 0,
-                    "status popover replaces the already-open view's hit layout");
-        RequireLive(!app.statsTicking, "status popover stops hidden Stats sampling");
-        unsigned mask = app.dockOptions.statusMask;
-        app.Invoke(2800);
-        RequireLive(app.dockOptions.statusMask == (mask ^ 1U),
-                    "status choices update the preview dock without persistence");
-        app.dockOptions.statusMask = mask;
+        RequireLive(app.surfaceRequest.kind == surface::Kind::QuickPanel && app.flyout == Flyout::None,
+                    "status overflow opens the shared Quick Panel");
+        RequireLive(app.IndexForKey(app.StableKey(Volume)) >= 0, "status overflow retains common Quick Panel controls");
+        RequireLive(!app.statsTicking, "Quick Panel stops hidden Stats sampling");
         app.SetExpanded(false);
         Settle(app);
         app.StopDesktop();

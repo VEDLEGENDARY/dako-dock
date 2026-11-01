@@ -1,6 +1,7 @@
 #pragma once
 #include <windows.h>
 #include <shellapi.h>
+#include <d2d1.h>
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -312,7 +313,8 @@ class DockShell {
         std::function<void(const std::wstring &, bool)> pin;
         std::function<void(const std::wstring &)> error;
         std::function<void()> context;
-        std::function<int(HMENU, POINT, HMONITOR)> menu;
+        std::function<void(surface::Request, DockGroup, HMONITOR)> popover;
+        std::function<void(int, HMONITOR)> volume;
         std::function<void(const std::wstring &, HMONITOR)> recent;
     };
     DockShell();
@@ -325,6 +327,9 @@ class DockShell {
     void Options(DockOptions options);
     void PanelVisible(bool visible);
     RECT PillBounds(HMONITOR monitor) const;
+    void Joined(HMONITOR monitor, bool visible);
+    void PaintJoined(ID2D1RenderTarget *target, HMONITOR monitor, POINT origin, float dpi);
+    void ReleaseJoined();
     POINT Anchor(HMONITOR monitor, int action) const;
     bool CompositionAvailable() const;
     void Appearance(bool reduced, bool highContrast, float textScale);

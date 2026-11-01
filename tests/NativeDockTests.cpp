@@ -243,6 +243,8 @@ int wmain(int argc, wchar_t **argv) {
         std::wstring launched;
         std::pair<size_t, size_t> reordered{99, 99};
         desktop::DockShell::Callbacks callbacks;
+        surface::Request popover;
+        callbacks.popover = [&](surface::Request request, desktop::DockGroup, HMONITOR) { popover = request; };
         callbacks.expand = [&](HMONITOR) { ++expandedByWheel; };
         callbacks.open = [&](int action, HMONITOR monitor) {
             opened = action;
@@ -496,11 +498,13 @@ int wmain(int argc, wchar_t **argv) {
         SendMessageW(barWindow, WM_MOUSEMOVE, 0,
                      MAKELPARAM(static_cast<int>(target->rect.CenterX() * scale), static_cast<int>(20 * scale)));
         SendMessageW(barWindow, WM_MOUSEHOVER, 0, 0);
-        RequireDock(bars.PreviewAvailable(), "production preview registers a real DWM thumbnail");
+        RequireDock(popover.kind == surface::Kind::Preview && popover.behavior == surface::Behavior::Peek,
+                    "production hover routes preview content into the shared surface");
         SendMessageW(barWindow, desktop::DockInvoke, desktop::DockGroupFirst, 1);
         SendMessageW(barWindow, WM_KEYDOWN, VK_UP, 0);
         PumpDock(100);
-        RequireDock(bars.PreviewAvailable(), "keyboard-focused preview survives pointer dismissal timer");
+        RequireDock(popover.kind == surface::Kind::Preview && popover.behavior == surface::Behavior::Panel,
+                    "keyboard preview routes into the same surface as a persistent panel");
         bars.Flash(appWindow);
         PumpDock(100);
         std::fprintf(stderr, "stage thumbnail PASS\n");

@@ -252,7 +252,8 @@ class IslandAccessible final : public IAccessible, public IEnumVARIANT {
             if ((id >= 1000 && id < 1128 && id - 1000 == app->selectedWifi) ||
                 (id >= 1200 && id < 1328 && id - 1200 == app->selectedBluetooth))
                 state->lVal |= STATE_SYSTEM_SELECTED;
-            if (id == 402)
+            if (id == 402 ||
+                (app->hits[index].input && (GetWindowLongPtrW(app->hits[index].input, GWL_STYLE) & ES_PASSWORD)))
                 state->lVal |= STATE_SYSTEM_PROTECTED;
             if (id == 403)
                 state->lVal |= STATE_SYSTEM_READONLY;

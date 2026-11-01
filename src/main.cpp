@@ -21,6 +21,17 @@ HWND FindNormalIsland() {
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command, int) {
+    // Windows PowerShell 5 may append whitespace to Start-Process arguments.
+    // Normalize before exact diagnostic dispatch so a check cannot launch the dock.
+    std::wstring arguments = command ? command : L"";
+    auto first = arguments.find_first_not_of(L" \t\r\n");
+    if (first == std::wstring::npos)
+        arguments.clear();
+    else {
+        arguments.erase(0, first);
+        arguments.erase(arguments.find_last_not_of(L" \t\r\n") + 1);
+    }
+    command = arguments.data();
     clipboard::SetExtraHandler([](clipboard::TransferOp operation, clipboard::Payload &payload, DWORD &error) {
         auto result = files::HandleTransfer(operation, payload, error);
         if (result != clipboard::TransferStatus::Unsupported)
@@ -260,10 +271,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command, int) {
         windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
         RegisterClassW(&windowClass);
         bool inspectMode = wcsstr(command, L"--inspect") != nullptr;
-        HWND window =
-            CreateWindowExW(WS_EX_TOPMOST | (app.previewMode ? WS_EX_APPWINDOW : WS_EX_TOOLWINDOW), WindowClass,
-                            app.previewMode ? L"Dako 4.0.0-rc.1 — Isolated Preview" : L"Dako — Desktop Dock",
-                            WS_POPUP | WS_CLIPCHILDREN, 0, 0, 300, 100, nullptr, nullptr, instance, &app);
+        HWND window = CreateWindowExW(
+            WS_EX_TOPMOST | (!app.renderMode && app.dockMode ? WS_EX_NOREDIRECTIONBITMAP : 0) |
+                (app.previewMode ? WS_EX_APPWINDOW : WS_EX_TOOLWINDOW),
+            WindowClass, app.previewMode ? L"Dako 4.0.0-rc.1 — Isolated Preview" : L"Dako — Desktop Dock",
+            WS_POPUP | WS_CLIPCHILDREN, 0, 0, 300, 100, nullptr, nullptr, instance, &app);
         if (!window) {
             MessageBoxW(nullptr, L"Dako could not create its native window.", L"Dako", MB_OK | MB_ICONERROR);
             result = 1;

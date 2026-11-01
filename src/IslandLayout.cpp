@@ -2,8 +2,9 @@
 
 layout::Result Island::Layout() const {
     layout::Input input;
-    input.availableWidth = std::max(layout::Metrics::MinWidth, (envelopeWidth - 2 * layout::PanelRadius) / textScale);
-    input.availableHeight = (envelopeHeight - 24) / textScale;
+    input.availableWidth = std::max(layout::Metrics::MinWidth,
+                                    (envelopeWidth - (DockEnabled() ? 24 : 2 * layout::PanelRadius)) / textScale);
+    input.availableHeight = (envelopeHeight - 24) * .8f / textScale;
     input.view = miniMode ? layout::View::Media : static_cast<layout::View>(tab);
     if (flyout != Flyout::None)
         input.view = flyout == Flyout::Features                              ? layout::View::Features
@@ -18,7 +19,28 @@ layout::Result Island::Layout() const {
     input.offlineIntro = moduleRegistry.FirstRun() && privacy::Policy().Offline();
     input.image = modulePanel.image != nullptr;
     input.bottom = edge == anchor::Edge::Bottom;
-    return layout::Solve(input);
+    if (surfaceRequest.kind != surface::Kind::FullIsland && (flyout == Flyout::None || flyout == Flyout::Palette)) {
+        input.preferredWidth = surface::Pixels(surfaceRequest.width);
+        if (surfaceRequest.kind != surface::Kind::Apps && surfaceRequest.kind != surface::Kind::Palette)
+            input.preferredBodyHeight = UnifiedHeight();
+    }
+    if (flyout == Flyout::Recent)
+        input.preferredWidth = surface::Compact;
+    auto result = layout::Solve(input);
+    if (DockEnabled() && docks && surfaceRequest.kind != surface::Kind::Tooltip) {
+        auto pill = DockPill();
+        if (std::abs(result.panel.Width() * textScale - pill.Width()) < 2 * shape::Fillet) {
+            input.preferredWidth = pill.Width() / textScale;
+            result = layout::Solve(input);
+        }
+    }
+    if (surfaceRequest.kind == surface::Kind::Tooltip) {
+        result.panel = {0, 0, std::min(surface::Compact, input.availableWidth), 28};
+        result.body = result.panel;
+        result.header = result.footer = {};
+        result.contentHeight = 28;
+    }
+    return result;
 }
 
 D2D1_RECT_F Island::R(layout::Rect r) { return {r.left, r.top, r.right, r.bottom}; }
@@ -52,7 +74,7 @@ void Island::RebuildLayout() {
         }
     }
 #ifndef NDEBUG
-    if (!miniMode && flyout == Flyout::None && expanded &&
+    if (surfaceRequest.kind == surface::Kind::FullIsland && !miniMode && flyout == Flyout::None && expanded &&
         !layout::ValidCards(Layout(), static_cast<layout::View>(tab)))
         Check(E_UNEXPECTED);
 #endif
@@ -150,13 +172,54 @@ float Island::SurfaceHeight() const { return LayoutHeight() * textScale; }
 
 float Island::ContentWidth() const { return LayoutWidth(); }
 
-float Island::PanelX() const { return renderMode ? 0 : (envelopeWidth - SurfaceWidth()) / 2; }
+shape::Rect Island::DockPill() const {
+    if (!docks)
+        return {};
+    RECT pill = docks->PillBounds(panelMonitor), host{};
+    GetWindowRect(window, &host);
+    float scale = dpi / 96;
+    return {(pill.left - host.left) / scale, (pill.top - host.top) / scale, (pill.right - host.left) / scale,
+            (pill.bottom - host.top) / scale};
+}
+shape::Rect Island::DockExtension(float w, float h) const {
+    RECT host{};
+    GetWindowRect(window, &host);
+    float x = (surfaceMotion.anchor.value - host.left) * 96 / dpi;
+    if (!dockAnchor.x)
+        x = envelopeWidth / 2;
+    auto pill = DockPill();
+    float left = std::clamp(x - w / 2, 12.0f, std::max(12.0f, envelopeWidth - w - 12));
+    if (surfaceRequest.kind == surface::Kind::Tooltip) {
+        float top = edge == anchor::Edge::Bottom ? pill.top - h - 8 : pill.bottom + 8;
+        return {left, top, left + w, top + h};
+    }
+    return shape::JoinedExtension(pill, {left, 0, left + w, h},
+                                  edge == anchor::Edge::Bottom ? shape::Edge::Bottom : shape::Edge::Top);
+}
+ID2D1PathGeometry *Island::SurfacePath() const {
+    if (DockEnabled() && docks && surfaceRequest.kind == surface::Kind::Tooltip)
+        return geometryCache.RoundedAt(factory.Get(), DockExtension(width, height), shape::Control);
+    if (DockEnabled() && docks)
+        return geometryCache.Union(factory.Get(), DockPill(), DockExtension(width, height),
+                                   edge == anchor::Edge::Bottom ? shape::Edge::Bottom : shape::Edge::Top, dpi);
+    return geometryCache.Surface(factory.Get(), false, (envelopeWidth - width) / 2, PanelY(), width, height,
+                                 shape::Surface, edge);
+}
+float Island::PanelX() const {
+    if (renderMode)
+        return 0;
+    if (DockEnabled() && docks) {
+        auto extension = DockExtension(width, height);
+        return (extension.left + extension.right - LayoutWidth() * textScale) / 2;
+    }
+    return (envelopeWidth - SurfaceWidth()) / 2;
+}
 
 float Island::HandleY() const { return edge == anchor::Edge::Bottom ? envelopeHeight - theme::DockHeight : 0; }
 
 float Island::PanelY() const {
     return renderMode                     ? 0
-           : DockEnabled()                ? (edge == anchor::Edge::Top ? 0.0f : std::max(0.0f, envelopeHeight - height))
+           : DockEnabled() && docks       ? DockExtension(width, height).top
            : edge == anchor::Edge::Bottom ? std::max(0.0f, envelopeHeight - height)
                                           : 12.0f;
 }
@@ -182,28 +245,19 @@ void Island::Place() {
             motionInterval = std::max(4U, 1000U / std::min(240U, static_cast<UINT>(mode.dmDisplayFrequency)));
     }
     if (!fixtureGeometry) {
-        envelopeWidth = std::min(theme::EnvelopeWidth, (info.rcMonitor.right - info.rcMonitor.left) / scale);
+        envelopeWidth = DockEnabled()
+                            ? (info.rcMonitor.right - info.rcMonitor.left) / scale
+                            : std::min(theme::EnvelopeWidth, (info.rcMonitor.right - info.rcMonitor.left) / scale);
         envelopeHeight = std::min(theme::EnvelopeHeight, (info.rcMonitor.bottom - info.rcMonitor.top) / scale);
     }
     RECT barBounds = DockEnabled() && docks ? docks->PillBounds(selected) : RECT{};
     bool anchored = DockEnabled() && barBounds.bottom > barBounds.top;
-    if (anchored && !fixtureGeometry)
-        envelopeHeight =
-            std::min(theme::EnvelopeHeight,
-                     std::max(80.0f, (edge == anchor::Edge::Bottom ? barBounds.top - info.rcMonitor.top
-                                                                   : info.rcMonitor.bottom - barBounds.bottom) /
-                                             scale -
-                                         8));
     const int w = static_cast<int>(std::lround((renderMode ? width : envelopeWidth) * scale));
     const int h = static_cast<int>(std::lround((renderMode ? height : envelopeHeight) * scale));
     RECT bounds{};
     GetWindowRect(window, &bounds);
     int left = info.rcMonitor.left + (info.rcMonitor.right - info.rcMonitor.left - w) / 2;
-    if (anchored && dockAnchor.x)
-        left = std::clamp(dockAnchor.x - w / 2, info.rcMonitor.left,
-                          std::max(info.rcMonitor.left, info.rcMonitor.right - w));
-    int top = anchored ? (edge == anchor::Edge::Bottom ? barBounds.top - h + static_cast<int>(4 * scale)
-                                                       : barBounds.bottom - static_cast<int>(4 * scale))
+    int top = anchored ? (edge == anchor::Edge::Bottom ? info.rcMonitor.bottom - h : info.rcMonitor.top)
                        : static_cast<int>(std::lround(anchor::EdgeTop(edge, static_cast<float>(info.rcMonitor.top),
                                                                       static_cast<float>(info.rcMonitor.bottom),
                                                                       static_cast<float>(h))));
@@ -218,7 +272,23 @@ void Island::Place() {
                                  dockReveal.value > 0.003f,
                                  YieldResting(),
                                  renderMode};
-    if (signature != regionSignature) {
+    if (DockEnabled() && docks && dockReveal.value > .003f) {
+        auto *path = SurfacePath();
+        HRGN region = shape::Region(path, D2D1::Matrix3x2F::Scale(scale, scale));
+        if (!highContrast && path) {
+            D2D1_RECT_F haloBounds{};
+            if (SUCCEEDED(path->GetWidenedBounds(96, nullptr, nullptr, &haloBounds))) {
+                HRGN halo = CreateRectRgn(static_cast<int>(std::floor(haloBounds.left * scale)),
+                                          static_cast<int>(std::floor(haloBounds.top * scale)),
+                                          static_cast<int>(std::ceil(haloBounds.right * scale)),
+                                          static_cast<int>(std::ceil(haloBounds.bottom * scale)));
+                CombineRgn(region, region, halo, RGN_OR);
+                DeleteObject(halo);
+            }
+        }
+        if (!SetWindowRgn(window, region, TRUE))
+            DeleteObject(region);
+    } else if (signature != regionSignature) {
         regionSignature = signature;
         auto notch = NotchPixels(scale);
         auto rounded = shape::RoundedPath(factory.Get(), {0, 0, w / scale, h / scale}, shape::Surface);
@@ -243,7 +313,9 @@ void Island::Place() {
 void Island::PositionInputs() {
     if (layoutOnly)
         return;
-    bool visible = expanded && !capturingPane && (reducedMotion || renderMode || contentBlend.value > .98f);
+    bool visible =
+        expanded && !capturingPane &&
+        (reducedMotion || renderMode || (contentBlend.value > .98f && (!DockEnabled() || paneBlend.value > .98f)));
     float scale = dpi / 96;
     auto position = [&](HWND input, int id) {
         if (!input)
@@ -300,8 +372,11 @@ void Island::PositionInputs() {
 void Island::RetargetLayout() {
     if (!expanded)
         return;
-    dockWidth.goal = SurfaceWidth();
-    dockHeight.goal = SurfaceHeight();
+    if (surfaceMotion.phase == surface::SurfaceMotion::Phase::Closed)
+        surfaceMotion.Open(static_cast<float>(dockAnchor.x), SurfaceWidth(), SurfaceHeight(),
+                           reducedMotion || renderMode);
+    else
+        surfaceMotion.Resize(SurfaceWidth(), SurfaceHeight(), reducedMotion || renderMode);
     if (reducedMotion || renderMode) {
         dockWidth.Snap(dockWidth.goal);
         dockHeight.Snap(dockHeight.goal);
@@ -317,7 +392,8 @@ D2D1_RECT_F Island::TabRect(int index) const {
     auto l = Layout();
     auto header = l.header;
     if (!renderMode && expanded && width > 0 && height > 0) {
-        float inset = (SurfaceWidth() - width) / (2 * textScale);
+        float presentedWidth = DockEnabled() && docks ? DockExtension(width, height).Width() : width;
+        float inset = (LayoutWidth() * textScale - presentedWidth) / (2 * textScale);
         header.left += inset;
         header.right -= inset;
         if (edge == anchor::Edge::Bottom) {

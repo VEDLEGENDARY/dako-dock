@@ -19,7 +19,7 @@ void Island::BeginChrome(ChromeKind kind, const std::wstring &title, const std::
     chrome.restoreFocus = focusedKey;
     chrome.savedModal = modalOpen;
     modalOpen = true;
-    float sheetWidth = std::min(560.0f, Body().right - Body().left);
+    float sheetWidth = std::min(surface::Compact, Body().right - Body().left);
     ComPtr<IDWriteTextLayout> paragraph;
     if (!detail.empty() && SUCCEEDED(textFactory->CreateTextLayout(
                                detail.c_str(), static_cast<UINT32>(detail.size()), formats[type::Caption].Get(),
@@ -39,6 +39,7 @@ void Island::BeginChrome(ChromeKind kind, const std::wstring &title, const std::
             EnsureEditResources();
             SendMessageW(chromeEdit, WM_SETFONT, reinterpret_cast<WPARAM>(editFont), TRUE);
         }
+        SendMessageW(chromeEdit, EM_SETPASSWORDCHAR, title == L"Network security key" ? L'\x25CF' : 0, 0);
         LabelInput(chromeEdit, title.c_str());
         SendMessageW(chromeEdit, EM_SETLIMITTEXT, std::min(size_t{32768}, limit), 0);
         SetWindowTextW(chromeEdit, initial.c_str());
@@ -349,7 +350,7 @@ void Island::ScrollChrome(float amount) {
 void Island::DrawChrome() {
     auto body = Body();
     bool menu = chrome.kind == ChromeKind::Menu;
-    float sheetWidth = std::min(menu ? 320.0f : 560.0f, body.right - body.left);
+    float sheetWidth = std::min(surface::Compact, body.right - body.left);
     float header = menu && body.bottom - body.top >= 108 ? 36.0f : 0;
     float footer = menu && body.bottom - body.top >= 144 ? 36.0f : 0;
     float rowHeight = std::min(36.0f, body.bottom - body.top);
