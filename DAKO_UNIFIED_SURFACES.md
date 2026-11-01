@@ -306,3 +306,19 @@ From the single `Union` path, derive everything:
 5. The pill and any extension form one continuous outline with concave fillets, in all anchor positions and on both edges.
 6. No native menus or tooltips in dock flows.
 7. Reduced motion and high contrast pass, and idle cost is unchanged.
+
+## Execution record (November 1, 2026)
+
+- [x] Phase 0: local audit against `083f8c1` and preserved baseline captures.
+- [x] Phase 1: shared shape tokens, continuous corners, consumer migration, schema removal and enforced lint.
+- [x] Phase 2: shared union paint/region/hit/backdrop/shadow geometry and exact top/bottom joins.
+- [x] Phase 3: stable envelope, shared motion, preserved retarget velocity, snapshots and width classes.
+- [x] Phase 4: Action/Peek/Panel routing, common Quick Panel sections, direct Wi-Fi and in-pill volume HUD.
+- [x] Phase 5: in-surface context, overflow, labels and native thumbnails targeting the shared composition HWND.
+- [x] Phase 6: 1,543 fixture PNGs; 216 join checks plus crops; 16 radius audits; motion and production navigation;
+  50 native lifecycle cycles and 60-second idle/resource acceptance.
+
+Implementation commit: `b8834d0`, following the shape migration commits. Final private rest memory
+29.6094 MiB (previous 39.2188 MiB); normalized CPU 0.0272254% (previous 0.0307765%).
+Detailed commands, raw results, representative images, hashes and validation limits are in
+[the unified surfaces verification report](docs/verification/unified-surfaces/README.md).

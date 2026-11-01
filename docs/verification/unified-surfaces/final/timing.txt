@@ -1,0 +1,15 @@
+frame_clock_active=0
+frame_readiness_available=0
+system_transparency=0
+backdrop_hresult=2147942450
+text_scale=1
+animation_timer_active=0
+backdrop_api_available=0
+composition_active=0
+dpi=120
+timer_period_ms=8
+animation_ticks=8192
+tick_p50_ms=8.3368
+tick_p95_ms=10.9264
+paint_p95_ms=1.2533
+These are message/CPU paint timings, not presented-frame or GPU measurements.
